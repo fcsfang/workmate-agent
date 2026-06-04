@@ -13,15 +13,27 @@ class LLMClient:
         self.model = model or os.getenv("LLM_MODEL_ID")
         self.apiKey = apiKey or os.getenv("LLM_API_KEY")
         self.baseUrl = baseUrl or os.getenv("LLM_BASE_URL")
-        self.client = OpenAI(=self.model, api_key=self.apiKey, self.baseUrl)
+        self.timeout = timeout
+        
+        #创建openai客户端
+        self.client = OpenAI(api_key=self.apiKey, base_url=self.baseUrl, timeout=self.timeout)
         
 
-    def generate_response(self, prompt):
+    def invoke(self, prompt):
         response = self.client.chat.completions.create(
-            model="gpt-4o",
+            model = self.model,
             messages=[
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": prompt}
             ]
         )
         return response.choices[0].message.content.strip()
+    
+
+
+
+if __name__ == "__main__":
+    llmclient = LLMClient()
+    prompt = "我使用API调用你，你会有记忆能力吗？"
+    respose = llmclient.invoke(prompt)
+    print(respose)
