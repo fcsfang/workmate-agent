@@ -1,0 +1,730 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workmate Agent Console</title>
+  <style>
+    :root {
+      --paper: #f4f0e6;
+      --paper-deep: #e5dccb;
+      --ink: #181612;
+      --muted: #6e675d;
+      --line: rgba(24, 22, 18, 0.16);
+      --line-strong: rgba(24, 22, 18, 0.34);
+      --panel: rgba(255, 252, 242, 0.86);
+      --carbon: #1d211c;
+      --carbon-soft: #2d332b;
+      --cinnabar: #b8402a;
+      --moss: #667642;
+      --brass: #a77b32;
+      --shadow: 0 18px 48px rgba(25, 22, 16, 0.18);
+      --mono: "SF Mono", "Menlo", "Consolas", "Liberation Mono", monospace;
+      --serif: "Iowan Old Style", "Songti SC", "STSong", "Noto Serif CJK SC", serif;
+      --sans: "Avenir Next", "Gill Sans", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      height: 100%;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: var(--sans);
+      background:
+        linear-gradient(90deg, rgba(184, 64, 42, 0.08), transparent 28%, rgba(102, 118, 66, 0.10)),
+        url("/assets/ledger-field.png"),
+        var(--paper);
+      overflow: hidden;
+    }
+
+    button,
+    textarea {
+      font: inherit;
+    }
+
+    .shell {
+      min-height: 100%;
+      padding: 18px;
+      display: grid;
+      grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+      gap: 14px;
+    }
+
+    .rail,
+    .stage {
+      border: 1px solid var(--line-strong);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
+    }
+
+    .rail {
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      min-height: 0;
+      border-radius: 6px;
+    }
+
+    .brand {
+      padding: 22px 20px 18px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .brand-kicker {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .signal {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--moss);
+      box-shadow: 0 0 0 5px rgba(102, 118, 66, 0.16);
+    }
+
+    h1 {
+      margin: 12px 0 0;
+      font-family: var(--serif);
+      font-size: clamp(28px, 4vw, 44px);
+      font-weight: 700;
+      line-height: 0.95;
+      letter-spacing: 0;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .stat {
+      padding: 14px 12px;
+      border-right: 1px solid var(--line);
+      min-width: 0;
+    }
+
+    .stat:last-child {
+      border-right: 0;
+    }
+
+    .stat-value {
+      display: block;
+      font-family: var(--mono);
+      font-size: 20px;
+      color: var(--cinnabar);
+    }
+
+    .stat-label {
+      display: block;
+      margin-top: 3px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .memory {
+      min-height: 0;
+      overflow: auto;
+      padding: 14px;
+    }
+
+    .section-title {
+      margin: 0 0 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .icon-button {
+      width: 34px;
+      height: 34px;
+      display: inline-grid;
+      place-items: center;
+      border: 1px solid var(--line-strong);
+      border-radius: 4px;
+      color: var(--ink);
+      background: rgba(255, 252, 242, 0.72);
+      cursor: pointer;
+      transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
+    }
+
+    .icon-button:hover {
+      transform: translateY(-1px);
+      border-color: var(--cinnabar);
+      background: rgba(255, 252, 242, 0.96);
+    }
+
+    .record-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .record {
+      padding: 11px 12px;
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--brass);
+      border-radius: 4px;
+      background: rgba(255, 252, 242, 0.58);
+    }
+
+    .record-time {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .record-text {
+      margin: 7px 0 0;
+      font-size: 13px;
+      line-height: 1.55;
+      color: var(--ink);
+    }
+
+    .summary {
+      margin: 0 14px 14px;
+      padding: 12px;
+      max-height: 150px;
+      overflow: auto;
+      border-top: 1px solid var(--line);
+      font-family: var(--mono);
+      font-size: 11px;
+      line-height: 1.55;
+      color: var(--muted);
+      white-space: pre-wrap;
+    }
+
+    .stage {
+      min-width: 0;
+      min-height: 0;
+      border-radius: 6px;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .stage::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(135deg, transparent 0 42%, rgba(184, 64, 42, 0.09) 42.1% 42.6%, transparent 42.7%),
+        radial-gradient(circle at 88% 10%, rgba(167, 123, 50, 0.18), transparent 28%);
+      mix-blend-mode: multiply;
+    }
+
+    .topbar {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(29, 33, 28, 0.96);
+      color: var(--paper);
+    }
+
+    .topbar-title {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .topbar-title strong {
+      font-family: var(--serif);
+      font-size: 22px;
+      letter-spacing: 0;
+      white-space: nowrap;
+    }
+
+    .topbar-title span {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: rgba(244, 240, 230, 0.64);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 34px;
+      padding: 0 12px;
+      border: 1px solid rgba(244, 240, 230, 0.22);
+      border-radius: 999px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: rgba(244, 240, 230, 0.78);
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: var(--moss);
+    }
+
+    .transcript {
+      position: relative;
+      z-index: 1;
+      min-height: 0;
+      overflow: auto;
+      padding: 18px;
+      display: grid;
+      align-content: start;
+      gap: 14px;
+    }
+
+    .empty {
+      align-self: stretch;
+      min-height: 100%;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      color: var(--muted);
+    }
+
+    .empty-panel {
+      max-width: 520px;
+      padding: 28px;
+      border: 1px dashed var(--line-strong);
+      background: rgba(255, 252, 242, 0.46);
+    }
+
+    .empty-panel b {
+      display: block;
+      margin-bottom: 10px;
+      font-family: var(--serif);
+      font-size: 28px;
+      color: var(--ink);
+      letter-spacing: 0;
+    }
+
+    .message {
+      width: min(760px, 86%);
+      padding: 14px 15px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      animation: rise 280ms ease both;
+    }
+
+    .message-user {
+      justify-self: end;
+      background: var(--carbon);
+      color: var(--paper);
+      border-color: rgba(29, 33, 28, 0.78);
+    }
+
+    .message-agent {
+      justify-self: start;
+      background: rgba(255, 252, 242, 0.88);
+      border-left: 5px solid var(--cinnabar);
+    }
+
+    .message-role {
+      margin-bottom: 8px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: currentColor;
+      opacity: 0.58;
+    }
+
+    .message-content {
+      white-space: pre-wrap;
+      line-height: 1.7;
+      font-size: 15px;
+    }
+
+    .composer {
+      position: relative;
+      z-index: 1;
+      padding: 14px;
+      border-top: 1px solid var(--line);
+      background: rgba(244, 240, 230, 0.78);
+    }
+
+    .composer-box {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 48px;
+      gap: 10px;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 78px;
+      max-height: 180px;
+      resize: vertical;
+      padding: 14px;
+      border: 1px solid var(--line-strong);
+      border-radius: 5px;
+      color: var(--ink);
+      background: rgba(255, 252, 242, 0.92);
+      outline: none;
+      line-height: 1.6;
+    }
+
+    textarea:focus {
+      border-color: var(--cinnabar);
+      box-shadow: 0 0 0 3px rgba(184, 64, 42, 0.14);
+    }
+
+    .send-button {
+      width: 48px;
+      min-height: 78px;
+      border: 0;
+      border-radius: 5px;
+      color: var(--paper);
+      background: var(--cinnabar);
+      cursor: pointer;
+      font-family: var(--mono);
+      font-size: 24px;
+      transition: transform 160ms ease, background 160ms ease;
+    }
+
+    .send-button:hover {
+      transform: translateY(-1px);
+      background: #9f321f;
+    }
+
+    .send-button:disabled {
+      cursor: wait;
+      opacity: 0.62;
+      transform: none;
+    }
+
+    .composer-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 8px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    @keyframes rise {
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (max-width: 880px) {
+      body {
+        overflow: auto;
+      }
+
+      .shell {
+        min-height: 100%;
+        grid-template-columns: 1fr;
+      }
+
+      .rail {
+        min-height: 380px;
+      }
+
+      .stage {
+        min-height: 680px;
+      }
+
+      .topbar {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .message {
+        width: 100%;
+      }
+    }
+
+    @media (max-width: 520px) {
+      .shell {
+        padding: 10px;
+      }
+
+      .stats {
+        grid-template-columns: 1fr;
+      }
+
+      .stat {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .stat:last-child {
+        border-bottom: 0;
+      }
+
+      .composer-box {
+        grid-template-columns: 1fr;
+      }
+
+      .send-button {
+        width: 100%;
+        min-height: 46px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <aside class="rail" aria-label="Memory ledger">
+      <header class="brand">
+        <div class="brand-kicker">
+          <span>Workmate Agent</span>
+          <span class="signal" aria-hidden="true"></span>
+        </div>
+        <h1>Focus Ledger</h1>
+      </header>
+
+      <section class="stats" aria-label="Memory stats">
+        <div class="stat">
+          <span class="stat-value" id="memoryCount">0</span>
+          <span class="stat-label">records</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value" id="turnCount">0</span>
+          <span class="stat-label">turns</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value" id="clock">--:--</span>
+          <span class="stat-label">local</span>
+        </div>
+      </section>
+
+      <section class="memory">
+        <div class="section-title">
+          <span>RECENT MEMORY</span>
+          <button class="icon-button" id="refreshMemory" title="刷新记忆" type="button">↻</button>
+        </div>
+        <div class="record-list" id="recordList"></div>
+      </section>
+
+      <pre class="summary" id="memorySummary">loading memory...</pre>
+    </aside>
+
+    <section class="stage" aria-label="Agent chat">
+      <header class="topbar">
+        <div class="topbar-title">
+          <strong>Desk Console</strong>
+          <span id="lastEvent">waiting for first report</span>
+        </div>
+        <div class="status-pill">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="statusText">ready</span>
+        </div>
+      </header>
+
+      <section class="transcript" id="transcript" aria-live="polite">
+        <div class="empty" id="emptyState">
+          <div class="empty-panel">
+            <b>先报进展。</b>
+            <span>把当前任务、已经完成的东西、卡住的位置发给 Agent。</span>
+          </div>
+        </div>
+      </section>
+
+      <form class="composer" id="chatForm">
+        <div class="composer-box">
+          <textarea id="promptInput" rows="3" placeholder="我现在完成了... 但卡在..." autocomplete="off"></textarea>
+          <button class="send-button" id="sendButton" title="发送" type="submit">↑</button>
+        </div>
+        <div class="composer-meta">
+          <span id="inputCount">0 chars</span>
+          <span>Enter 换行，⌘/Ctrl + Enter 发送</span>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <script>
+    const transcript = document.querySelector("#transcript");
+    const emptyState = document.querySelector("#emptyState");
+    const chatForm = document.querySelector("#chatForm");
+    const promptInput = document.querySelector("#promptInput");
+    const sendButton = document.querySelector("#sendButton");
+    const inputCount = document.querySelector("#inputCount");
+    const statusText = document.querySelector("#statusText");
+    const statusDot = document.querySelector("#statusDot");
+    const lastEvent = document.querySelector("#lastEvent");
+    const memoryCount = document.querySelector("#memoryCount");
+    const turnCount = document.querySelector("#turnCount");
+    const clock = document.querySelector("#clock");
+    const recordList = document.querySelector("#recordList");
+    const memorySummary = document.querySelector("#memorySummary");
+    const refreshMemory = document.querySelector("#refreshMemory");
+
+    let localTurns = 0;
+
+    function setStatus(text, busy = false) {
+      statusText.textContent = text;
+      statusDot.style.background = busy ? "#a77b32" : "#667642";
+      sendButton.disabled = busy;
+    }
+
+    function updateClock() {
+      const now = new Date();
+      clock.textContent = now.toLocaleTimeString("zh-CN", {
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+    }
+
+    function appendMessage(role, content) {
+      emptyState?.remove();
+      const message = document.createElement("article");
+      message.className = `message message-${role}`;
+
+      const label = document.createElement("div");
+      label.className = "message-role";
+      label.textContent = role === "user" ? "YOU" : "WORKMATE";
+
+      const body = document.createElement("div");
+      body.className = "message-content";
+      body.textContent = content;
+
+      message.append(label, body);
+      transcript.append(message);
+      transcript.scrollTop = transcript.scrollHeight;
+    }
+
+    function compact(text, length = 88) {
+      const value = String(text || "").replace(/\s+/g, " ").trim();
+      return value.length > length ? `${value.slice(0, length)}...` : value;
+    }
+
+    function renderMemory(memory) {
+      const records = memory.recent || [];
+      memoryCount.textContent = memory.count || 0;
+      memorySummary.textContent = memory.summary || "暂无历史记录。";
+      recordList.innerHTML = "";
+
+      if (!records.length) {
+        const empty = document.createElement("div");
+        empty.className = "record";
+        empty.innerHTML = '<div class="record-time">EMPTY</div><p class="record-text">暂无记忆。</p>';
+        recordList.append(empty);
+        return;
+      }
+
+      records.slice().reverse().forEach((record) => {
+        const item = document.createElement("article");
+        item.className = "record";
+
+        const time = document.createElement("div");
+        time.className = "record-time";
+        time.textContent = record.time || "unknown time";
+
+        const text = document.createElement("p");
+        text.className = "record-text";
+        text.textContent = compact(record.user || record.assistant || "");
+
+        item.append(time, text);
+        recordList.append(item);
+      });
+    }
+
+    async function loadMemory() {
+      const response = await fetch("/api/memory");
+      const memory = await response.json();
+      renderMemory(memory);
+    }
+
+    async function sendPrompt(prompt) {
+      setStatus("thinking", true);
+      appendMessage("user", prompt);
+      lastEvent.textContent = "sent at " + new Date().toLocaleTimeString("zh-CN");
+
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt })
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error || "Request failed");
+      }
+
+      appendMessage("agent", payload.response);
+      renderMemory(payload.memory);
+      localTurns += 1;
+      turnCount.textContent = localTurns;
+      lastEvent.textContent = "memory saved";
+    }
+
+    chatForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const prompt = promptInput.value.trim();
+      if (!prompt) return;
+
+      promptInput.value = "";
+      inputCount.textContent = "0 chars";
+
+      try {
+        await sendPrompt(prompt);
+      } catch (error) {
+        appendMessage("agent", `调用失败：${error.message}`);
+        lastEvent.textContent = "request failed";
+      } finally {
+        setStatus("ready", false);
+        promptInput.focus();
+      }
+    });
+
+    promptInput.addEventListener("input", () => {
+      inputCount.textContent = `${promptInput.value.length} chars`;
+    });
+
+    promptInput.addEventListener("keydown", (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+        chatForm.requestSubmit();
+      }
+    });
+
+    refreshMemory.addEventListener("click", async () => {
+      setStatus("refresh", true);
+      try {
+        await loadMemory();
+        lastEvent.textContent = "memory refreshed";
+      } finally {
+        setStatus("ready", false);
+      }
+    });
+
+    updateClock();
+    setInterval(updateClock, 15000);
+    loadMemory().catch((error) => {
+      memorySummary.textContent = error.message;
+    });
+  </script>
+</body>
+</html>
