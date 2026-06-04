@@ -1,4 +1,3 @@
-from openai import OpenAI
 import os
 from dotenv import load_dotenv
 
@@ -307,17 +306,29 @@ class LLMClient:
         self.baseUrl = baseUrl or os.getenv("LLM_BASE_URL")
         self.timeout = timeout
         
+        from openai import OpenAI
+
         #创建openai客户端
         self.client = OpenAI(api_key=self.apiKey, base_url=self.baseUrl, timeout=self.timeout)
         
 
-    def invoke(self, prompt):
-        response = self.client.chat.completions.create(
-            model = self.model,
-            messages=[
+    def invoke(self, prompt=None, messages=None):
+        if messages is None:
+            if prompt is None:
+                raise ValueError("prompt 和 messages 至少需要提供一个")
+            messages = [
                 {"role": "system", "content": systemPrompt},
                 {"role": "user", "content": prompt}
             ]
+        else:
+            messages = [
+                {"role": "system", "content": systemPrompt},
+                *messages
+            ]
+
+        response = self.client.chat.completions.create(
+            model = self.model,
+            messages=messages
         )
         return response.choices[0].message.content.strip()
     
