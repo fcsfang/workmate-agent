@@ -67,7 +67,7 @@
 
     .rail {
       display: grid;
-      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      grid-template-rows: auto auto auto auto auto minmax(0, 1fr) auto auto;
       min-height: 0;
       border-radius: 6px;
     }
@@ -177,6 +177,40 @@
       gap: 10px;
     }
 
+    .task-panel {
+      padding: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .task-grid {
+      display: grid;
+      gap: 8px;
+    }
+
+    .task-field {
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--moss);
+      border-radius: 4px;
+      background: rgba(255, 252, 242, 0.52);
+    }
+
+    .task-label {
+      display: block;
+      margin-bottom: 4px;
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    .task-value {
+      display: block;
+      font-size: 13px;
+      line-height: 1.45;
+      color: var(--ink);
+    }
+
     .record {
       padding: 11px 12px;
       border: 1px solid var(--line);
@@ -209,6 +243,42 @@
       line-height: 1.55;
       color: var(--muted);
       white-space: pre-wrap;
+    }
+
+    .context-box {
+      margin: 0 14px 14px;
+      border-top: 1px solid var(--line);
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .context-box summary {
+      padding: 10px 0;
+      cursor: pointer;
+      color: var(--ink);
+    }
+
+    .context-preview {
+      max-height: 220px;
+      margin: 0;
+      padding: 12px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: rgba(29, 33, 28, 0.92);
+      color: var(--paper);
+      white-space: pre-wrap;
+    }
+
+    .summary-list {
+      margin: 0;
+      padding-left: 18px;
+      line-height: 1.6;
+    }
+
+    .summary-list li {
+      margin: 4px 0;
     }
 
     .stage {
@@ -612,6 +682,69 @@
         </div>
       </section>
 
+      <section class="task-panel" aria-label="Task state">
+        <div class="section-title">
+          <span>CURRENT TASK</span>
+          <button class="icon-button" id="refreshContext" title="刷新上下文" type="button">⌘</button>
+        </div>
+        <div class="task-grid">
+          <div class="task-field">
+            <span class="task-label">status</span>
+            <span class="task-value" id="taskStatus">idle</span>
+          </div>
+          <div class="task-field">
+            <span class="task-label">task</span>
+            <span class="task-value" id="activeTask">暂无当前任务</span>
+          </div>
+          <div class="task-field">
+            <span class="task-label">progress</span>
+            <span class="task-value" id="taskProgress">暂无进度</span>
+          </div>
+          <div class="task-field">
+            <span class="task-label">next action</span>
+            <span class="task-value" id="taskNextAction">暂无下一步</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="task-panel" aria-label="Recent summary">
+        <div class="section-title">
+          <span>7D SUMMARY</span>
+          <span id="summaryRange">--</span>
+        </div>
+        <div class="task-grid">
+          <div class="task-field">
+            <span class="task-label">active tasks</span>
+            <span class="task-value" id="summaryTasks">暂无摘要</span>
+          </div>
+          <div class="task-field">
+            <span class="task-label">risks</span>
+            <span class="task-value" id="summaryRisks">暂无风险</span>
+          </div>
+          <div class="task-field">
+            <span class="task-label">next</span>
+            <span class="task-value" id="summaryNext">暂无下一步</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="task-panel" aria-label="Open commitments">
+        <div class="section-title">
+          <span>OPEN LOOPS</span>
+          <span id="commitmentCount">0</span>
+        </div>
+        <div class="task-grid">
+          <div class="task-field">
+            <span class="task-label">commitments</span>
+            <span class="task-value" id="openCommitments">暂无未关闭承诺</span>
+          </div>
+          <div class="task-field">
+            <span class="task-label">profile</span>
+            <span class="task-value" id="userProfile">暂无长期画像</span>
+          </div>
+        </div>
+      </section>
+
       <section class="memory">
         <div class="section-title">
           <span>RECENT MEMORY</span>
@@ -621,6 +754,10 @@
       </section>
 
       <pre class="summary" id="memorySummary">loading memory...</pre>
+      <details class="context-box">
+        <summary>MODEL CONTEXT</summary>
+        <pre class="context-preview" id="contextPreview">还没有发送过消息。本区会显示下一轮/上一轮实际发给模型的上下文。</pre>
+      </details>
     </aside>
 
     <section class="stage" aria-label="Agent chat">
@@ -673,6 +810,19 @@
     const recordList = document.querySelector("#recordList");
     const memorySummary = document.querySelector("#memorySummary");
     const refreshMemory = document.querySelector("#refreshMemory");
+    const refreshContext = document.querySelector("#refreshContext");
+    const taskStatus = document.querySelector("#taskStatus");
+    const activeTask = document.querySelector("#activeTask");
+    const taskProgress = document.querySelector("#taskProgress");
+    const taskNextAction = document.querySelector("#taskNextAction");
+    const summaryRange = document.querySelector("#summaryRange");
+    const summaryTasks = document.querySelector("#summaryTasks");
+    const summaryRisks = document.querySelector("#summaryRisks");
+    const summaryNext = document.querySelector("#summaryNext");
+    const commitmentCount = document.querySelector("#commitmentCount");
+    const openCommitments = document.querySelector("#openCommitments");
+    const userProfile = document.querySelector("#userProfile");
+    const contextPreview = document.querySelector("#contextPreview");
 
     let localTurns = 0;
 
@@ -837,10 +987,66 @@
       return value.length > length ? `${value.slice(0, length)}...` : value;
     }
 
+    function renderTaskState(state = {}) {
+      taskStatus.textContent = state.status || "idle";
+      activeTask.textContent = state.active_task || "暂无当前任务";
+      taskProgress.textContent = state.current_progress || "暂无进度";
+      taskNextAction.textContent = state.next_action || "暂无下一步";
+    }
+
+    function renderContext(context = {}) {
+      const messages = context.messages || [];
+      if (!messages.length) {
+        contextPreview.textContent = "暂无上下文。发送第一条消息后，这里会显示实际传给模型的 messages。";
+        return;
+      }
+
+      contextPreview.textContent = messages.map((message, index) => {
+        return `#${index + 1} ${message.role}\n${message.content}`;
+      }).join("\n\n---\n\n");
+    }
+
+    function joinSummaryItems(items, fallback) {
+      if (!items || !items.length) return fallback;
+      return items.slice(0, 4).join("；");
+    }
+
+    function renderRecentSummary(summary = {}) {
+      const range = summary.range || {};
+      summaryRange.textContent = range.start && range.end ? `${range.start} / ${range.end}` : "--";
+      summaryTasks.textContent = joinSummaryItems(summary.active_tasks, "暂无摘要");
+      summaryRisks.textContent = joinSummaryItems(summary.repeated_blockers || summary.repeated_patterns, "暂无风险");
+      summaryNext.textContent = joinSummaryItems(summary.next_actions, "暂无下一步");
+    }
+
+    function renderCommitments(commitments = []) {
+      commitmentCount.textContent = commitments.length;
+      openCommitments.textContent = commitments.length
+        ? commitments.slice(-3).map((item) => item.commitment || item.evidence_required).filter(Boolean).join("；")
+        : "暂无未关闭承诺";
+    }
+
+    function renderUserProfile(profile = {}) {
+      const parts = [
+        profile.long_term_goal,
+        ...(profile.failure_modes || []).slice(0, 2),
+        ...(profile.effective_interventions || []).slice(0, 2)
+      ].filter(Boolean);
+      userProfile.textContent = parts.length ? parts.join("；") : "暂无长期画像";
+    }
+
     function renderMemory(memory) {
       const records = memory.recent || [];
       memoryCount.textContent = memory.count || 0;
-      memorySummary.textContent = memory.summary || "暂无历史记录。";
+      memorySummary.textContent = [
+        memory.structured_summary || "暂无结构化记忆。",
+        "",
+        memory.summary || "暂无历史记录。"
+      ].join("\n");
+      renderTaskState(memory.task_state || {});
+      renderRecentSummary(memory.recent_summary || {});
+      renderCommitments(memory.open_commitments || []);
+      renderUserProfile(memory.user_profile || {});
       recordList.innerHTML = "";
 
       if (!records.length) {
@@ -874,6 +1080,12 @@
       renderMemory(memory);
     }
 
+    async function loadContext() {
+      const response = await fetch("/api/context");
+      const context = await response.json();
+      renderContext(context);
+    }
+
     async function sendPrompt(prompt) {
       setStatus("thinking", true);
       appendMessage("user", prompt);
@@ -892,6 +1104,7 @@
 
       appendMessage("agent", payload.response);
       renderMemory(payload.memory);
+      renderContext(payload.context);
       localTurns += 1;
       turnCount.textContent = localTurns;
       lastEvent.textContent = "memory saved";
@@ -930,7 +1143,18 @@
       setStatus("refresh", true);
       try {
         await loadMemory();
+        await loadContext();
         lastEvent.textContent = "memory refreshed";
+      } finally {
+        setStatus("ready", false);
+      }
+    });
+
+    refreshContext.addEventListener("click", async () => {
+      setStatus("context", true);
+      try {
+        await loadContext();
+        lastEvent.textContent = "context refreshed";
       } finally {
         setStatus("ready", false);
       }
@@ -938,7 +1162,7 @@
 
     updateClock();
     setInterval(updateClock, 15000);
-    loadMemory().catch((error) => {
+    Promise.all([loadMemory(), loadContext()]).catch((error) => {
       memorySummary.textContent = error.message;
     });
   </script>

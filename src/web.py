@@ -34,6 +34,7 @@ class WorkmateWebApp:
         return {
             "response": response,
             "memory": self.memory_state(),
+            "context": self.context_state(),
         }
 
     def memory_state(self):
@@ -43,6 +44,24 @@ class WorkmateWebApp:
             "count": len(records),
             "recent": recent_records,
             "summary": self.memory_manager.get_memory_summary(),
+            "structured_summary": self.memory_manager.get_structured_memory_summary(),
+            "recent_summary": self.memory_manager.get_recent_summary(days=7),
+            "recent_summary_context": self.memory_manager.get_recent_summary_context(days=7),
+            "task_state": self.memory_manager.get_task_state(),
+            "open_commitments": self.memory_manager.get_open_commitments(),
+            "user_profile": self.memory_manager.get_user_profile(),
+        }
+
+    def context_state(self):
+        if self.agent and self.agent.get_last_context():
+            messages = self.agent.get_last_context()
+        else:
+            messages = self.memory_manager.build_context_debug().get("messages", [])
+        return {
+            "messages": messages,
+            "message_count": len(messages),
+            "open_commitments": self.memory_manager.get_open_commitments(),
+            "user_profile": self.memory_manager.get_user_profile(),
         }
 
 
@@ -58,6 +77,10 @@ class WorkmateRequestHandler(BaseHTTPRequestHandler):
 
         if path == "/api/memory":
             self._send_json(APP.memory_state())
+            return
+
+        if path == "/api/context":
+            self._send_json(APP.context_state())
             return
 
         safe_path = path.lstrip("/")

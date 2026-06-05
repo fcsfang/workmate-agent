@@ -331,6 +331,13 @@ class LLMClient:
             messages=messages
         )
         return response.choices[0].message.content.strip()
+
+    def invoke_raw(self, messages):
+        response = self.client.chat.completions.create(
+            model = self.model,
+            messages=messages
+        )
+        return response.choices[0].message.content.strip()
     
 
 

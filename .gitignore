@@ -23,4 +23,9 @@ tmp/
 temp/
 
 memory/records.json
+memory/task_state.json
+memory/commitments.json
+memory/user_profile.json
+memory/retrieval_index.json
+memory/daily_summaries/
 memory/*.local.json

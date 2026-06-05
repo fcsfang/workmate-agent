@@ -17,12 +17,20 @@ class WorkmateAgent:
     def __init__(self, llmclient=None, memory_manager=None):
         self.llmclient = llmclient or LLMClient()
         self.memory_manager = memory_manager or MemoryManager()
+        self.memory_manager.set_llm_client(self.llmclient)
+        self.last_context_messages = []
 
     def invoke(self, prompt):
         messages = self.memory_manager.build_context_messages(prompt)
+        self.last_context_messages = messages
         response = self.llmclient.invoke(messages=messages)
-        self.memory_manager.add_record(prompt, response)
+        extracted = self.memory_manager.extract_memory(prompt, response)
+        task_state = self.memory_manager.update_task_state(extracted, prompt, response)
+        self.memory_manager.add_record(prompt, response, extracted=extracted, task_state=task_state)
         return response
+
+    def get_last_context(self):
+        return self.last_context_messages
 
 
 def run_chat():

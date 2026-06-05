@@ -29,8 +29,19 @@ Workmate Agent 是一个面向个人学习和工作执行的长期工位搭子�
 workmate-agent/
 ├── memory/
 │   ├── MemoryManager.py   # 记忆读写、摘要和上下文组装
+│   ├── MemoryExtractor.py # 每轮对话后的结构化事实提取
+│   ├── CommitmentManager.py # 承诺和待验证事项追踪
+│   ├── SummaryManager.py  # 模型优先的每日摘要和最近7天摘要
+│   ├── UserProfileManager.py # 长期用户画像
+│   ├── SearchManager.py   # 轻量关键词历史检索
+│   ├── TaskStateManager.py # 当前任务状态维护
 │   ├── __init__.py
-│   └── records.json       # 本地对话记录
+│   ├── records.json       # 本地对话记录，运行时生成
+│   ├── task_state.json    # 当前任务状态，运行时生成
+│   ├── commitments.json   # 未关闭承诺，运行时生成
+│   ├── user_profile.json  # 长期画像，运行时生成
+│   ├── retrieval_index.json # 检索索引，运行时生成
+│   └── daily_summaries/   # 每日摘要，运行时生成
 ├── src/
 │   ├── LLMClient.py       # 大模型 API 客户端
 │   ├── core.py            # WorkmateAgent 和命令行连续对话入口
@@ -81,6 +92,8 @@ http://127.0.0.1:7860
 ```
 
 页面会显示对话区、最近记忆、记忆摘要和本地记录数量。每次发送消息都会调用同一个 `WorkmateAgent` 流程，并写入 `memory/records.json`。
+
+0.3+ 版本还会在页面左侧显示当前任务状态、最近 7 天摘要、未关闭承诺和长期用户画像，并提供 `MODEL CONTEXT` 调试区。每日摘要会优先调用模型生成 JSON 记忆，失败时退回规则摘要；`MODEL CONTEXT` 会展示上一轮实际发送给模型的 messages，方便检查 Agent 到底带入了哪些记忆。
 
 只要这个命令所在的终端窗口保持运行，页面和 API 就会保持可用。需要停止时，在该终端按 `Ctrl + C`。
 

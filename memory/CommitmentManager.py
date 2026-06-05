@@ -1,0 +1,152 @@
+import json
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+
+class CommitmentManager:
+    def __init__(self, commitments_path: Optional[str] = None):
+        memory_dir = Path(__file__).resolve().parent
+        self.commitments_path = Path(commitments_path) if commitments_path else memory_dir / "commitments.json"
+        self.commitments_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def load_commitments(self) -> List[Dict[str, Any]]:
+        if not self.commitments_path.exists() or self.commitments_path.stat().st_size == 0:
+            return []
+
+        try:
+            with self.commitments_path.open("r", encoding="utf-8") as file:
+                commitments = json.load(file)
+        except json.JSONDecodeError:
+            return []
+
+        return commitments if isinstance(commitments, list) else []
+
+    def save_commitments(self, commitments: List[Dict[str, Any]]) -> None:
+        with self.commitments_path.open("w", encoding="utf-8") as file:
+            json.dump(commitments, file, ensure_ascii=False, indent=2)
+
+    def update(
+        self,
+        extracted: Dict[str, Any],
+        user_input: str,
+        assistant_output: str,
+        task_state: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
+        commitments = self.load_commitments()
+        now = datetime.now().isoformat(timespec="seconds")
+        active_task = (task_state or {}).get("active_task", "")
+
+        commitments = self._close_completed(commitments, user_input, now)
+        new_items = self._build_new_commitments(extracted, active_task, now)
+        for item in new_items:
+            if not self._exists_open(commitments, item):
+                commitments.append(item)
+
+        commitments = self._trim(commitments)
+        self.save_commitments(commitments)
+        return commitments
+
+    def get_open_commitments(self) -> List[Dict[str, Any]]:
+        return [item for item in self.load_commitments() if item.get("status") == "open"]
+
+    def format_for_context(self) -> str:
+        open_items = self.get_open_commitments()
+        if not open_items:
+            return "暂无未关闭承诺或待验证事项。"
+
+        lines = [
+            "以下是未关闭承诺/待验证事项。请优先检查用户是否兑现，不要让它们被新话题覆盖。",
+        ]
+        for index, item in enumerate(open_items[-8:], start=1):
+            parts = [
+                f"{index}. {item.get('commitment', '')}",
+                f"owner={item.get('owner', 'user')}",
+            ]
+            if item.get("task"):
+                parts.append(f"task={item['task']}")
+            if item.get("evidence_required"):
+                parts.append(f"evidence={item['evidence_required']}")
+            lines.append(" | ".join(parts))
+        return "\n".join(lines)
+
+    def _build_new_commitments(
+        self,
+        extracted: Dict[str, Any],
+        active_task: str,
+        now: str,
+    ) -> List[Dict[str, Any]]:
+        items = []
+        for commitment in extracted.get("user_commitments") or []:
+            items.append(self._new_item("user", commitment, active_task, "", now))
+
+        for action in extracted.get("next_actions") or []:
+            if self._is_action_commitment(action):
+                items.append(self._new_item("agent", action, active_task, "", now))
+
+        for evidence in extracted.get("evidence_required") or []:
+            items.append(self._new_item("agent", evidence, active_task, evidence, now))
+        return items
+
+    def _new_item(self, owner: str, commitment: str, task: str, evidence: str, now: str) -> Dict[str, Any]:
+        return {
+            "id": self._make_id(now, commitment),
+            "owner": owner,
+            "task": task,
+            "commitment": self._compact(commitment),
+            "evidence_required": self._compact(evidence),
+            "status": "open",
+            "created_at": now,
+            "closed_at": "",
+        }
+
+    def _close_completed(self, commitments: List[Dict[str, Any]], user_input: str, now: str) -> List[Dict[str, Any]]:
+        if not any(keyword in user_input for keyword in ["完成", "做完", "已经", "提交", "发给你", "截图", "统计"]):
+            return commitments
+
+        for item in commitments:
+            if item.get("status") != "open":
+                continue
+            if self._looks_satisfied(item, user_input):
+                item["status"] = "closed"
+                item["closed_at"] = now
+        return commitments
+
+    def _looks_satisfied(self, item: Dict[str, Any], user_input: str) -> bool:
+        text = f"{item.get('commitment', '')} {item.get('evidence_required', '')}"
+        keywords = [keyword for keyword in self._keywords(text) if len(keyword) >= 2]
+        if not keywords:
+            return False
+        matched = sum(1 for keyword in keywords if keyword in user_input)
+        return matched >= 1 and any(done in user_input for done in ["完成", "已经", "做完", "发给你", "统计"])
+
+    def _exists_open(self, commitments: List[Dict[str, Any]], new_item: Dict[str, Any]) -> bool:
+        for item in commitments:
+            if item.get("status") == "open" and item.get("commitment") == new_item.get("commitment"):
+                return True
+        return False
+
+    def _is_action_commitment(self, action: str) -> bool:
+        return any(keyword in action for keyword in ["给我", "需要", "下一步", "继续", "先", "截图", "证据", "报出"])
+
+    def _trim(self, commitments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        open_items = [item for item in commitments if item.get("status") == "open"]
+        closed_items = [item for item in commitments if item.get("status") != "open"]
+        return [*closed_items[-30:], *open_items[-30:]]
+
+    def _keywords(self, text: str) -> List[str]:
+        separators = " ，。！？、；;:：/\\|+-_*()（）[]【】"
+        normalized = text
+        for separator in separators:
+            normalized = normalized.replace(separator, " ")
+        return [part.strip() for part in normalized.split() if part.strip()]
+
+    def _make_id(self, now: str, text: str) -> str:
+        safe_time = now.replace("-", "").replace(":", "").replace("T", "-")
+        return f"{safe_time}-{abs(hash(text)) % 100000:05d}"
+
+    def _compact(self, text: str, max_length: int = 160) -> str:
+        text = " ".join(str(text).split())
+        if len(text) <= max_length:
+            return text
+        return text[:max_length].rstrip() + "..."
