@@ -50,11 +50,12 @@
     }
 
     .shell {
-      min-height: 100%;
+      height: 100vh;
       padding: 18px;
       display: grid;
       grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
       gap: 14px;
+      overflow: hidden;
     }
 
     .rail,
@@ -67,8 +68,10 @@
 
     .rail {
       display: grid;
-      grid-template-rows: auto auto auto auto auto minmax(0, 1fr) auto auto;
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      height: 100%;
       min-height: 0;
+      overflow: hidden;
       border-radius: 6px;
     }
 
@@ -140,6 +143,12 @@
       min-height: 0;
       overflow: auto;
       padding: 14px;
+    }
+
+    .diagnostics {
+      min-height: 0;
+      overflow: auto;
+      overscroll-behavior: contain;
     }
 
     .section-title {
@@ -233,9 +242,9 @@
     }
 
     .summary {
-      margin: 0 14px 14px;
+      margin: 0;
       padding: 12px;
-      max-height: 150px;
+      max-height: 180px;
       overflow: auto;
       border-top: 1px solid var(--line);
       font-family: var(--mono);
@@ -246,7 +255,8 @@
     }
 
     .context-box {
-      margin: 0 14px 14px;
+      margin: 0;
+      padding: 0 14px 14px;
       border-top: 1px solid var(--line);
       font-family: var(--mono);
       font-size: 11px;
@@ -260,7 +270,7 @@
     }
 
     .context-preview {
-      max-height: 220px;
+      max-height: 180px;
       margin: 0;
       padding: 12px;
       overflow: auto;
@@ -283,6 +293,7 @@
 
     .stage {
       min-width: 0;
+      height: 100%;
       min-height: 0;
       border-radius: 6px;
       display: grid;
@@ -524,6 +535,7 @@
     .composer {
       position: relative;
       z-index: 1;
+      flex-shrink: 0;
       padding: 14px;
       border-top: 1px solid var(--line);
       background: rgba(244, 240, 230, 0.78);
@@ -605,15 +617,20 @@
       }
 
       .shell {
-        min-height: 100%;
+        height: auto;
+        min-height: 100vh;
+        overflow: visible;
         grid-template-columns: 1fr;
       }
 
       .rail {
+        height: auto;
         min-height: 380px;
+        max-height: 70vh;
       }
 
       .stage {
+        height: 80vh;
         min-height: 680px;
       }
 
@@ -682,78 +699,81 @@
         </div>
       </section>
 
-      <section class="task-panel" aria-label="Task state">
-        <div class="section-title">
-          <span>CURRENT TASK</span>
-          <button class="icon-button" id="refreshContext" title="刷新上下文" type="button">⌘</button>
-        </div>
-        <div class="task-grid">
-          <div class="task-field">
-            <span class="task-label">status</span>
-            <span class="task-value" id="taskStatus">idle</span>
+      <div class="diagnostics">
+        <section class="task-panel" aria-label="Task state">
+          <div class="section-title">
+            <span>CURRENT TASK</span>
+            <button class="icon-button" id="refreshContext" title="刷新上下文" type="button">⌘</button>
           </div>
-          <div class="task-field">
-            <span class="task-label">task</span>
-            <span class="task-value" id="activeTask">暂无当前任务</span>
+          <div class="task-grid">
+            <div class="task-field">
+              <span class="task-label">status</span>
+              <span class="task-value" id="taskStatus">idle</span>
+            </div>
+            <div class="task-field">
+              <span class="task-label">task</span>
+              <span class="task-value" id="activeTask">暂无当前任务</span>
+            </div>
+            <div class="task-field">
+              <span class="task-label">progress</span>
+              <span class="task-value" id="taskProgress">暂无进度</span>
+            </div>
+            <div class="task-field">
+              <span class="task-label">next action</span>
+              <span class="task-value" id="taskNextAction">暂无下一步</span>
+            </div>
           </div>
-          <div class="task-field">
-            <span class="task-label">progress</span>
-            <span class="task-value" id="taskProgress">暂无进度</span>
-          </div>
-          <div class="task-field">
-            <span class="task-label">next action</span>
-            <span class="task-value" id="taskNextAction">暂无下一步</span>
-          </div>
-        </div>
-      </section>
+        </section>
 
-      <section class="task-panel" aria-label="Recent summary">
-        <div class="section-title">
-          <span>7D SUMMARY</span>
-          <span id="summaryRange">--</span>
-        </div>
-        <div class="task-grid">
-          <div class="task-field">
-            <span class="task-label">active tasks</span>
-            <span class="task-value" id="summaryTasks">暂无摘要</span>
+        <section class="task-panel" aria-label="Recent summary">
+          <div class="section-title">
+            <span>7D SUMMARY</span>
+            <span id="summaryRange">--</span>
           </div>
-          <div class="task-field">
-            <span class="task-label">risks</span>
-            <span class="task-value" id="summaryRisks">暂无风险</span>
+          <div class="task-grid">
+            <div class="task-field">
+              <span class="task-label">active tasks</span>
+              <span class="task-value" id="summaryTasks">暂无摘要</span>
+            </div>
+            <div class="task-field">
+              <span class="task-label">risks</span>
+              <span class="task-value" id="summaryRisks">暂无风险</span>
+            </div>
+            <div class="task-field">
+              <span class="task-label">next</span>
+              <span class="task-value" id="summaryNext">暂无下一步</span>
+            </div>
           </div>
-          <div class="task-field">
-            <span class="task-label">next</span>
-            <span class="task-value" id="summaryNext">暂无下一步</span>
-          </div>
-        </div>
-      </section>
+        </section>
 
-      <section class="task-panel" aria-label="Open commitments">
-        <div class="section-title">
-          <span>OPEN LOOPS</span>
-          <span id="commitmentCount">0</span>
-        </div>
-        <div class="task-grid">
-          <div class="task-field">
-            <span class="task-label">commitments</span>
-            <span class="task-value" id="openCommitments">暂无未关闭承诺</span>
+        <section class="task-panel" aria-label="Open commitments">
+          <div class="section-title">
+            <span>OPEN LOOPS</span>
+            <span id="commitmentCount">0</span>
           </div>
-          <div class="task-field">
-            <span class="task-label">profile</span>
-            <span class="task-value" id="userProfile">暂无长期画像</span>
+          <div class="task-grid">
+            <div class="task-field">
+              <span class="task-label">commitments</span>
+              <span class="task-value" id="openCommitments">暂无未关闭承诺</span>
+            </div>
+            <div class="task-field">
+              <span class="task-label">profile</span>
+              <span class="task-value" id="userProfile">暂无长期画像</span>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section class="memory">
-        <div class="section-title">
-          <span>RECENT MEMORY</span>
-          <button class="icon-button" id="refreshMemory" title="刷新记忆" type="button">↻</button>
-        </div>
-        <div class="record-list" id="recordList"></div>
-      </section>
+        <section class="memory">
+          <div class="section-title">
+            <span>RECENT MEMORY</span>
+            <button class="icon-button" id="refreshMemory" title="刷新记忆" type="button">↻</button>
+          </div>
+          <div class="record-list" id="recordList"></div>
+        </section>
 
-      <pre class="summary" id="memorySummary">loading memory...</pre>
+        <pre class="summary" id="memorySummary">loading memory...</pre>
+      </div>
+
       <details class="context-box">
         <summary>MODEL CONTEXT</summary>
         <pre class="context-preview" id="contextPreview">还没有发送过消息。本区会显示下一轮/上一轮实际发给模型的上下文。</pre>
@@ -980,6 +1000,12 @@
       message.append(label, body);
       transcript.append(message);
       transcript.scrollTop = transcript.scrollHeight;
+      return { message, body };
+    }
+
+    function updateAgentMessage(target, content) {
+      target.body.innerHTML = renderMarkdown(content);
+      transcript.scrollTop = transcript.scrollHeight;
     }
 
     function compact(text, length = 88) {
@@ -1089,6 +1115,8 @@
     async function sendPrompt(prompt) {
       setStatus("thinking", true);
       appendMessage("user", prompt);
+      const agentMessage = appendMessage("agent", "");
+      let agentContent = "";
       lastEvent.textContent = "sent at " + new Date().toLocaleTimeString("zh-CN");
 
       const response = await fetch("/api/chat", {
@@ -1097,17 +1125,65 @@
         body: JSON.stringify({ prompt })
       });
 
-      const payload = await response.json();
       if (!response.ok) {
+        const payload = await response.json();
         throw new Error(payload.error || "Request failed");
       }
 
-      appendMessage("agent", payload.response);
-      renderMemory(payload.memory);
-      renderContext(payload.context);
-      localTurns += 1;
-      turnCount.textContent = localTurns;
-      lastEvent.textContent = "memory saved";
+      if (!response.body) {
+        throw new Error("当前浏览器不支持流式响应");
+      }
+
+      setStatus("streaming", true);
+      lastEvent.textContent = "receiving stream";
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = "";
+
+      async function handleEvent(rawEvent) {
+        const data = rawEvent
+          .split("\n")
+          .filter((line) => line.startsWith("data:"))
+          .map((line) => line.slice(5).trimStart())
+          .join("\n");
+        if (!data) return;
+
+        const payload = JSON.parse(data);
+        if (payload.type === "delta") {
+          agentContent += payload.content || "";
+          updateAgentMessage(agentMessage, agentContent);
+          return;
+        }
+
+        if (payload.type === "done") {
+          renderMemory(payload.memory);
+          renderContext(payload.context);
+          localTurns += 1;
+          turnCount.textContent = localTurns;
+          lastEvent.textContent = "memory saved";
+          return;
+        }
+
+        if (payload.type === "error") {
+          throw new Error(payload.error || "Stream failed");
+        }
+      }
+
+      while (true) {
+        const { value, done } = await reader.read();
+        buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+        const events = buffer.split("\n\n");
+        buffer = events.pop() || "";
+        for (const eventText of events) {
+          await handleEvent(eventText);
+        }
+        if (done) break;
+      }
+
+      if (buffer.trim()) {
+        await handleEvent(buffer);
+      }
     }
 
     chatForm.addEventListener("submit", async (event) => {

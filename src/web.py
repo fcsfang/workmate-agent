@@ -37,6 +37,15 @@ class WorkmateWebApp:
             "context": self.context_state(),
         }
 
+    def chat_stream(self, prompt):
+        for chunk in self.get_agent().invoke_stream(prompt):
+            yield {"type": "delta", "content": chunk}
+        yield {
+            "type": "done",
+            "memory": self.memory_state(),
+            "context": self.context_state(),
+        }
+
     def memory_state(self):
         records = self.memory_manager.load_records()
         recent_records = records[-8:]
@@ -107,7 +116,7 @@ class WorkmateRequestHandler(BaseHTTPRequestHandler):
             if not prompt:
                 self._send_error(400, "Prompt is required")
                 return
-            self._send_json(APP.chat(prompt))
+            self._send_chat_stream(prompt)
         except Exception as exc:
             self._send_error(500, str(exc))
 
@@ -128,6 +137,26 @@ class WorkmateRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _send_chat_stream(self, prompt):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+
+        try:
+            for event in APP.chat_stream(prompt):
+                self._send_sse_event(event)
+        except (BrokenPipeError, ConnectionResetError):
+            return
+        except Exception as exc:
+            self._send_sse_event({"type": "error", "error": str(exc)})
+
+    def _send_sse_event(self, payload):
+        body = f"data: {json.dumps(payload, ensure_ascii=False)}\n\n".encode("utf-8")
+        self.wfile.write(body)
+        self.wfile.flush()
 
     def _send_file(self, file_path):
         body = file_path.read_bytes()

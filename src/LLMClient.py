@@ -312,25 +312,55 @@ class LLMClient:
         self.client = OpenAI(api_key=self.apiKey, base_url=self.baseUrl, timeout=self.timeout)
         
 
-    def invoke(self, prompt=None, messages=None):
+    def _build_messages(self, prompt=None, messages=None):
         if messages is None:
             if prompt is None:
                 raise ValueError("prompt 和 messages 至少需要提供一个")
-            messages = [
+            return [
                 {"role": "system", "content": systemPrompt},
                 {"role": "user", "content": prompt}
             ]
-        else:
-            messages = [
-                {"role": "system", "content": systemPrompt},
-                *messages
-            ]
+        return [
+            {"role": "system", "content": systemPrompt},
+            *messages
+        ]
 
+    def invoke(self, prompt=None, messages=None):
+        messages = self._build_messages(prompt=prompt, messages=messages)
         response = self.client.chat.completions.create(
             model = self.model,
             messages=messages
         )
         return response.choices[0].message.content.strip()
+
+    def invoke_stream(self, prompt=None, messages=None):
+        messages = self._build_messages(prompt=prompt, messages=messages)
+        yielded = False
+        try:
+            stream = self.client.chat.completions.create(
+                model = self.model,
+                messages=messages,
+                stream=True
+            )
+            for chunk in stream:
+                if not chunk.choices:
+                    continue
+                choice = chunk.choices[0]
+                delta = getattr(choice, "delta", {})
+                content = delta.get("content") if isinstance(delta, dict) else getattr(delta, "content", None)
+                if content:
+                    yielded = True
+                    yield content
+        except Exception:
+            if yielded:
+                raise
+            response = self.client.chat.completions.create(
+                model = self.model,
+                messages=messages
+            )
+            content = response.choices[0].message.content
+            if content:
+                yield content
 
     def invoke_raw(self, messages):
         response = self.client.chat.completions.create(

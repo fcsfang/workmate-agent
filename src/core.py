@@ -24,10 +24,23 @@ class WorkmateAgent:
         messages = self.memory_manager.build_context_messages(prompt)
         self.last_context_messages = messages
         response = self.llmclient.invoke(messages=messages)
+        self._save_memory(prompt, response)
+        return response
+
+    def invoke_stream(self, prompt):
+        messages = self.memory_manager.build_context_messages(prompt)
+        self.last_context_messages = messages
+        chunks = []
+        for chunk in self.llmclient.invoke_stream(messages=messages):
+            chunks.append(chunk)
+            yield chunk
+        response = "".join(chunks).strip()
+        self._save_memory(prompt, response)
+
+    def _save_memory(self, prompt, response):
         extracted = self.memory_manager.extract_memory(prompt, response)
         task_state = self.memory_manager.update_task_state(extracted, prompt, response)
         self.memory_manager.add_record(prompt, response, extracted=extracted, task_state=task_state)
-        return response
 
     def get_last_context(self):
         return self.last_context_messages
@@ -54,8 +67,10 @@ def run_chat():
         if agent is None:
             agent = WorkmateAgent()
 
-        response = agent.invoke(prompt)
-        print(f"\n搭子：{response}")
+        print("\n搭子：", end="", flush=True)
+        for chunk in agent.invoke_stream(prompt):
+            print(chunk, end="", flush=True)
+        print()
 
 
 if __name__ == "__main__":
