@@ -57,6 +57,7 @@ class WorkmateWebApp:
             "recent_summary": self.memory_manager.get_recent_summary(days=7),
             "recent_summary_context": self.memory_manager.get_recent_summary_context(days=7),
             "task_state": self.memory_manager.get_task_state(),
+            "task_view": self.memory_manager.get_task_view(),
             "open_commitments": self.memory_manager.get_open_commitments(),
             "user_profile": self.memory_manager.get_user_profile(),
         }
@@ -70,6 +71,7 @@ class WorkmateWebApp:
             "messages": messages,
             "message_count": len(messages),
             "open_commitments": self.memory_manager.get_open_commitments(),
+            "task_view": self.memory_manager.get_task_view(),
             "user_profile": self.memory_manager.get_user_profile(),
         }
 

@@ -4,9 +4,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .CommitmentManager import CommitmentManager
+from .ContextPlanner import ContextPlanner
 from .MemoryExtractor import MemoryExtractor
 from .SearchManager import SearchManager
 from .SummaryManager import SummaryManager
+from .TaskManager import TaskManager
 from .TaskStateManager import TaskStateManager
 from .UserProfileManager import UserProfileManager
 
@@ -18,9 +20,11 @@ class MemoryManager:
         recent_limit: int = 5,
         summary_limit: int = 20,
         commitment_manager: Optional[CommitmentManager] = None,
+        context_planner: Optional[ContextPlanner] = None,
         extractor: Optional[MemoryExtractor] = None,
         search_manager: Optional[SearchManager] = None,
         summary_manager: Optional[SummaryManager] = None,
+        task_manager: Optional[TaskManager] = None,
         task_state_manager: Optional[TaskStateManager] = None,
         user_profile_manager: Optional[UserProfileManager] = None,
     ):
@@ -29,9 +33,11 @@ class MemoryManager:
         self.recent_limit = recent_limit
         self.summary_limit = summary_limit
         self.commitment_manager = commitment_manager or CommitmentManager()
+        self.context_planner = context_planner or ContextPlanner()
         self.extractor = extractor or MemoryExtractor()
         self.search_manager = search_manager or SearchManager()
         self.summary_manager = summary_manager or SummaryManager()
+        self.task_manager = task_manager or TaskManager()
         self.task_state_manager = task_state_manager or TaskStateManager()
         self.user_profile_manager = user_profile_manager or UserProfileManager()
         self.memory_path.parent.mkdir(parents=True, exist_ok=True)
@@ -98,10 +104,19 @@ class MemoryManager:
         user_input: str,
         assistant_output: str,
     ) -> Dict[str, Any]:
-        return self.task_state_manager.update(extracted, user_input, assistant_output)
+        task_lifecycle = self.task_manager.update(extracted, user_input, assistant_output)
+        return self.task_state_manager.update(
+            extracted,
+            user_input,
+            assistant_output,
+            task_lifecycle=task_lifecycle,
+        )
 
     def get_task_state(self) -> Dict[str, Any]:
         return self.task_state_manager.load_state()
+
+    def get_task_view(self) -> Dict[str, Any]:
+        return self.task_manager.get_task_view()
 
     def get_open_commitments(self) -> List[Dict[str, Any]]:
         return self.commitment_manager.get_open_commitments()
@@ -137,7 +152,7 @@ class MemoryManager:
             if user_text:
                 messages.append({"role": "user", "content": self._with_time(record, user_text)})
             if assistant_text:
-                messages.append({"role": "assistant", "content": assistant_text})
+                messages.append({"role": "assistant", "content": self._sanitize_context_text(assistant_text)})
         return messages
 
     def get_memory_summary(self) -> str:
@@ -154,7 +169,7 @@ class MemoryManager:
         for index, record in enumerate(selected_records, start=1):
             time_text = record.get("time", "unknown time")
             user_text = self._compact(record.get("user", ""))
-            assistant_text = self._compact(record.get("assistant", ""))
+            assistant_text = self._compact(self._sanitize_context_text(record.get("assistant", "")))
             lines.append(f"{index}. 时间: {time_text}")
             if user_text:
                 lines.append(f"   用户: {user_text}")
@@ -170,7 +185,7 @@ class MemoryManager:
             return "暂无结构化记忆。"
 
         lines = [
-            "以下是结构化记忆。请优先关注任务、进度、阻塞、下一步和待验证证据。",
+            "以下是结构化记忆。请优先关注任务、进度、阻塞和下一步。",
         ]
         for index, record in enumerate(selected_records, start=1):
             extracted = record.get("extracted", {})
@@ -183,8 +198,6 @@ class MemoryManager:
                 parts.append("阻塞: " + "、".join(extracted["blockers"]))
             if extracted.get("next_actions"):
                 parts.append("下一步: " + "；".join(extracted["next_actions"][:2]))
-            if extracted.get("evidence_required"):
-                parts.append("证据: " + "；".join(extracted["evidence_required"][:2]))
             if parts:
                 lines.append(f"{index}. {record.get('time', 'unknown time')} | " + " | ".join(parts))
         return "\n".join(lines)
@@ -197,36 +210,17 @@ class MemoryManager:
 
     def build_context_messages(self, current_prompt: str) -> List[Dict[str, str]]:
         related_memories = self.search_related_memories(current_prompt, limit=5)
-        messages = [
-            {
-                "role": "system",
-                "content": self.user_profile_manager.format_for_context(),
-            },
-            {
-                "role": "system",
-                "content": self.get_memory_summary(),
-            },
-            {
-                "role": "system",
-                "content": self.task_state_manager.format_for_context(),
-            },
-            {
-                "role": "system",
-                "content": self.get_structured_memory_summary(),
-            },
-            {
-                "role": "system",
-                "content": self.get_recent_summary_context(days=7),
-            },
-            {
-                "role": "system",
-                "content": self.commitment_manager.format_for_context(),
-            },
-            {
-                "role": "system",
-                "content": self.search_manager.format_for_context(related_memories),
-            }
-        ]
+        available_context = {
+            "user_profile": self.user_profile_manager.format_for_context(),
+            "task_lifecycle": self.task_manager.format_for_context(),
+            "task_state": self.task_state_manager.format_for_context(),
+            "memory_summary": self.get_memory_summary(),
+            "structured_summary": self.get_structured_memory_summary(),
+            "recent_summary": self.get_recent_summary_context(days=7),
+            "commitments": self.commitment_manager.format_for_context(),
+            "related_memories": self.search_manager.format_for_context(related_memories),
+        }
+        messages = self.context_planner.plan(current_prompt, available_context)
         messages.extend(self.get_recent_messages())
         messages.append(
             {
@@ -240,6 +234,7 @@ class MemoryManager:
         messages = self.build_context_messages(current_prompt) if current_prompt else [
             {"role": "system", "content": self.get_memory_summary()},
             {"role": "system", "content": self.user_profile_manager.format_for_context()},
+            {"role": "system", "content": self.task_manager.format_for_context()},
             {"role": "system", "content": self.task_state_manager.format_for_context()},
             {"role": "system", "content": self.get_structured_memory_summary()},
             {"role": "system", "content": self.get_recent_summary_context(days=7)},
@@ -250,6 +245,7 @@ class MemoryManager:
         return {
             "messages": messages,
             "task_state": self.get_task_state(),
+            "task_view": self.get_task_view(),
             "structured_summary": self.get_structured_memory_summary(),
             "recent_summary": self.get_recent_summary(days=7),
             "open_commitments": self.get_open_commitments(),
@@ -265,6 +261,17 @@ class MemoryManager:
     def _with_current_time(self, text: str) -> str:
         current_time = datetime.now().isoformat(timespec="seconds")
         return f"[当前时间: {current_time}]\n{text}"
+
+    def _sanitize_context_text(self, text: str) -> str:
+        lines = []
+        for line in str(text or "").splitlines():
+            if self._looks_like_forced_proof(line):
+                continue
+            lines.append(line)
+        return "\n".join(lines).strip()
+
+    def _looks_like_forced_proof(self, text: str) -> bool:
+        return any(keyword in str(text) for keyword in ["证据", "截图", "截屏", "强制验证", "不承认无证据"])
 
     def _compact(self, text: str, max_length: int = 300) -> str:
         text = " ".join(str(text).split())

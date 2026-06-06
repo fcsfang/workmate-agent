@@ -22,7 +22,7 @@ class UserProfileManager:
 
         if not isinstance(profile, dict):
             return self.default_profile()
-        return {**self.default_profile(), **profile}
+        return self._sanitize_profile({**self.default_profile(), **profile})
 
     def save_profile(self, profile: Dict[str, Any]) -> None:
         with self.profile_path.open("w", encoding="utf-8") as file:
@@ -56,13 +56,6 @@ class UserProfileManager:
                 limit=10,
             )
 
-        if extracted.get("evidence_required") or any(keyword in assistant_output for keyword in ["证据", "截图", "报出", "给我"]):
-            profile["effective_interventions"] = self._merge_unique(
-                profile.get("effective_interventions", []),
-                ["要求用户提供可验证产物或证据"],
-                limit=10,
-            )
-
         if recent_summary:
             patterns = recent_summary.get("repeated_patterns") or []
             profile["failure_modes"] = self._merge_unique(profile.get("failure_modes", []), patterns, limit=10)
@@ -71,7 +64,7 @@ class UserProfileManager:
 
         profile["communication_preference"] = self._merge_unique(
             profile.get("communication_preference", []),
-            ["中文", "直接指出问题", "强调真实产出"],
+            ["中文", "直接指出问题", "强调真实产出", "不要每次都强制要求证明"],
             limit=8,
         )
         profile["updated_at"] = now
@@ -111,6 +104,16 @@ class UserProfileManager:
             if item and item not in result:
                 result.append(item)
         return result[:limit]
+
+    def _sanitize_profile(self, profile: Dict[str, Any]) -> Dict[str, Any]:
+        for key in ["working_style", "failure_modes", "effective_interventions", "communication_preference"]:
+            values = profile.get(key, [])
+            if isinstance(values, list):
+                profile[key] = [value for value in values if not self._looks_like_forced_proof(value)]
+        return profile
+
+    def _looks_like_forced_proof(self, text: str) -> bool:
+        return any(keyword in str(text) for keyword in ["证据", "截图", "无证据", "可验证", "验证标准", "运行结果后再认可", "不承认"])
 
     def _compact(self, text: str, max_length: int = 140) -> str:
         text = " ".join(str(text).split())

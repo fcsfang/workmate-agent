@@ -1,35 +1,62 @@
+## V0.4
+### 目标
+- 任务管理：把 `task_state.json` 从当前状态快照升级为任务生命周期视图
+- 优化上下文注入策略：不再每轮全量注入所有上下文，根据当前输入选择任务、摘要、承诺或检索结果
+- 为后续主动监督打基础：先生成 `next_check_at` 等检查信号，后续再接主动消息通道
+- 调整监督语气：不再默认要求用户每次汇报都强制证明
+
+### 已实现
+#### 任务生命周期
+- 新增 `TaskManager`
+- 维护 `memory/tasks.json` 和 `memory/task_events.json`
+- 支持 `inbox`、`planned`、`active`、`blocked`、`done`、`abandoned` 状态
+- 每轮对话后根据结构化记忆更新任务实体、进展、阻塞、下一步和任务事件
+- `TaskStateManager` 降级为当前任务视图缓存，并兼容旧的 `task_state.json`
+
+#### 上下文规划
+- 新增 `ContextPlanner`
+- `MemoryManager.build_context_messages()` 改为按输入意图选择上下文
+- 普通闲聊减少摘要注入；任务汇报优先注入任务生命周期、当前状态、承诺、近期摘要和相关历史；复盘请求再注入完整历史摘要
+
+#### 去除强制证据语义
+- `MemoryExtractor` 不再输出 `evidence_required`
+- `SummaryManager` 不再汇总待验证证据，也不再生成“继续要求证据”的监督模式
+- `CommitmentManager` 不再把截图、证据、验证要求自动变成未关闭承诺
+- `UserProfileManager` 不再把“要求用户提供可验证证据”写入有效干预
+- 加载旧画像、旧承诺、旧任务状态和旧日摘要时，会过滤强制证据相关内容
+
 ## V0.3
 ### 目标
 - 从 `records.json` 中提取结构化事实，并形成可复用记忆
 - 让 Agent 能够基于最近若干天记录进行监督
 - 自动生成长期摘要和每日摘要
-- 识别重复拖延、分心、缺少证据等模式
+- 识别重复拖延、分心等模式
 - 能够引用历史记录、未关闭承诺和长期用户画像
 
 ### 已实现
 #### 记忆提取
 - 新增 `MemoryExtractor`
-- 每轮对话后调用模型提取结构化记忆，输出 `categories`、`task`、`progress`、`blockers`、`next_actions`、`evidence_required`、`user_commitments`、`signals`
+- 每轮对话后调用模型提取结构化记忆，输出 `categories`、`task`、`progress`、`blockers`、`next_actions`、`user_commitments`、`signals`
 - 模型输出异常或 JSON 不合法时，自动回退到规则提取
 - 提取结果写入每条 `records.json` 记录的 `extracted` 字段
 
 #### 当前任务状态
 - 新增 `TaskStateManager`
 - 维护 `memory/task_state.json`
-- 跟踪 `active_task`、`status`、`current_progress`、`next_action`、`blockers`、`evidence_required`
+- 跟踪 `active_task`、`status`、`current_progress`、`next_action`、`blockers`
 - 每轮对话后根据结构化记忆更新当前主线任务状态
 
 #### 摘要系统
 - 新增模型优先的 `SummaryManager`
 - 每日调用模型生成 JSON 摘要，写入 `memory/daily_summaries/`
-- 摘要内容包括主要任务、已完成事项、进行中事项、进展、阻塞、下一步、待验证证据、行为模式、监督建议
+- 摘要内容包括主要任务、已完成事项、进行中事项、进展、阻塞、下一步、行为模式、监督建议
 - 模型摘要失败时自动使用规则摘要兜底
 - 聚合最近 7 天摘要，用于识别主线任务、反复阻塞、行为模式和下一步监督策略
 
 #### 承诺与画像
 - 新增 `CommitmentManager`
 - 维护 `memory/commitments.json`
-- 追踪用户承诺、Agent 要求的证据、未关闭待办和已关闭承诺
+- 追踪用户承诺、未关闭待办和已关闭承诺
 - 新增 `UserProfileManager`
 - 维护 `memory/user_profile.json`
 - 记录长期目标、工作风格、常见风险、有效干预方式和沟通偏好

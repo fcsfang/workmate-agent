@@ -23,7 +23,6 @@ class MemoryExtractor:
             "progress": self._extract_progress(user_input),
             "blockers": self._extract_blockers(user_input),
             "next_actions": self._extract_next_actions(assistant_output),
-            "evidence_required": self._extract_evidence_required(assistant_output),
             "user_commitments": self._extract_commitments(user_input),
             "signals": self._extract_signals(user_input),
             "extract_source": "rule",
@@ -70,7 +69,6 @@ class MemoryExtractor:
             "progress": "用户声称的实际进展，若没有则为空字符串",
             "blockers": ["阻塞、分心、拖延、风险"],
             "next_actions": ["助手要求或建议的下一步行动"],
-            "evidence_required": ["助手要求用户提供的证据或验证材料"],
             "user_commitments": ["用户明确承诺接下来要做的事"],
             "signals": ["可能未完成", "有进展声明", "注意力风险"],
         }
@@ -83,7 +81,7 @@ class MemoryExtractor:
             "要求：\n"
             "1. 只提取对长期监督、任务推进、承诺追踪有用的信息。\n"
             "2. 不要把普通寒暄当成任务。\n"
-            "3. 如果用户说完成了但没有证据，可以在 signals 中写“有进展声明”，不要直接编造成果。\n"
+            "3. 如果用户说完成了，只记录用户声称的进展；不要要求强制证明，也不要把缺少证明当成阻塞。\n"
             "4. 所有数组最多 5 项，每项简短。\n"
             "5. 必须输出合法 JSON，字段使用下面 schema。\n\n"
             f"JSON schema 示例：\n{json.dumps(schema, ensure_ascii=False, indent=2)}\n\n"
@@ -113,7 +111,6 @@ class MemoryExtractor:
             "progress": self._compact(parsed.get("progress", ""), max_length=160),
             "blockers": self._list_field(parsed, "blockers", [], 5),
             "next_actions": self._list_field(parsed, "next_actions", [], 5),
-            "evidence_required": self._list_field(parsed, "evidence_required", [], 5),
             "user_commitments": self._list_field(parsed, "user_commitments", [], 5),
             "signals": self._list_field(parsed, "signals", [], 5),
         }
@@ -168,20 +165,13 @@ class MemoryExtractor:
     def _extract_next_actions(self, text: str) -> List[str]:
         actions = []
         for line in self._lines(text):
-            if self._has_any(line, ["下一步", "现在", "继续", "先", "给我", "需要", "不要"]):
+            if self._looks_like_forced_proof(line):
+                continue
+            if self._has_any(line, ["下一步", "现在", "继续", "先", "需要", "不要"]):
                 cleaned = self._clean_marker(line)
                 if 4 <= len(cleaned) <= 120:
                     actions.append(cleaned)
         return actions[:5]
-
-    def _extract_evidence_required(self, text: str) -> List[str]:
-        evidence = []
-        for line in self._lines(text):
-            if self._has_any(line, ["截图", "证据", "报出", "告诉我", "发给我", "给我"]):
-                cleaned = self._clean_marker(line)
-                if 4 <= len(cleaned) <= 120:
-                    evidence.append(cleaned)
-        return evidence[:3]
 
     def _extract_commitments(self, text: str) -> List[str]:
         commitments = []
@@ -224,3 +214,6 @@ class MemoryExtractor:
 
     def _has_any(self, text: str, keywords: List[str]) -> bool:
         return any(keyword in text for keyword in keywords)
+
+    def _looks_like_forced_proof(self, text: str) -> bool:
+        return any(keyword in str(text) for keyword in ["证据", "截图", "截屏", "证明", "可验证"])

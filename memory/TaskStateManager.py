@@ -22,46 +22,53 @@ class TaskStateManager:
 
         if not isinstance(state, dict):
             return self.default_state()
-        return {**self.default_state(), **state}
+        return self._sanitize_state({**self.default_state(), **state})
 
     def save_state(self, state: Dict[str, Any]) -> None:
         with self.state_path.open("w", encoding="utf-8") as file:
             json.dump(state, file, ensure_ascii=False, indent=2)
 
-    def update(self, extracted: Dict[str, Any], user_input: str, assistant_output: str) -> Dict[str, Any]:
+    def update(
+        self,
+        extracted: Dict[str, Any],
+        user_input: str,
+        assistant_output: str,
+        task_lifecycle: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         state = self.load_state()
         now = datetime.now().isoformat(timespec="seconds")
+        task_lifecycle = task_lifecycle or {}
 
-        task = extracted.get("task")
+        task = task_lifecycle.get("title") or extracted.get("task")
         if task:
             state["active_task"] = task
-            if state.get("status") == "idle":
+            state["task_id"] = task_lifecycle.get("id", state.get("task_id", ""))
+            if task_lifecycle.get("status"):
+                state["status"] = self._state_status(task_lifecycle["status"])
+            elif state.get("status") == "idle":
                 state["status"] = "in_progress"
             if not state.get("started_at"):
                 state["started_at"] = now
 
-        progress = extracted.get("progress")
+        progress = extracted.get("progress") or self._last_item(task_lifecycle.get("progress"))
         if progress:
             state["current_progress"] = progress
-            state["status"] = self._status_from_progress(progress)
+            state["status"] = self._state_status(task_lifecycle.get("status")) or self._status_from_progress(progress)
 
-        blockers = extracted.get("blockers") or []
+        blockers = task_lifecycle.get("blockers") or extracted.get("blockers") or []
         if blockers:
             state["blockers"] = self._merge_unique(state.get("blockers", []), blockers, limit=8)
 
-        next_actions = extracted.get("next_actions") or []
+        next_actions = task_lifecycle.get("next_actions") or extracted.get("next_actions") or []
         if next_actions:
             state["next_action"] = next_actions[0]
             state["next_actions"] = self._merge_unique(next_actions, state.get("next_actions", []), limit=8)
-
-        evidence_required = extracted.get("evidence_required") or []
-        if evidence_required:
-            state["evidence_required"] = self._merge_unique(evidence_required, state.get("evidence_required", []), limit=6)
 
         state["updated_at"] = now
         state["last_user_input"] = self._compact(user_input)
         state["last_agent_response"] = self._compact(assistant_output)
         state["events"] = self._append_event(state.get("events", []), now, extracted)
+        state.pop("evidence_required", None)
         self.save_state(state)
         return state
 
@@ -77,8 +84,6 @@ class TaskStateManager:
 
         if state.get("blockers"):
             lines.append("阻塞/风险: " + "、".join(state["blockers"][:5]))
-        if state.get("evidence_required"):
-            lines.append("待验证证据: " + "；".join(state["evidence_required"][:3]))
         if state.get("updated_at"):
             lines.append(f"更新时间: {state['updated_at']}")
         return "\n".join(lines)
@@ -86,6 +91,7 @@ class TaskStateManager:
     def default_state(self) -> Dict[str, Any]:
         return {
             "status": "idle",
+            "task_id": "",
             "active_task": "",
             "started_at": "",
             "updated_at": "",
@@ -93,7 +99,6 @@ class TaskStateManager:
             "next_action": "",
             "next_actions": [],
             "blockers": [],
-            "evidence_required": [],
             "last_user_input": "",
             "last_agent_response": "",
             "events": [],
@@ -103,6 +108,17 @@ class TaskStateManager:
         if any(keyword in progress for keyword in ["完成了", "做完了", "全部", "结束"]):
             return "in_progress"
         return "in_progress"
+
+    def _state_status(self, lifecycle_status: Optional[str]) -> str:
+        mapping = {
+            "inbox": "idle",
+            "planned": "planned",
+            "active": "in_progress",
+            "blocked": "blocked",
+            "done": "done",
+            "abandoned": "abandoned",
+        }
+        return mapping.get(lifecycle_status or "", "")
 
     def _append_event(self, events, time_text: str, extracted: Dict[str, Any]):
         event = {
@@ -114,12 +130,38 @@ class TaskStateManager:
         }
         return [*events, event][-20:]
 
+    def _last_item(self, items) -> str:
+        if isinstance(items, list) and items:
+            return items[-1]
+        return ""
+
     def _merge_unique(self, first, second, limit: int):
         merged = []
         for item in [*first, *second]:
             if item and item not in merged:
                 merged.append(item)
         return merged[:limit]
+
+    def _sanitize_state(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        state.pop("evidence_required", None)
+        for key in ["blockers", "next_actions"]:
+            values = state.get(key, [])
+            if isinstance(values, list):
+                state[key] = [value for value in values if not self._looks_like_forced_proof(value)]
+        events = []
+        for event in state.get("events", []):
+            if not isinstance(event, dict):
+                continue
+            event = dict(event)
+            blockers = event.get("blockers", [])
+            if isinstance(blockers, list):
+                event["blockers"] = [value for value in blockers if not self._looks_like_forced_proof(value)]
+            events.append(event)
+        state["events"] = events[-20:]
+        return state
+
+    def _looks_like_forced_proof(self, text: str) -> bool:
+        return any(keyword in str(text) for keyword in ["证据", "截图", "截屏", "拒绝验证", "验证证据", "合格证据"])
 
     def _compact(self, text: str, max_length: int = 180) -> str:
         text = " ".join(str(text).split())

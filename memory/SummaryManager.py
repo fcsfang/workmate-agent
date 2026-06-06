@@ -54,7 +54,6 @@ class SummaryManager:
         in_progress_items = []
         progress_items = []
         next_actions = []
-        evidence_required = []
         patterns = []
         supervision_advice = []
 
@@ -65,7 +64,6 @@ class SummaryManager:
             in_progress_items.extend(summary.get("in_progress", []))
             progress_items.extend(summary.get("progress", []))
             next_actions.extend(summary.get("next_actions", []))
-            evidence_required.extend(summary.get("evidence_required", []))
             patterns.extend(summary.get("patterns", []))
             if summary.get("supervision_advice"):
                 supervision_advice.append(summary["supervision_advice"])
@@ -85,7 +83,6 @@ class SummaryManager:
             "repeated_blockers": [blocker for blocker, count in blocker_counter.most_common(8) if count >= 1],
             "repeated_patterns": repeated_patterns,
             "next_actions": self._unique(next_actions, limit=8),
-            "evidence_required": self._unique(evidence_required, limit=6),
             "supervision_advice": self._unique(supervision_advice, limit=5),
         }
 
@@ -110,8 +107,6 @@ class SummaryManager:
             lines.append("行为模式: " + "；".join(summary["repeated_patterns"]))
         if summary["next_actions"]:
             lines.append("待推进下一步: " + "；".join(summary["next_actions"][:5]))
-        if summary["evidence_required"]:
-            lines.append("待验证证据: " + "；".join(summary["evidence_required"][:4]))
         if summary["supervision_advice"]:
             lines.append("监督建议: " + "；".join(summary["supervision_advice"][:3]))
 
@@ -174,7 +169,6 @@ class SummaryManager:
             "progress": ["重要进展描述"],
             "blockers": ["阻塞、拖延、分心、风险"],
             "next_actions": ["下一步具体行动"],
-            "evidence_required": ["需要用户提供的证据"],
             "patterns": ["当天暴露出的行为模式"],
             "supervision_advice": "下次应该如何监督用户",
         }
@@ -184,7 +178,7 @@ class SummaryManager:
             "要求：\n"
             "1. 只保留对长期监督有用的信息。\n"
             "2. 不要把普通寒暄写入摘要。\n"
-            "3. 区分真实完成、仍在推进、需要证据验证的内容。\n"
+            "3. 区分已经完成、仍在推进和遇到阻塞的内容；不要把缺少证明本身写成问题。\n"
             "4. 所有数组最多 8 项，每项尽量短。\n"
             "5. 必须输出合法 JSON，字段使用下面 schema。\n\n"
             f"JSON schema 示例：\n{json.dumps(schema, ensure_ascii=False, indent=2)}\n\n"
@@ -220,7 +214,6 @@ class SummaryManager:
             "progress": self._list_field(summary, "progress", fallback["progress"], 10),
             "blockers": self._list_field(summary, "blockers", fallback["blockers"], 8),
             "next_actions": self._list_field(summary, "next_actions", fallback["next_actions"], 8),
-            "evidence_required": self._list_field(summary, "evidence_required", fallback["evidence_required"], 6),
             "patterns": self._list_field(summary, "patterns", [], 8),
             "categories": fallback["categories"],
             "supervision_advice": self._compact(summary.get("supervision_advice", ""), max_length=240),
@@ -242,14 +235,13 @@ class SummaryManager:
                 summary = json.load(file)
         except json.JSONDecodeError:
             return {}
-        return summary if isinstance(summary, dict) else {}
+        return self._sanitize_summary(summary) if isinstance(summary, dict) else {}
 
     def _build_day_summary(self, target_date: str, records: List[Dict[str, Any]]) -> Dict[str, Any]:
         tasks = []
         progress = []
         blockers = []
         next_actions = []
-        evidence_required = []
         categories = []
 
         for record in records:
@@ -260,7 +252,6 @@ class SummaryManager:
                 progress.append(extracted["progress"])
             blockers.extend(extracted.get("blockers") or [])
             next_actions.extend(extracted.get("next_actions") or [])
-            evidence_required.extend(extracted.get("evidence_required") or [])
             categories.extend(extracted.get("categories") or [])
 
         return {
@@ -272,7 +263,6 @@ class SummaryManager:
             "progress": self._unique(progress, limit=10),
             "blockers": self._unique(blockers, limit=8),
             "next_actions": self._unique(next_actions, limit=8),
-            "evidence_required": self._unique(evidence_required, limit=6),
             "patterns": self._repeated_patterns(Counter(blockers), next_actions),
             "categories": self._unique(categories, limit=8),
             "supervision_advice": "",
@@ -291,8 +281,6 @@ class SummaryManager:
         if blocker_counter:
             common = "、".join([blocker for blocker, _ in blocker_counter.most_common(3)])
             patterns.append(f"近期反复出现的阻塞是：{common}")
-        if any("证据" in action or "截图" in action for action in next_actions):
-            patterns.append("监督上需要继续要求可验证证据，而不是只接受模糊进展")
         if any("不要" in action or "先" in action for action in next_actions):
             patterns.append("下一步行动经常需要收窄范围，避免发散")
         return patterns[:5]
@@ -304,6 +292,20 @@ class SummaryManager:
             if value and value not in result:
                 result.append(value)
         return result[:limit]
+
+    def _sanitize_summary(self, summary: Dict[str, Any]) -> Dict[str, Any]:
+        summary = dict(summary)
+        summary.pop("evidence_required", None)
+        for key in ["blockers", "patterns", "supervision_advice", "next_actions"]:
+            values = summary.get(key, [])
+            if isinstance(values, list):
+                summary[key] = [value for value in values if not self._looks_like_forced_proof(value)]
+            elif isinstance(values, str) and self._looks_like_forced_proof(values):
+                summary[key] = ""
+        return summary
+
+    def _looks_like_forced_proof(self, text: str) -> bool:
+        return any(keyword in str(text) for keyword in ["证据", "截图", "截屏", "无证据", "验证证据", "可验证证据"])
 
     def _list_field(self, summary: Dict[str, Any], key: str, fallback: List[str], limit: int) -> List[str]:
         value = summary.get(key, fallback)

@@ -722,6 +722,10 @@
               <span class="task-label">next action</span>
               <span class="task-value" id="taskNextAction">暂无下一步</span>
             </div>
+            <div class="task-field">
+              <span class="task-label">lifecycle</span>
+              <span class="task-value" id="taskLifecycle">暂无任务记录</span>
+            </div>
           </div>
         </section>
 
@@ -835,6 +839,7 @@
     const activeTask = document.querySelector("#activeTask");
     const taskProgress = document.querySelector("#taskProgress");
     const taskNextAction = document.querySelector("#taskNextAction");
+    const taskLifecycle = document.querySelector("#taskLifecycle");
     const summaryRange = document.querySelector("#summaryRange");
     const summaryTasks = document.querySelector("#summaryTasks");
     const summaryRisks = document.querySelector("#summaryRisks");
@@ -1013,11 +1018,18 @@
       return value.length > length ? `${value.slice(0, length)}...` : value;
     }
 
-    function renderTaskState(state = {}) {
-      taskStatus.textContent = state.status || "idle";
-      activeTask.textContent = state.active_task || "暂无当前任务";
-      taskProgress.textContent = state.current_progress || "暂无进度";
-      taskNextAction.textContent = state.next_action || "暂无下一步";
+    function renderTaskState(state = {}, taskView = {}) {
+      const current = taskView.current || {};
+      const counts = taskView.counts || {};
+      taskStatus.textContent = current.status || state.status || "idle";
+      activeTask.textContent = current.title || state.active_task || "暂无当前任务";
+      taskProgress.textContent = joinSummaryItems(current.progress || (state.current_progress ? [state.current_progress] : []), "暂无进度");
+      taskNextAction.textContent = joinSummaryItems(current.next_actions || (state.next_action ? [state.next_action] : []), "暂无下一步");
+      taskLifecycle.textContent = [
+        `active ${counts.active || 0}`,
+        `blocked ${counts.blocked || 0}`,
+        `done ${counts.done || 0}`
+      ].join(" / ");
     }
 
     function renderContext(context = {}) {
@@ -1048,7 +1060,7 @@
     function renderCommitments(commitments = []) {
       commitmentCount.textContent = commitments.length;
       openCommitments.textContent = commitments.length
-        ? commitments.slice(-3).map((item) => item.commitment || item.evidence_required).filter(Boolean).join("；")
+        ? commitments.slice(-3).map((item) => item.commitment).filter(Boolean).join("；")
         : "暂无未关闭承诺";
     }
 
@@ -1069,7 +1081,7 @@
         "",
         memory.summary || "暂无历史记录。"
       ].join("\n");
-      renderTaskState(memory.task_state || {});
+      renderTaskState(memory.task_state || {}, memory.task_view || {});
       renderRecentSummary(memory.recent_summary || {});
       renderCommitments(memory.open_commitments || []);
       renderUserProfile(memory.user_profile || {});

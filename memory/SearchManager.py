@@ -21,20 +21,20 @@ class SearchManager:
             text = " ".join([
                 record.get("time", ""),
                 record.get("user", ""),
-                record.get("assistant", ""),
+                self._sanitize_text(record.get("assistant", "")),
                 json.dumps(record.get("extracted", {}), ensure_ascii=False),
             ])
             items.append(self._item("record", f"record-{index}", text, record))
 
         for summary in daily_summaries or []:
-            text = json.dumps(summary, ensure_ascii=False)
+            text = self._sanitize_text(json.dumps(summary, ensure_ascii=False))
             items.append(self._item("daily_summary", summary.get("date", ""), text, summary))
 
         if user_profile:
-            items.append(self._item("user_profile", "user_profile", json.dumps(user_profile, ensure_ascii=False), user_profile))
+            items.append(self._item("user_profile", "user_profile", self._sanitize_text(json.dumps(user_profile, ensure_ascii=False)), user_profile))
 
         for commitment in commitments or []:
-            text = json.dumps(commitment, ensure_ascii=False)
+            text = self._sanitize_text(json.dumps(commitment, ensure_ascii=False))
             items.append(self._item("commitment", commitment.get("id", ""), text, commitment))
 
         self.save_index(items)
@@ -94,8 +94,8 @@ class SearchManager:
         terms = [part.strip().lower() for part in normalized.split() if len(part.strip()) >= 2]
 
         chinese_keywords = [
-            "拖延", "分心", "走神", "证据", "截图", "总结", "复盘", "实习", "大模型",
-            "任务", "进度", "完成", "阻塞", "下一步", "高频词", "JD", "Agent",
+            "拖延", "分心", "走神", "总结", "复盘", "实习", "大模型",
+            "任务", "进度", "完成", "阻塞", "下一步", "生命周期", "高频词", "JD", "Agent",
         ]
         for keyword in chinese_keywords:
             if keyword.lower() in text.lower():
@@ -107,3 +107,11 @@ class SearchManager:
         if len(text) <= max_length:
             return text
         return text[:max_length].rstrip() + "..."
+
+    def _sanitize_text(self, text: str) -> str:
+        lines = []
+        for line in str(text or "").splitlines():
+            if any(keyword in line for keyword in ["证据", "截图", "截屏", "强制验证", "不承认无证据"]):
+                continue
+            lines.append(line)
+        return "\n".join(lines)
