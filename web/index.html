@@ -719,6 +719,10 @@
               <span class="task-value" id="taskProgress">暂无进度</span>
             </div>
             <div class="task-field">
+              <span class="task-label">subtasks</span>
+              <span class="task-value" id="taskSubtasks">暂无子任务</span>
+            </div>
+            <div class="task-field">
               <span class="task-label">next action</span>
               <span class="task-value" id="taskNextAction">暂无下一步</span>
             </div>
@@ -838,6 +842,7 @@
     const taskStatus = document.querySelector("#taskStatus");
     const activeTask = document.querySelector("#activeTask");
     const taskProgress = document.querySelector("#taskProgress");
+    const taskSubtasks = document.querySelector("#taskSubtasks");
     const taskNextAction = document.querySelector("#taskNextAction");
     const taskLifecycle = document.querySelector("#taskLifecycle");
     const summaryRange = document.querySelector("#summaryRange");
@@ -1024,6 +1029,9 @@
       taskStatus.textContent = current.status || state.status || "idle";
       activeTask.textContent = current.title || state.active_task || "暂无当前任务";
       taskProgress.textContent = joinSummaryItems(current.progress || (state.current_progress ? [state.current_progress] : []), "暂无进度");
+      taskSubtasks.textContent = joinSummaryItems((current.subtasks || []).map((item) => {
+        return `${item.title || "未命名"} (${item.status || "planned"})`;
+      }), "暂无子任务");
       taskNextAction.textContent = joinSummaryItems(current.next_actions || (state.next_action ? [state.next_action] : []), "暂无下一步");
       taskLifecycle.textContent = [
         `active ${counts.active || 0}`,

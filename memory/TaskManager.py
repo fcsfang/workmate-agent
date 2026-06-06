@@ -45,6 +45,7 @@ class TaskManager:
         blockers = self._list(extracted.get("blockers"))
         next_actions = self._list(extracted.get("next_actions"))
         user_commitments = self._list(extracted.get("user_commitments"))
+        subtasks = self._subtasks(extracted.get("subtasks"))
 
         task = self._select_task(tasks, task_title)
         if not task and task_title:
@@ -54,7 +55,7 @@ class TaskManager:
 
         if task:
             previous_status = task.get("status", "inbox")
-            self._apply_turn(task, extracted, progress, blockers, next_actions, user_commitments, now)
+            self._apply_turn(task, extracted, progress, blockers, next_actions, user_commitments, subtasks, now)
             if task.get("status") != previous_status:
                 self._append_event(
                     "status_changed",
@@ -71,6 +72,7 @@ class TaskManager:
                     "blockers": blockers,
                     "next_actions": next_actions[:3],
                     "user_commitments": user_commitments[:3],
+                    "subtasks": [subtask["title"] for subtask in subtasks[:5]],
                 },
             )
             self.save_tasks(self._sort_tasks(tasks))
@@ -105,18 +107,22 @@ class TaskManager:
             return "暂无明确任务生命周期记录。"
 
         lines = [
-            "以下是 v0.4 任务生命周期记录。请用它判断当前主线、任务状态和下一步监督方式。",
+            "以下是 v0.4.2 任务生命周期记录。请用它判断当前主线、用户明确提出的子任务、任务状态和监督方式。",
             f"当前任务: {current.get('title') or '暂无'}",
             f"状态: {current.get('status') or 'inbox'}",
         ]
         if current.get("progress"):
             lines.append("进展: " + "；".join(current["progress"][-4:]))
+        if current.get("subtasks"):
+            formatted_subtasks = [
+                f"{subtask.get('title')}({subtask.get('status', 'inbox')})"
+                for subtask in current["subtasks"][:6]
+            ]
+            lines.append("子任务: " + "；".join(formatted_subtasks))
         if current.get("blockers"):
             lines.append("阻塞/风险: " + "、".join(current["blockers"][-4:]))
         if current.get("next_actions"):
             lines.append("下一步: " + "；".join(current["next_actions"][:4]))
-        if current.get("next_check_at"):
-            lines.append(f"建议下次检查时间: {current['next_check_at']}")
         if view["active"][1:]:
             related = [f"{task.get('title')}({task.get('status')})" for task in view["active"][1:4]]
             lines.append("其他未关闭任务: " + "；".join(related))
@@ -137,6 +143,7 @@ class TaskManager:
             "last_user_update_at": "",
             "next_check_at": "",
             "progress": [],
+            "subtasks": [],
             "blockers": [],
             "next_actions": [],
             "user_commitments": [],
@@ -176,6 +183,7 @@ class TaskManager:
         blockers: List[str],
         next_actions: List[str],
         user_commitments: List[str],
+        subtasks: List[Dict[str, str]],
         now: datetime,
     ) -> None:
         now_text = now.isoformat(timespec="seconds")
@@ -184,8 +192,11 @@ class TaskManager:
         if progress:
             task["progress"] = self._merge_unique(task.get("progress", []), [progress], 12)
             task["last_user_update_at"] = now_text
+        if subtasks:
+            task["subtasks"] = self._merge_subtasks(task.get("subtasks", []), subtasks, now_text)
         if blockers:
             task["blockers"] = self._merge_unique(task.get("blockers", []), blockers, 10)
+            self._mark_related_subtasks(task, blockers, "blocked", now_text)
         if next_actions:
             task["next_actions"] = self._merge_unique(next_actions, task.get("next_actions", []), 10)
         if user_commitments:
@@ -196,8 +207,10 @@ class TaskManager:
             task["started_at"] = now_text
         if status == "done":
             task["completed_at"] = task.get("completed_at") or now_text
+            self._mark_all_open_subtasks(task, "done", now_text)
         if status == "abandoned":
             task["abandoned_at"] = task.get("abandoned_at") or now_text
+            self._mark_all_open_subtasks(task, "abandoned", now_text)
 
         task["status"] = status
         task["updated_at"] = now_text
@@ -287,6 +300,24 @@ class TaskManager:
             return []
         return [self._compact(item, 160) for item in value if self._compact(item, 160)]
 
+    def _subtasks(self, value: Any) -> List[Dict[str, str]]:
+        if isinstance(value, str):
+            value = [value] if value else []
+        if not isinstance(value, list):
+            return []
+
+        result = []
+        for item in value:
+            if isinstance(item, dict):
+                title = self._compact(item.get("title", ""), 140)
+                status = self._status(item.get("status", "planned"))
+            else:
+                title = self._compact(item, 140)
+                status = "planned"
+            if title and title not in [subtask["title"] for subtask in result]:
+                result.append({"title": title, "status": status})
+        return result[:12]
+
     def _merge_unique(self, first: List[str], second: List[str], limit: int) -> List[str]:
         merged = []
         for item in [*first, *second]:
@@ -294,6 +325,98 @@ class TaskManager:
             if item and item not in merged:
                 merged.append(item)
         return merged[:limit]
+
+    def _merge_subtasks(
+        self,
+        existing: List[Dict[str, Any]],
+        incoming: List[Dict[str, str]],
+        now_text: str,
+    ) -> List[Dict[str, Any]]:
+        merged = []
+        for item in existing:
+            if isinstance(item, dict) and item.get("title"):
+                normalized = self._normalize_subtask(item, now_text)
+                if normalized["title"] not in [subtask["title"] for subtask in merged]:
+                    merged.append(normalized)
+
+        for item in incoming:
+            title = self._compact(item.get("title", ""), 140)
+            if not title:
+                continue
+            match = self._find_subtask(merged, title)
+            if match:
+                new_status = self._status(item.get("status", match.get("status", "planned")))
+                if self._status_rank(new_status) >= self._status_rank(match.get("status", "planned")):
+                    match["status"] = new_status
+                match["updated_at"] = now_text
+            else:
+                merged.append({
+                    "id": self._make_id(now_text, title).replace("task-", "subtask-"),
+                    "title": title,
+                    "status": self._status(item.get("status", "planned")),
+                    "created_at": now_text,
+                    "updated_at": now_text,
+                    "completed_at": now_text if item.get("status") == "done" else "",
+                    "blockers": [],
+                })
+        return merged[:20]
+
+    def _normalize_subtask(self, item: Dict[str, Any], now_text: str) -> Dict[str, Any]:
+        title = self._compact(item.get("title", ""), 140)
+        status = self._status(item.get("status", "planned"))
+        return {
+            "id": item.get("id") or self._make_id(now_text, title).replace("task-", "subtask-"),
+            "title": title,
+            "status": status,
+            "created_at": item.get("created_at", now_text),
+            "updated_at": item.get("updated_at", now_text),
+            "completed_at": item.get("completed_at", ""),
+            "blockers": self._list(item.get("blockers", [])),
+        }
+
+    def _mark_related_subtasks(
+        self,
+        task: Dict[str, Any],
+        texts: List[str],
+        status: str,
+        now_text: str,
+    ) -> None:
+        for subtask in task.get("subtasks", []):
+            if any(self._shares_keywords(subtask.get("title", ""), text) for text in texts):
+                subtask["status"] = status
+                subtask["updated_at"] = now_text
+                subtask["blockers"] = self._merge_unique(subtask.get("blockers", []), texts, 5)
+
+    def _mark_all_open_subtasks(self, task: Dict[str, Any], status: str, now_text: str) -> None:
+        for subtask in task.get("subtasks", []):
+            if subtask.get("status") not in {"done", "abandoned"}:
+                subtask["status"] = status
+                subtask["updated_at"] = now_text
+                if status == "done":
+                    subtask["completed_at"] = now_text
+
+    def _find_subtask(self, subtasks: List[Dict[str, Any]], title: str) -> Optional[Dict[str, Any]]:
+        for subtask in subtasks:
+            if self._same_task(subtask.get("title", ""), title) or self._shares_keywords(subtask.get("title", ""), title):
+                return subtask
+        return None
+
+    def _status(self, status: Any) -> str:
+        status = str(status or "planned").strip().lower()
+        if status in self.VALID_STATUSES:
+            return status
+        return "planned"
+
+    def _status_rank(self, status: str) -> int:
+        order = {
+            "inbox": 0,
+            "planned": 1,
+            "active": 2,
+            "blocked": 3,
+            "done": 4,
+            "abandoned": 4,
+        }
+        return order.get(status, 0)
 
     def _make_id(self, now: str, title: str) -> str:
         safe_time = now.replace("-", "").replace(":", "").replace("T", "-")

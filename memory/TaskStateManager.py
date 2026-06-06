@@ -59,6 +59,9 @@ class TaskStateManager:
         if blockers:
             state["blockers"] = self._merge_unique(state.get("blockers", []), blockers, limit=8)
 
+        subtasks = task_lifecycle.get("subtasks") or extracted.get("subtasks") or []
+        state["subtasks"] = self._subtasks(subtasks)
+
         next_actions = task_lifecycle.get("next_actions") or extracted.get("next_actions") or []
         if next_actions:
             state["next_action"] = next_actions[0]
@@ -84,6 +87,12 @@ class TaskStateManager:
 
         if state.get("blockers"):
             lines.append("阻塞/风险: " + "、".join(state["blockers"][:5]))
+        if state.get("subtasks"):
+            formatted = [
+                f"{item.get('title')}({item.get('status', 'planned')})"
+                for item in state["subtasks"][:5]
+            ]
+            lines.append("子任务: " + "；".join(formatted))
         if state.get("updated_at"):
             lines.append(f"更新时间: {state['updated_at']}")
         return "\n".join(lines)
@@ -98,6 +107,7 @@ class TaskStateManager:
             "current_progress": "",
             "next_action": "",
             "next_actions": [],
+            "subtasks": [],
             "blockers": [],
             "last_user_input": "",
             "last_agent_response": "",
@@ -134,6 +144,21 @@ class TaskStateManager:
         if isinstance(items, list) and items:
             return items[-1]
         return ""
+
+    def _subtasks(self, value) -> list:
+        if not isinstance(value, list):
+            return []
+        result = []
+        for item in value:
+            if isinstance(item, dict):
+                title = self._compact(item.get("title", ""), 140)
+                status = item.get("status", "planned")
+            else:
+                title = self._compact(item, 140)
+                status = "planned"
+            if title:
+                result.append({"title": title, "status": status})
+        return result[:10]
 
     def _merge_unique(self, first, second, limit: int):
         merged = []

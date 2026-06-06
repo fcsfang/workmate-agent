@@ -53,6 +53,7 @@ class SummaryManager:
         completed_items = []
         in_progress_items = []
         progress_items = []
+        subtask_items = []
         next_actions = []
         patterns = []
         supervision_advice = []
@@ -63,6 +64,7 @@ class SummaryManager:
             completed_items.extend(summary.get("completed", []))
             in_progress_items.extend(summary.get("in_progress", []))
             progress_items.extend(summary.get("progress", []))
+            subtask_items.extend(summary.get("subtasks", []))
             next_actions.extend(summary.get("next_actions", []))
             patterns.extend(summary.get("patterns", []))
             if summary.get("supervision_advice"):
@@ -80,6 +82,7 @@ class SummaryManager:
             "completed": self._unique(completed_items, limit=10),
             "in_progress": self._unique(in_progress_items, limit=10),
             "progress": self._unique(progress_items, limit=10),
+            "subtasks": self._unique(subtask_items, limit=12),
             "repeated_blockers": [blocker for blocker, count in blocker_counter.most_common(8) if count >= 1],
             "repeated_patterns": repeated_patterns,
             "next_actions": self._unique(next_actions, limit=8),
@@ -101,6 +104,8 @@ class SummaryManager:
             lines.append("进行中事项: " + "；".join(summary["in_progress"][:6]))
         if summary["progress"]:
             lines.append("近期进展: " + "；".join(summary["progress"][:6]))
+        if summary.get("subtasks"):
+            lines.append("相关子任务: " + "；".join(summary["subtasks"][:8]))
         if summary["repeated_blockers"]:
             lines.append("反复阻塞/风险: " + "、".join(summary["repeated_blockers"][:6]))
         if summary["repeated_patterns"]:
@@ -167,6 +172,7 @@ class SummaryManager:
             "completed": ["已经完成的真实成果"],
             "in_progress": ["仍在推进的事项"],
             "progress": ["重要进展描述"],
+            "subtasks": ["主任务下的具体子任务"],
             "blockers": ["阻塞、拖延、分心、风险"],
             "next_actions": ["下一步具体行动"],
             "patterns": ["当天暴露出的行为模式"],
@@ -212,6 +218,7 @@ class SummaryManager:
             "completed": self._list_field(summary, "completed", [], 8),
             "in_progress": self._list_field(summary, "in_progress", [], 8),
             "progress": self._list_field(summary, "progress", fallback["progress"], 10),
+            "subtasks": self._list_field(summary, "subtasks", fallback.get("subtasks", []), 12),
             "blockers": self._list_field(summary, "blockers", fallback["blockers"], 8),
             "next_actions": self._list_field(summary, "next_actions", fallback["next_actions"], 8),
             "patterns": self._list_field(summary, "patterns", [], 8),
@@ -240,6 +247,7 @@ class SummaryManager:
     def _build_day_summary(self, target_date: str, records: List[Dict[str, Any]]) -> Dict[str, Any]:
         tasks = []
         progress = []
+        subtasks = []
         blockers = []
         next_actions = []
         categories = []
@@ -250,6 +258,11 @@ class SummaryManager:
                 tasks.append(extracted["task"])
             if extracted.get("progress"):
                 progress.append(extracted["progress"])
+            for subtask in extracted.get("subtasks") or []:
+                if isinstance(subtask, dict) and subtask.get("title"):
+                    subtasks.append(subtask["title"])
+                elif isinstance(subtask, str):
+                    subtasks.append(subtask)
             blockers.extend(extracted.get("blockers") or [])
             next_actions.extend(extracted.get("next_actions") or [])
             categories.extend(extracted.get("categories") or [])
@@ -261,6 +274,7 @@ class SummaryManager:
             "completed": [],
             "in_progress": [],
             "progress": self._unique(progress, limit=10),
+            "subtasks": self._unique(subtasks, limit=12),
             "blockers": self._unique(blockers, limit=8),
             "next_actions": self._unique(next_actions, limit=8),
             "patterns": self._repeated_patterns(Counter(blockers), next_actions),

@@ -20,6 +20,7 @@ class MemoryExtractor:
         return {
             "categories": self._categories(user_input),
             "task": self._extract_task(user_input),
+            "subtasks": self._extract_subtasks(user_input),
             "progress": self._extract_progress(user_input),
             "blockers": self._extract_blockers(user_input),
             "next_actions": self._extract_next_actions(assistant_output),
@@ -65,7 +66,13 @@ class MemoryExtractor:
     def _build_llm_prompt(self, user_input: str, assistant_output: str) -> str:
         schema = {
             "categories": ["task", "progress", "blocker", "review", "chat"],
-            "task": "当前或新出现的任务，若没有则为空字符串",
+            "task": "当前或新出现的主任务，若没有则为空字符串",
+            "subtasks": [
+                {
+                    "title": "主任务下面的具体子任务",
+                    "status": "inbox|planned|active|blocked|done|abandoned",
+                }
+            ],
             "progress": "用户声称的实际进展，若没有则为空字符串",
             "blockers": ["阻塞、分心、拖延、风险"],
             "next_actions": ["助手要求或建议的下一步行动"],
@@ -82,8 +89,12 @@ class MemoryExtractor:
             "1. 只提取对长期监督、任务推进、承诺追踪有用的信息。\n"
             "2. 不要把普通寒暄当成任务。\n"
             "3. 如果用户说完成了，只记录用户声称的进展；不要要求强制证明，也不要把缺少证明当成阻塞。\n"
-            "4. 所有数组最多 5 项，每项简短。\n"
-            "5. 必须输出合法 JSON，字段使用下面 schema。\n\n"
+            "4. subtasks 只能来自 user_input 中用户明确提出的子任务；不要从 assistant_output 的建议中生成子任务。\n"
+            "5. 如果用户说的是一个项目/版本/方向，把它作为 task；该项目下用户明确提出的具体动作放入 subtasks，不要把子任务拆成多个平级 task。\n"
+            "6. user_commitments 只能来自 user_input 中用户明确承诺的内容。\n"
+            "7. assistant_output 中的建议只能进入 next_actions，不能进入 subtasks 或 user_commitments。\n"
+            "8. 所有数组最多 6 项，每项简短。\n"
+            "9. 必须输出合法 JSON，字段使用下面 schema。\n\n"
             f"JSON schema 示例：\n{json.dumps(schema, ensure_ascii=False, indent=2)}\n\n"
             f"对话：\n{json.dumps(payload, ensure_ascii=False, indent=2)}"
         )
@@ -108,6 +119,7 @@ class MemoryExtractor:
         return {
             "categories": self._list_field(parsed, "categories", ["chat"], 5),
             "task": self._compact(parsed.get("task", ""), max_length=160),
+            "subtasks": self._subtasks_field(parsed.get("subtasks", []), limit=8),
             "progress": self._compact(parsed.get("progress", ""), max_length=160),
             "blockers": self._list_field(parsed, "blockers", [], 5),
             "next_actions": self._list_field(parsed, "next_actions", [], 5),
@@ -129,6 +141,24 @@ class MemoryExtractor:
                 result.append(item)
         return result[:limit]
 
+    def _subtasks_field(self, value: Any, limit: int) -> List[Dict[str, str]]:
+        if isinstance(value, str):
+            value = [value] if value else []
+        if not isinstance(value, list):
+            return []
+
+        result = []
+        for item in value:
+            if isinstance(item, dict):
+                title = self._compact(item.get("title", ""), max_length=120)
+                status = self._status(item.get("status", "inbox"))
+            else:
+                title = self._compact(item, max_length=120)
+                status = "inbox"
+            if title and title not in [subtask["title"] for subtask in result]:
+                result.append({"title": title, "status": status})
+        return result[:limit]
+
     def _categories(self, text: str) -> List[str]:
         categories = []
         if self._has_any(text, ["目标", "计划", "任务", "今天要", "我要", "准备"]):
@@ -147,6 +177,15 @@ class MemoryExtractor:
             r"(?:首先|第一步|第一个任务是)([^。！？\n]{4,80})",
         ]
         return self._first_match(text, patterns)
+
+    def _extract_subtasks(self, text: str) -> List[Dict[str, str]]:
+        subtasks = []
+        for cleaned in self._subtask_candidates(text):
+            if not cleaned or self._looks_like_forced_proof(cleaned):
+                continue
+            if self._has_any(cleaned, ["优化", "完善", "实现", "开发", "补", "修改", "清理", "测试", "设计"]):
+                subtasks.append({"title": cleaned, "status": self._status_from_text(cleaned)})
+        return subtasks[:6]
 
     def _extract_progress(self, text: str) -> str:
         patterns = [
@@ -206,6 +245,17 @@ class MemoryExtractor:
         text = re.sub(r"^[\-\*\d\.\s、]+", "", text.strip())
         return self._compact(text)
 
+    def _subtask_candidates(self, text: str) -> List[str]:
+        candidates = []
+        for line in self._lines(text):
+            line = re.sub(r"^(?:接下来|下面|然后|同时|以及|另外|还有|我想|我要|需要|计划)[:：，,\s]*", "", line.strip())
+            parts = re.split(r"[；;。！？\n]|(?:，|,)(?=(?:优化|完善|实现|开发|补|修改|清理|测试|设计))", line)
+            for part in parts:
+                cleaned = self._clean_marker(part)
+                if cleaned and cleaned not in candidates:
+                    candidates.append(cleaned)
+        return candidates
+
     def _compact(self, text: str, max_length: int = 120) -> str:
         text = " ".join(str(text).split())
         if len(text) <= max_length:
@@ -217,3 +267,18 @@ class MemoryExtractor:
 
     def _looks_like_forced_proof(self, text: str) -> bool:
         return any(keyword in str(text) for keyword in ["证据", "截图", "截屏", "证明", "可验证"])
+
+    def _status(self, status: Any) -> str:
+        status = str(status or "inbox").strip().lower()
+        if status in {"inbox", "planned", "active", "blocked", "done", "abandoned"}:
+            return status
+        return "inbox"
+
+    def _status_from_text(self, text: str) -> str:
+        if self._has_any(text, ["卡住", "不会", "困难"]):
+            return "blocked"
+        if self._has_any(text, ["完成", "做完", "已实现"]):
+            return "done"
+        if self._has_any(text, ["正在", "开始", "继续"]):
+            return "active"
+        return "planned"

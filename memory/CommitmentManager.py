@@ -79,11 +79,6 @@ class CommitmentManager:
         items = []
         for commitment in extracted.get("user_commitments") or []:
             items.append(self._new_item("user", commitment, active_task, now))
-
-        for action in extracted.get("next_actions") or []:
-            if self._is_action_commitment(action):
-                items.append(self._new_item("agent", action, active_task, now))
-
         return items
 
     def _new_item(self, owner: str, commitment: str, task: str, now: str) -> Dict[str, Any]:
@@ -122,9 +117,6 @@ class CommitmentManager:
             if item.get("status") == "open" and item.get("commitment") == new_item.get("commitment"):
                 return True
         return False
-
-    def _is_action_commitment(self, action: str) -> bool:
-        return any(keyword in action for keyword in ["下一步", "继续", "先", "现在", "开始", "完成"])
 
     def _trim(self, commitments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         open_items = [item for item in commitments if item.get("status") == "open"]

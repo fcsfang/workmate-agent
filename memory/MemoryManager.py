@@ -194,6 +194,12 @@ class MemoryManager:
                 parts.append(f"任务: {extracted['task']}")
             if extracted.get("progress"):
                 parts.append(f"进度: {extracted['progress']}")
+            if extracted.get("subtasks"):
+                subtask_titles = [
+                    subtask.get("title", "") if isinstance(subtask, dict) else str(subtask)
+                    for subtask in extracted["subtasks"][:3]
+                ]
+                parts.append("子任务: " + "；".join([title for title in subtask_titles if title]))
             if extracted.get("blockers"):
                 parts.append("阻塞: " + "、".join(extracted["blockers"]))
             if extracted.get("next_actions"):

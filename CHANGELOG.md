@@ -1,3 +1,44 @@
+## V0.4.2
+### 目标
+- 收窄 Workmate Agent 的角色边界：只做任务结构整理和监督判断，不做技术帮助、不主动设时间限制
+- 防止 Agent 自己制造子任务或承诺，任务结构应主要来自用户自己提出的内容
+
+### 已实现
+#### 监督边界
+- system prompt 明确：不解释技术细节、不提供专业路线、不主动设置时间盒或 deadline
+- 多任务列表只整理用户自己提出的任务/子任务，不主动扩展技术路线
+
+#### 子任务来源收紧
+- `MemoryExtractor` 提示明确：`subtasks` 只能来自 `user_input` 中用户明确提出的子任务
+- `TaskManager` 不再把 `next_actions` 自动补成 `subtasks`
+- `TaskManager.format_for_context()` 不再注入 `next_check_at`，避免模型主动输出时间限制
+
+#### 承诺来源收紧
+- `CommitmentManager` 不再把 Agent 的 `next_actions` 写成 open commitments
+- 当前只记录用户明确承诺的事项
+
+## V0.4.1
+### 目标
+- 支持任务/子任务结构，避免把一个大任务下的多个动作拆成多个平级任务
+- 优化 Agent 输出格式：只在多任务或多子任务场景使用无序列表整理思路，避免回复变成固定模板
+
+### 已实现
+#### 子任务提取
+- `MemoryExtractor` 新增 `subtasks`
+- LLM 提取提示明确区分主任务和子任务
+- 规则兜底会从多事项输入中提取子任务候选
+
+#### 任务生命周期
+- `TaskManager` 的任务实体新增 `subtasks`
+- 子任务支持 `inbox`、`planned`、`active`、`blocked`、`done`、`abandoned`
+- 每轮对话后会合并新增子任务，并根据阻塞、完成、放弃等信号更新子任务状态
+- `TaskStateManager` 和 Web API 当前任务视图同步暴露子任务
+
+#### 输出策略
+- 主 Agent system prompt 新增多任务输出规则
+- 仅当用户一次性提出多个任务、多个优化方向或一个主任务下多个子任务时，优先用无序列表整理
+- 单任务汇报、普通聊天和情绪表达仍保持自然短回复
+
 ## V0.4
 ### 目标
 - 任务管理：把 `task_state.json` 从当前状态快照升级为任务生命周期视图
