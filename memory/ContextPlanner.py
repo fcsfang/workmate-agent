@@ -12,6 +12,14 @@ class ContextPlanner:
         self._append(messages, available.get("task_state"))
 
         if intent in {"task", "review", "supervision"}:
+            self._append(messages, available.get("supervision"))
+
+        if intent in {"task", "review", "search", "supervision"}:
+            self._append(messages, available.get("retrieval_plan"))
+            self._append(messages, available.get("memory_categories"))
+            self._append(messages, available.get("memory_items"))
+
+        if intent in {"task", "review", "supervision"}:
             self._append(messages, available.get("commitments"))
             self._append(messages, available.get("recent_summary"))
 
@@ -25,6 +33,8 @@ class ContextPlanner:
             self._append(messages, available.get("structured_summary"))
 
         if len(messages) <= 3:
+            self._append(messages, available.get("memory_categories"))
+            self._append(messages, available.get("memory_items"))
             self._append(messages, available.get("related_memories"))
 
         return messages

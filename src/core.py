@@ -38,9 +38,7 @@ class WorkmateAgent:
         self._save_memory(prompt, response)
 
     def _save_memory(self, prompt, response):
-        extracted = self.memory_manager.extract_memory(prompt, response)
-        task_state = self.memory_manager.update_task_state(extracted, prompt, response)
-        self.memory_manager.add_record(prompt, response, extracted=extracted, task_state=task_state)
+        self.memory_manager.process_turn(prompt, response)
 
     def get_last_context(self):
         return self.last_context_messages

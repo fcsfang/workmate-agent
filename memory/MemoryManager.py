@@ -1,12 +1,19 @@
 import json
+import hashlib
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .CommitmentManager import CommitmentManager
+from .ContextCompressor import ContextCompressor
 from .ContextPlanner import ContextPlanner
+from .MemoryCategoryManager import MemoryCategoryManager
 from .MemoryExtractor import MemoryExtractor
+from .MemoryItemManager import MemoryItemManager
+from .MemoryPipeline import MemoryPipeline
+from .MemoryResourceManager import MemoryResourceManager
 from .SearchManager import SearchManager
+from .SupervisionManager import SupervisionManager
 from .SummaryManager import SummaryManager
 from .TaskManager import TaskManager
 from .TaskStateManager import TaskStateManager
@@ -20,9 +27,15 @@ class MemoryManager:
         recent_limit: int = 5,
         summary_limit: int = 20,
         commitment_manager: Optional[CommitmentManager] = None,
+        context_compressor: Optional[ContextCompressor] = None,
         context_planner: Optional[ContextPlanner] = None,
         extractor: Optional[MemoryExtractor] = None,
+        memory_category_manager: Optional[MemoryCategoryManager] = None,
+        memory_item_manager: Optional[MemoryItemManager] = None,
+        memory_pipeline: Optional[MemoryPipeline] = None,
+        memory_resource_manager: Optional[MemoryResourceManager] = None,
         search_manager: Optional[SearchManager] = None,
+        supervision_manager: Optional[SupervisionManager] = None,
         summary_manager: Optional[SummaryManager] = None,
         task_manager: Optional[TaskManager] = None,
         task_state_manager: Optional[TaskStateManager] = None,
@@ -33,13 +46,20 @@ class MemoryManager:
         self.recent_limit = recent_limit
         self.summary_limit = summary_limit
         self.commitment_manager = commitment_manager or CommitmentManager()
+        self.context_compressor = context_compressor or ContextCompressor()
         self.context_planner = context_planner or ContextPlanner()
         self.extractor = extractor or MemoryExtractor()
+        self.memory_category_manager = memory_category_manager or MemoryCategoryManager()
+        self.memory_item_manager = memory_item_manager or MemoryItemManager()
+        self.memory_pipeline = memory_pipeline or MemoryPipeline()
+        self.memory_resource_manager = memory_resource_manager or MemoryResourceManager()
         self.search_manager = search_manager or SearchManager()
+        self.supervision_manager = supervision_manager or SupervisionManager()
         self.summary_manager = summary_manager or SummaryManager()
         self.task_manager = task_manager or TaskManager()
         self.task_state_manager = task_state_manager or TaskStateManager()
         self.user_profile_manager = user_profile_manager or UserProfileManager()
+        self.last_pipeline_result: Dict[str, Any] = {}
         self.memory_path.parent.mkdir(parents=True, exist_ok=True)
 
     def set_llm_client(self, llm_client: Any) -> None:
@@ -68,6 +88,10 @@ class MemoryManager:
         with self.memory_path.open("w", encoding="utf-8") as file:
             json.dump(records, file, ensure_ascii=False, indent=2)
 
+    def process_turn(self, user_input: str, assistant_output: str) -> Dict[str, Any]:
+        self.last_pipeline_result = self.memory_pipeline.process_turn(self, user_input, assistant_output)
+        return self.last_pipeline_result
+
     #每轮对话都开启记录保存
     def add_record(
         self,
@@ -76,11 +100,29 @@ class MemoryManager:
         extracted: Optional[Dict[str, Any]] = None,
         task_state: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        records = self.load_records()
         extracted = extracted or self.extract_memory(user_input, assistant_output)
         task_state = task_state or self.update_task_state(extracted, user_input, assistant_output)
+        record = self.persist_record(
+            user_input,
+            assistant_output,
+            extracted=extracted,
+            task_state=task_state,
+        )
+        self.update_derived_memory(record, extracted, task_state, user_input, assistant_output)
+        return record
+
+    def persist_record(
+        self,
+        user_input: str,
+        assistant_output: str,
+        extracted: Dict[str, Any],
+        task_state: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        records = self.load_records()
+        now_text = datetime.now().isoformat(timespec="seconds")
         record = {
-            "time": datetime.now().isoformat(timespec="seconds"),
+            "id": self._make_record_id(now_text, len(records), user_input),
+            "time": now_text,
             "user": user_input,
             "assistant": assistant_output,
             "extracted": extracted,
@@ -88,12 +130,56 @@ class MemoryManager:
         }
         records.append(record)
         self.save_records(records)
+        return record
+
+    def update_derived_memory(
+        self,
+        record: Dict[str, Any],
+        extracted: Dict[str, Any],
+        task_state: Dict[str, Any],
+        user_input: str,
+        assistant_output: str,
+    ) -> Dict[str, Any]:
+        records = self.load_records()
         self.summary_manager.summarize_day(records)
         recent_summary = self.get_recent_summary(days=7)
-        self.commitment_manager.update(extracted, user_input, assistant_output, task_state=task_state)
-        self.user_profile_manager.update(extracted, user_input, assistant_output, recent_summary=recent_summary)
-        self.refresh_search_index(records)
-        return record
+        commitments = self.commitment_manager.update(extracted, user_input, assistant_output, task_state=task_state)
+        user_profile = self.user_profile_manager.update(
+            extracted,
+            user_input,
+            assistant_output,
+            recent_summary=recent_summary,
+        )
+        resource = self.memory_resource_manager.update_from_record(
+            record=record,
+            task_state=task_state,
+            task_view=self.get_task_view(),
+        )
+        memory_items = self.memory_item_manager.update_from_turn(
+            record=record,
+            extracted=extracted,
+            task_state=task_state,
+            task_view=self.get_task_view(),
+            recent_summary=recent_summary,
+            commitments=commitments,
+            user_profile=user_profile,
+        )
+        memory_categories = self.memory_category_manager.rebuild_from_items(memory_items)
+        retrieval_index = self.refresh_search_index(
+            records,
+            memory_items=memory_items,
+            memory_categories=memory_categories,
+            memory_resources=self.memory_resource_manager.load_resources(),
+        )
+        return {
+            "resource": resource,
+            "memory_items": memory_items,
+            "memory_categories": memory_categories,
+            "retrieval_index": retrieval_index,
+            "commitments": commitments,
+            "user_profile": user_profile,
+            "recent_summary": recent_summary,
+        }
 
     def extract_memory(self, user_input: str, assistant_output: str) -> Dict[str, Any]:
         return self.extractor.extract(user_input, assistant_output)
@@ -124,13 +210,44 @@ class MemoryManager:
     def get_user_profile(self) -> Dict[str, Any]:
         return self.user_profile_manager.load_profile()
 
-    def refresh_search_index(self, records: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+    def get_memory_items(self, limit: int = 50) -> List[Dict[str, Any]]:
+        return self.memory_item_manager.get_recent_items(limit=limit)
+
+    def get_memory_categories(self, limit: int = 20) -> List[Dict[str, Any]]:
+        return self.memory_category_manager.get_top_categories(limit=limit)
+
+    def get_memory_resources(self, limit: int = 20) -> List[Dict[str, Any]]:
+        return self.memory_resource_manager.get_recent_resources(limit=limit)
+
+    def get_supervision_state(self) -> Dict[str, Any]:
+        return self.supervision_manager.build_state(
+            task_view=self.get_task_view(),
+            commitments=self.commitment_manager.load_commitments(),
+            memory_items=self.memory_item_manager.load_items(),
+            user_profile=self.get_user_profile(),
+        )
+
+    def refresh_search_index(
+        self,
+        records: Optional[List[Dict[str, Any]]] = None,
+        memory_items: Optional[List[Dict[str, Any]]] = None,
+        memory_categories: Optional[List[Dict[str, Any]]] = None,
+        memory_resources: Optional[List[Dict[str, Any]]] = None,
+    ) -> List[Dict[str, Any]]:
         records = records if records is not None else self.load_records()
+        memory_items = memory_items if memory_items is not None else self.memory_item_manager.load_items()
+        memory_categories = (
+            memory_categories if memory_categories is not None else self.memory_category_manager.load_categories()
+        )
+        memory_resources = memory_resources if memory_resources is not None else self.memory_resource_manager.load_resources()
         return self.search_manager.build_index(
             records,
             daily_summaries=self.get_recent_summary(days=7).get("daily_summaries", []),
             user_profile=self.get_user_profile(),
             commitments=self.commitment_manager.load_commitments(),
+            memory_items=memory_items,
+            memory_categories=memory_categories,
+            memory_resources=memory_resources,
         )
 
     def search_related_memories(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
@@ -141,8 +258,17 @@ class MemoryManager:
             daily_summaries=recent_summary.get("daily_summaries", []),
             user_profile=self.get_user_profile(),
             commitments=self.commitment_manager.load_commitments(),
+            memory_items=self.memory_item_manager.load_items(),
+            memory_categories=self.memory_category_manager.load_categories(),
+            memory_resources=self.memory_resource_manager.load_resources(),
             limit=limit,
         )
+
+    def search_memory_items(self, query: str, limit: int = 8) -> List[Dict[str, Any]]:
+        return self.memory_item_manager.search_items(query, limit=limit)
+
+    def search_memory_categories(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
+        return self.memory_category_manager.search_categories(query, limit=limit)
 
     def get_recent_messages(self) -> List[Dict[str, str]]:
         messages: List[Dict[str, str]] = []
@@ -216,6 +342,10 @@ class MemoryManager:
 
     def build_context_messages(self, current_prompt: str) -> List[Dict[str, str]]:
         related_memories = self.search_related_memories(current_prompt, limit=5)
+        related_items = self.search_memory_items(current_prompt, limit=8)
+        related_categories = self.search_memory_categories(current_prompt, limit=5) or self.get_memory_categories(limit=5)
+        supervision_state = self.get_supervision_state()
+        retrieval_plan = self.search_manager.build_retrieval_plan(current_prompt, related_memories)
         available_context = {
             "user_profile": self.user_profile_manager.format_for_context(),
             "task_lifecycle": self.task_manager.format_for_context(),
@@ -225,9 +355,15 @@ class MemoryManager:
             "recent_summary": self.get_recent_summary_context(days=7),
             "commitments": self.commitment_manager.format_for_context(),
             "related_memories": self.search_manager.format_for_context(related_memories),
+            "memory_categories": self.memory_category_manager.format_for_context(related_categories),
+            "memory_items": self.memory_item_manager.format_for_context(related_items),
+            "supervision": self.supervision_manager.format_for_context(supervision_state),
+            "retrieval_plan": self.search_manager.format_retrieval_plan(retrieval_plan),
         }
         messages = self.context_planner.plan(current_prompt, available_context)
-        messages.extend(self.get_recent_messages())
+        system_messages = self.context_compressor.compress_system_messages(messages)
+        recent_messages = self.context_compressor.recent_messages(self.get_recent_messages())
+        messages = [*system_messages, *recent_messages]
         messages.append(
             {
                 "role": "user",
@@ -237,6 +373,7 @@ class MemoryManager:
         return messages
 
     def build_context_debug(self, current_prompt: str = "") -> Dict[str, Any]:
+        debug_results = self.search_related_memories(current_prompt, limit=5) if current_prompt else []
         messages = self.build_context_messages(current_prompt) if current_prompt else [
             {"role": "system", "content": self.get_memory_summary()},
             {"role": "system", "content": self.user_profile_manager.format_for_context()},
@@ -246,16 +383,27 @@ class MemoryManager:
             {"role": "system", "content": self.get_recent_summary_context(days=7)},
             {"role": "system", "content": self.commitment_manager.format_for_context()},
             {"role": "system", "content": self.search_manager.format_for_context([])},
+            {"role": "system", "content": self.memory_category_manager.format_for_context()},
+            {"role": "system", "content": self.memory_item_manager.format_for_context()},
+            {"role": "system", "content": self.supervision_manager.format_for_context(self.get_supervision_state())},
             *self.get_recent_messages(),
         ]
         return {
             "messages": messages,
+            "context_stats": self.context_compressor.estimate_context(messages),
+            "memory_pipeline": self.memory_pipeline.describe(),
+            "last_pipeline_result": self.last_pipeline_result,
+            "retrieval_plan": self.search_manager.build_retrieval_plan(current_prompt, debug_results) if current_prompt else {},
             "task_state": self.get_task_state(),
             "task_view": self.get_task_view(),
             "structured_summary": self.get_structured_memory_summary(),
             "recent_summary": self.get_recent_summary(days=7),
             "open_commitments": self.get_open_commitments(),
             "user_profile": self.get_user_profile(),
+            "memory_items": self.get_memory_items(limit=20),
+            "memory_categories": self.get_memory_categories(limit=10),
+            "memory_resources": self.get_memory_resources(limit=10),
+            "supervision": self.get_supervision_state(),
         }
 
     def _with_time(self, record: Dict[str, Any], text: str) -> str:
@@ -278,6 +426,11 @@ class MemoryManager:
 
     def _looks_like_forced_proof(self, text: str) -> bool:
         return any(keyword in str(text) for keyword in ["证据", "截图", "截屏", "强制验证", "不承认无证据"])
+
+    def _make_record_id(self, now: str, index: int, user_input: str) -> str:
+        safe_time = now.replace("-", "").replace(":", "").replace("T", "-")
+        digest = hashlib.sha256(str(user_input or "").encode("utf-8")).hexdigest()[:10]
+        return f"record-{safe_time}-{index + 1:05d}-{digest}"
 
     def _compact(self, text: str, max_length: int = 300) -> str:
         text = " ".join(str(text).split())

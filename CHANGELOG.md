@@ -1,3 +1,70 @@
+## V0.5.1
+### 目标
+- 将 ReMe 和 MemU 下载到本地后重新对照，补强 V0.5 记忆系统的细节严谨性和架构可靠性
+- 在不引入重型数据库/向量库依赖的前提下，吸收 ReMe 的上下文治理和 MemU 的三层记忆模型、流水线契约思想
+
+### 已实现
+#### 三层记忆模型
+- 新增 `MemoryResourceManager` 和 `memory/memory_resources.json`
+- 新增 `MemoryCategoryManager` 和 `memory/memory_categories.json`
+- 当前记忆分层为：`Resource` 原始对话来源、`MemoryItem` 原子记忆、`MemoryCategory` 分类摘要
+- 每轮对话会同时更新资源层、记忆项层和分类层，方便后续追溯来源和按类别召回
+
+#### 流水线契约
+- `MemoryPipeline` 升级为带 `requires / produces` 的阶段契约
+- 每轮处理包括 `record_turn -> extract_items -> update_task_state -> persist_record -> update_derived_memory -> build_response`
+- 流水线结果暴露每个阶段的状态、产物和错误信息，便于排查记忆写入故障
+
+#### 检索计划和充分性诊断
+- `SearchManager` 支持索引 `memory_category` 和 `memory_resource`
+- 新增 `build_retrieval_plan()`，输出是否需要检索、偏好召回类型、命中数量、命中类型、最高分和简要原因
+- `ContextPlanner` 会在任务、复盘、监督、历史查询场景注入检索计划和分类摘要
+
+#### 稳定标识和去重
+- `MemoryItemManager` 的内容标识改为稳定 SHA 摘要，不再依赖进程随机化的 Python `hash()`
+- `MemoryManager` 的 record id 也改为稳定摘要后缀
+
+#### Web 调试
+- `/api/memory` 和 `/api/context` 暴露 `memory_categories`、`memory_resources`、`retrieval_plan` 和 `last_pipeline_result`
+- 前端侧栏新增记忆分类摘要展示
+
+## V0.5
+### 目标
+- 优化记忆系统，使其从多个分散 JSON 缓存升级为更成熟的分层记忆架构
+- 借鉴 ReMe 的上下文压缩治理、文件式记忆和推理前上下文控制
+- 借鉴 MemU 的 Resource / Item / Category 思路和 memorize / retrieve 流水线
+
+### 已实现
+#### 统一记忆项
+- 新增 `MemoryItemManager`
+- 新增 `memory/memory_items.json`
+- 将任务、子任务、进展、阻塞、下一步、承诺、用户偏好、行为模式和监督建议统一沉淀为 `memory_item`
+- 记忆项包含 `type`、`category`、`content`、`task_id`、`source_record_ids`、`confidence`、`salience`、`usage_count` 等治理字段
+
+#### 写入流水线
+- 新增 `MemoryPipeline`
+- 每轮对话保存统一经过 `extract_items -> update_task_state -> persist_record -> update_memory_items -> refresh_index`
+- `src/core.py` 改为调用 `memory_manager.process_turn()`，避免主流程散落调用多个 Manager
+
+#### 检索与上下文注入
+- `SearchManager` 支持把统一记忆项加入检索索引
+- 检索结果加入类型偏好和显著性加权，任务/承诺/画像类查询会优先召回对应内容
+- `ContextPlanner` 在任务、复盘、监督场景优先注入统一记忆项和主动监督信号
+
+#### 上下文压缩治理
+- 新增 `ContextCompressor`
+- 系统记忆和最近对话分别有独立字符预算，避免长历史撑爆上下文
+- `build_context_debug()` 暴露 `context_stats`，方便观察实际注入规模
+
+#### 主动监督
+- 新增 `SupervisionManager`
+- 根据当前任务停滞、未关闭承诺、反复阻塞和未关闭任务数量生成监督信号
+- 监督信号只用于自然提醒，不强制证据，不设置时间限制，不扩展技术路线
+
+#### Web 调试
+- `/api/memory` 和 `/api/context` 暴露 `memory_items`、`supervision`、`memory_pipeline` 和 `context_stats`
+- 前端侧栏新增统一记忆项和主动监督信号展示
+
 ## V0.4.2
 ### 目标
 - 收窄 Workmate Agent 的角色边界：只做任务结构整理和监督判断，不做技术帮助、不主动设时间限制

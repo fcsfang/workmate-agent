@@ -768,6 +768,18 @@
               <span class="task-label">profile</span>
               <span class="task-value" id="userProfile">暂无长期画像</span>
             </div>
+            <div class="task-field">
+              <span class="task-label">memory items</span>
+              <span class="task-value" id="memoryItems">暂无统一记忆项</span>
+            </div>
+            <div class="task-field">
+              <span class="task-label">categories</span>
+              <span class="task-value" id="memoryCategories">暂无记忆分类</span>
+            </div>
+            <div class="task-field">
+              <span class="task-label">supervision</span>
+              <span class="task-value" id="supervisionSignals">暂无主动监督信号</span>
+            </div>
           </div>
         </section>
 
@@ -852,6 +864,9 @@
     const commitmentCount = document.querySelector("#commitmentCount");
     const openCommitments = document.querySelector("#openCommitments");
     const userProfile = document.querySelector("#userProfile");
+    const memoryItems = document.querySelector("#memoryItems");
+    const memoryCategories = document.querySelector("#memoryCategories");
+    const supervisionSignals = document.querySelector("#supervisionSignals");
     const contextPreview = document.querySelector("#contextPreview");
 
     let localTurns = 0;
@@ -1081,6 +1096,25 @@
       userProfile.textContent = parts.length ? parts.join("；") : "暂无长期画像";
     }
 
+    function renderMemoryItems(items = []) {
+      memoryItems.textContent = items.length
+        ? items.slice(0, 3).map((item) => `[${item.type || "note"}] ${item.content || ""}`).filter(Boolean).join("；")
+        : "暂无统一记忆项";
+    }
+
+    function renderMemoryCategories(categories = []) {
+      memoryCategories.textContent = categories.length
+        ? categories.slice(0, 3).map((item) => `${item.name || "general"}(${item.item_count || 0})`).join("；")
+        : "暂无记忆分类";
+    }
+
+    function renderSupervision(supervision = {}) {
+      const signals = supervision.signals || [];
+      supervisionSignals.textContent = signals.length
+        ? signals.slice(0, 3).map((item) => item.message).filter(Boolean).join("；")
+        : "暂无主动监督信号";
+    }
+
     function renderMemory(memory) {
       const records = memory.recent || [];
       memoryCount.textContent = memory.count || 0;
@@ -1093,6 +1127,9 @@
       renderRecentSummary(memory.recent_summary || {});
       renderCommitments(memory.open_commitments || []);
       renderUserProfile(memory.user_profile || {});
+      renderMemoryItems(memory.memory_items || []);
+      renderMemoryCategories(memory.memory_categories || []);
+      renderSupervision(memory.supervision || {});
       recordList.innerHTML = "";
 
       if (!records.length) {

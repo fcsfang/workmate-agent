@@ -49,6 +49,7 @@ class WorkmateWebApp:
     def memory_state(self):
         records = self.memory_manager.load_records()
         recent_records = records[-8:]
+        context_debug = self.memory_manager.build_context_debug()
         return {
             "count": len(records),
             "recent": recent_records,
@@ -60,6 +61,14 @@ class WorkmateWebApp:
             "task_view": self.memory_manager.get_task_view(),
             "open_commitments": self.memory_manager.get_open_commitments(),
             "user_profile": self.memory_manager.get_user_profile(),
+            "memory_items": self.memory_manager.get_memory_items(limit=30),
+            "memory_categories": self.memory_manager.get_memory_categories(limit=12),
+            "memory_resources": self.memory_manager.get_memory_resources(limit=12),
+            "supervision": self.memory_manager.get_supervision_state(),
+            "memory_pipeline": context_debug.get("memory_pipeline", {}),
+            "last_pipeline_result": context_debug.get("last_pipeline_result", {}),
+            "context_stats": context_debug.get("context_stats", {}),
+            "retrieval_plan": context_debug.get("retrieval_plan", {}),
         }
 
     def context_state(self):
@@ -70,9 +79,15 @@ class WorkmateWebApp:
         return {
             "messages": messages,
             "message_count": len(messages),
+            "context_stats": self.memory_manager.context_compressor.estimate_context(messages),
             "open_commitments": self.memory_manager.get_open_commitments(),
             "task_view": self.memory_manager.get_task_view(),
             "user_profile": self.memory_manager.get_user_profile(),
+            "memory_items": self.memory_manager.get_memory_items(limit=20),
+            "memory_categories": self.memory_manager.get_memory_categories(limit=10),
+            "memory_resources": self.memory_manager.get_memory_resources(limit=10),
+            "supervision": self.memory_manager.get_supervision_state(),
+            "last_pipeline_result": self.memory_manager.last_pipeline_result,
         }
 
 
