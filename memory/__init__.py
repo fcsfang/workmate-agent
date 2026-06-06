@@ -1,13 +1,17 @@
 from .CommitmentManager import CommitmentManager
 from .ContextCompressor import ContextCompressor
 from .ContextPlanner import ContextPlanner
+from .InsightManager import InsightManager
 from .MemoryCategoryManager import MemoryCategoryManager
+from .MemoryGovernanceManager import MemoryGovernanceManager
 from .MemoryExtractor import MemoryExtractor
 from .MemoryItemManager import MemoryItemManager
 from .MemoryManager import MemoryManager
 from .MemoryPipeline import MemoryPipeline
 from .MemoryResourceManager import MemoryResourceManager
+from .ReflectionManager import ReflectionManager
 from .SearchManager import SearchManager
+from .SemanticDialogueManager import SemanticDialogueManager
 from .SupervisionManager import SupervisionManager
 from .SummaryManager import SummaryManager
 from .TaskManager import TaskManager
@@ -18,13 +22,17 @@ __all__ = [
     "CommitmentManager",
     "ContextCompressor",
     "ContextPlanner",
+    "InsightManager",
     "MemoryCategoryManager",
+    "MemoryGovernanceManager",
     "MemoryExtractor",
     "MemoryItemManager",
     "MemoryManager",
     "MemoryPipeline",
     "MemoryResourceManager",
+    "ReflectionManager",
     "SearchManager",
+    "SemanticDialogueManager",
     "SupervisionManager",
     "SummaryManager",
     "TaskManager",

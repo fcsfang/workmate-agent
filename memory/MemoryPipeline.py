@@ -32,7 +32,7 @@ class MemoryPipeline:
             "stage": "update_derived_memory",
             "requires": {"record", "extracted", "task_state", "user_input", "assistant_output"},
             "produces": {"derived_memory"},
-            "description": "去重合并记忆项，更新资源层、分类层和检索索引。",
+            "description": "更新资源层、语义压缩对话、记忆项、分类层、反省结果、治理状态和检索索引。",
         },
         {
             "stage": "build_response",
@@ -115,7 +115,7 @@ class MemoryPipeline:
 
     def describe(self) -> Dict[str, Any]:
         return {
-            "name": "workmate_memory_v0_5_1",
+            "name": "workmate_memory_v0_5_2",
             "stages": [
                 {
                     "stage": contract["stage"],
@@ -125,7 +125,7 @@ class MemoryPipeline:
                 }
                 for contract in self.STAGE_CONTRACTS
             ],
-            "description": "带输入/输出契约的记忆流水线，统一处理提取、任务更新、资源层、记忆项、分类层、索引刷新和诊断。",
+            "description": "带输入/输出契约的记忆流水线，统一处理提取、任务更新、语义压缩、反省、治理、索引刷新和诊断。",
         }
 
     def _run_stage(

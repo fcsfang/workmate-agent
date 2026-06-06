@@ -18,6 +18,8 @@ class SearchManager:
         memory_items: Optional[List[Dict[str, Any]]] = None,
         memory_categories: Optional[List[Dict[str, Any]]] = None,
         memory_resources: Optional[List[Dict[str, Any]]] = None,
+        semantic_dialogues: Optional[List[Dict[str, Any]]] = None,
+        insights: Optional[List[Dict[str, Any]]] = None,
     ) -> List[Dict[str, Any]]:
         items = []
         for index, record in enumerate(records[-120:]):
@@ -42,9 +44,12 @@ class SearchManager:
             items.append(self._item("commitment", commitment.get("id", ""), text, commitment))
 
         for memory_item in memory_items or []:
+            if memory_item.get("status") == "archived":
+                continue
             text = self._sanitize_text(" ".join([
                 memory_item.get("type", ""),
                 memory_item.get("category", ""),
+                memory_item.get("status", ""),
                 memory_item.get("content", ""),
                 memory_item.get("task_title", ""),
                 json.dumps(memory_item.get("metadata", {}), ensure_ascii=False),
@@ -71,6 +76,27 @@ class SearchManager:
             ]))
             items.append(self._item("memory_resource", resource.get("id", ""), text, resource))
 
+        for dialogue in semantic_dialogues or []:
+            text = self._sanitize_text(" ".join([
+                dialogue.get("time", ""),
+                dialogue.get("task_title", ""),
+                dialogue.get("user_intent", ""),
+                dialogue.get("semantic_summary", ""),
+                json.dumps(dialogue.get("key_points", []), ensure_ascii=False),
+            ]))
+            items.append(self._item("semantic_dialogue", dialogue.get("id", ""), text, dialogue))
+
+        for insight in insights or []:
+            if insight.get("status") not in {"active", ""}:
+                continue
+            text = self._sanitize_text(" ".join([
+                insight.get("type", ""),
+                insight.get("content", ""),
+                insight.get("why_it_matters", ""),
+                insight.get("suggested_intervention", ""),
+            ]))
+            items.append(self._item("high_level_insight", insight.get("id", ""), text, insight))
+
         self.save_index(items)
         return items
 
@@ -84,6 +110,8 @@ class SearchManager:
         memory_items: Optional[List[Dict[str, Any]]] = None,
         memory_categories: Optional[List[Dict[str, Any]]] = None,
         memory_resources: Optional[List[Dict[str, Any]]] = None,
+        semantic_dialogues: Optional[List[Dict[str, Any]]] = None,
+        insights: Optional[List[Dict[str, Any]]] = None,
         limit: int = 5,
     ) -> List[Dict[str, Any]]:
         if not self.needs_retrieval(query):
@@ -97,6 +125,8 @@ class SearchManager:
             memory_items,
             memory_categories,
             memory_resources,
+            semantic_dialogues,
+            insights,
         )
         query_terms = self._terms(query)
         if not query_terms:
@@ -111,8 +141,14 @@ class SearchManager:
             payload = item.get("payload", {})
             if item["type"] == "memory_item" and isinstance(payload, dict):
                 score += float(payload.get("salience", 0))
+                if payload.get("status") == "stale":
+                    score -= 0.8
             if item["type"] == "memory_category" and isinstance(payload, dict):
                 score += float(payload.get("salience", 0))
+            if item["type"] == "high_level_insight" and isinstance(payload, dict):
+                score += 1 + float(payload.get("confidence", 0))
+            if item["type"] == "semantic_dialogue":
+                score += 0.5
             if score:
                 scored.append({**item, "score": score})
         scored.sort(key=lambda item: (item["score"], item.get("id", "")), reverse=True)
@@ -201,14 +237,16 @@ class SearchManager:
     def _preferred_types(self, query: str) -> List[str]:
         query = str(query or "")
         if self._has_any(query, ["承诺", "答应", "说好"]):
-            return ["commitment", "memory_item", "memory_category"]
+            return ["high_level_insight", "commitment", "semantic_dialogue", "memory_item", "memory_category"]
         if self._has_any(query, ["任务", "进度", "完成", "卡住", "阻塞", "下一步"]):
-            return ["memory_category", "memory_item", "record", "daily_summary"]
+            return ["high_level_insight", "semantic_dialogue", "memory_category", "memory_item", "daily_summary"]
         if self._has_any(query, ["画像", "偏好", "风格"]):
-            return ["user_profile", "memory_category", "memory_item"]
+            return ["high_level_insight", "user_profile", "memory_category", "memory_item"]
         if self._has_any(query, ["来源", "原文", "记录", "哪次"]):
-            return ["memory_resource", "record", "memory_item"]
-        return ["memory_category", "memory_item"]
+            return ["semantic_dialogue", "memory_resource", "record", "memory_item"]
+        if self._has_any(query, ["复盘", "反省", "洞察", "模式"]):
+            return ["high_level_insight", "semantic_dialogue", "memory_category"]
+        return ["high_level_insight", "semantic_dialogue", "memory_category", "memory_item"]
 
     def _retrieval_reason(self, query: str, needs: bool, results: List[Dict[str, Any]]) -> str:
         if not needs:

@@ -96,6 +96,8 @@ class MemoryItemManager:
         category_set = set(categories or [])
         results = []
         for item in items:
+            if item.get("status") == "archived":
+                continue
             if category_set and item.get("category") not in category_set:
                 continue
             text = " ".join([
@@ -107,6 +109,8 @@ class MemoryItemManager:
             item_terms = self._terms(text)
             score = sum(item_terms.count(term) for term in terms)
             if score:
+                if item.get("status") == "stale":
+                    score -= 0.8
                 usage_bonus = min(int(item.get("usage_count", 0)), 5) * 0.1
                 salience_bonus = float(item.get("salience", 0))
                 results.append({**item, "score": round(score + usage_bonus + salience_bonus, 3)})
@@ -140,7 +144,7 @@ class MemoryItemManager:
         lines = ["以下是统一记忆项。请优先使用高相关、高显著性的事实，不要机械复述。"]
         for index, item in enumerate(items[:limit], start=1):
             parts = [
-                f"{index}. [{item.get('type', '')}/{item.get('category', '')}] {item.get('content', '')}",
+                f"{index}. [{item.get('type', '')}/{item.get('category', '')}/{item.get('status', 'active')}] {item.get('content', '')}",
                 f"salience={item.get('salience', 0)}",
             ]
             if item.get("task_title"):

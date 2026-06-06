@@ -777,6 +777,14 @@
               <span class="task-value" id="memoryCategories">暂无记忆分类</span>
             </div>
             <div class="task-field">
+              <span class="task-label">insights</span>
+              <span class="task-value" id="highLevelInsights">暂无高阶洞察</span>
+            </div>
+            <div class="task-field">
+              <span class="task-label">semantic</span>
+              <span class="task-value" id="semanticDialogues">暂无语义压缩</span>
+            </div>
+            <div class="task-field">
               <span class="task-label">supervision</span>
               <span class="task-value" id="supervisionSignals">暂无主动监督信号</span>
             </div>
@@ -866,6 +874,8 @@
     const userProfile = document.querySelector("#userProfile");
     const memoryItems = document.querySelector("#memoryItems");
     const memoryCategories = document.querySelector("#memoryCategories");
+    const highLevelInsights = document.querySelector("#highLevelInsights");
+    const semanticDialogues = document.querySelector("#semanticDialogues");
     const supervisionSignals = document.querySelector("#supervisionSignals");
     const contextPreview = document.querySelector("#contextPreview");
 
@@ -1108,6 +1118,18 @@
         : "暂无记忆分类";
     }
 
+    function renderHighLevelInsights(insights = []) {
+      highLevelInsights.textContent = insights.length
+        ? insights.slice(0, 3).map((item) => `[${item.type || "pattern"}] ${item.content || ""}`).filter(Boolean).join("；")
+        : "暂无高阶洞察";
+    }
+
+    function renderSemanticDialogues(dialogues = []) {
+      semanticDialogues.textContent = dialogues.length
+        ? dialogues.slice(0, 3).map((item) => item.semantic_summary || item.user_intent || "").filter(Boolean).join("；")
+        : "暂无语义压缩";
+    }
+
     function renderSupervision(supervision = {}) {
       const signals = supervision.signals || [];
       supervisionSignals.textContent = signals.length
@@ -1129,6 +1151,8 @@
       renderUserProfile(memory.user_profile || {});
       renderMemoryItems(memory.memory_items || []);
       renderMemoryCategories(memory.memory_categories || []);
+      renderHighLevelInsights(memory.high_level_insights || []);
+      renderSemanticDialogues(memory.semantic_dialogues || []);
       renderSupervision(memory.supervision || {});
       recordList.innerHTML = "";
 

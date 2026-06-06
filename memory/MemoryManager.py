@@ -7,12 +7,16 @@ from typing import Any, Dict, List, Optional
 from .CommitmentManager import CommitmentManager
 from .ContextCompressor import ContextCompressor
 from .ContextPlanner import ContextPlanner
+from .InsightManager import InsightManager
 from .MemoryCategoryManager import MemoryCategoryManager
+from .MemoryGovernanceManager import MemoryGovernanceManager
 from .MemoryExtractor import MemoryExtractor
 from .MemoryItemManager import MemoryItemManager
 from .MemoryPipeline import MemoryPipeline
 from .MemoryResourceManager import MemoryResourceManager
+from .ReflectionManager import ReflectionManager
 from .SearchManager import SearchManager
+from .SemanticDialogueManager import SemanticDialogueManager
 from .SupervisionManager import SupervisionManager
 from .SummaryManager import SummaryManager
 from .TaskManager import TaskManager
@@ -30,11 +34,15 @@ class MemoryManager:
         context_compressor: Optional[ContextCompressor] = None,
         context_planner: Optional[ContextPlanner] = None,
         extractor: Optional[MemoryExtractor] = None,
+        insight_manager: Optional[InsightManager] = None,
         memory_category_manager: Optional[MemoryCategoryManager] = None,
+        memory_governance_manager: Optional[MemoryGovernanceManager] = None,
         memory_item_manager: Optional[MemoryItemManager] = None,
         memory_pipeline: Optional[MemoryPipeline] = None,
         memory_resource_manager: Optional[MemoryResourceManager] = None,
+        reflection_manager: Optional[ReflectionManager] = None,
         search_manager: Optional[SearchManager] = None,
+        semantic_dialogue_manager: Optional[SemanticDialogueManager] = None,
         supervision_manager: Optional[SupervisionManager] = None,
         summary_manager: Optional[SummaryManager] = None,
         task_manager: Optional[TaskManager] = None,
@@ -49,11 +57,15 @@ class MemoryManager:
         self.context_compressor = context_compressor or ContextCompressor()
         self.context_planner = context_planner or ContextPlanner()
         self.extractor = extractor or MemoryExtractor()
+        self.insight_manager = insight_manager or InsightManager()
         self.memory_category_manager = memory_category_manager or MemoryCategoryManager()
+        self.memory_governance_manager = memory_governance_manager or MemoryGovernanceManager()
         self.memory_item_manager = memory_item_manager or MemoryItemManager()
         self.memory_pipeline = memory_pipeline or MemoryPipeline()
         self.memory_resource_manager = memory_resource_manager or MemoryResourceManager()
+        self.reflection_manager = reflection_manager or ReflectionManager()
         self.search_manager = search_manager or SearchManager()
+        self.semantic_dialogue_manager = semantic_dialogue_manager or SemanticDialogueManager()
         self.supervision_manager = supervision_manager or SupervisionManager()
         self.summary_manager = summary_manager or SummaryManager()
         self.task_manager = task_manager or TaskManager()
@@ -64,6 +76,8 @@ class MemoryManager:
 
     def set_llm_client(self, llm_client: Any) -> None:
         self.extractor.set_llm_client(llm_client)
+        self.insight_manager.set_llm_client(llm_client)
+        self.semantic_dialogue_manager.set_llm_client(llm_client)
         self.summary_manager.set_llm_client(llm_client)
 
     def set_summary_client(self, llm_client: Any) -> None:
@@ -155,6 +169,11 @@ class MemoryManager:
             task_state=task_state,
             task_view=self.get_task_view(),
         )
+        semantic_dialogue = self.semantic_dialogue_manager.update_from_record(
+            record=record,
+            extracted=extracted,
+            task_state=task_state,
+        )
         memory_items = self.memory_item_manager.update_from_turn(
             record=record,
             extracted=extracted,
@@ -165,20 +184,70 @@ class MemoryManager:
             user_profile=user_profile,
         )
         memory_categories = self.memory_category_manager.rebuild_from_items(memory_items)
+        reflection = self.run_reflection_if_needed(
+            records=records,
+            user_input=user_input,
+            memory_items=memory_items,
+            memory_categories=memory_categories,
+        )
+        memory_items = self.memory_item_manager.load_items()
+        memory_categories = self.memory_category_manager.rebuild_from_items(memory_items)
         retrieval_index = self.refresh_search_index(
             records,
             memory_items=memory_items,
             memory_categories=memory_categories,
             memory_resources=self.memory_resource_manager.load_resources(),
+            semantic_dialogues=self.semantic_dialogue_manager.load_dialogues(),
+            insights=self.insight_manager.load_insights(),
         )
         return {
             "resource": resource,
+            "semantic_dialogue": semantic_dialogue,
             "memory_items": memory_items,
             "memory_categories": memory_categories,
+            "reflection": reflection,
             "retrieval_index": retrieval_index,
             "commitments": commitments,
             "user_profile": user_profile,
             "recent_summary": recent_summary,
+        }
+
+    def run_reflection_if_needed(
+        self,
+        records: Optional[List[Dict[str, Any]]] = None,
+        user_input: str = "",
+        memory_items: Optional[List[Dict[str, Any]]] = None,
+        memory_categories: Optional[List[Dict[str, Any]]] = None,
+        force: bool = False,
+    ) -> Dict[str, Any]:
+        records = records if records is not None else self.load_records()
+        if not force and not self.reflection_manager.should_reflect(records, user_input=user_input):
+            return {"triggered": False, "reason": "interval_not_met"}
+
+        memory_items = memory_items if memory_items is not None else self.memory_item_manager.load_items()
+        memory_categories = memory_categories if memory_categories is not None else self.memory_category_manager.load_categories()
+        semantic_dialogues = self.semantic_dialogue_manager.load_dialogues()
+        trigger = "manual" if force or any(keyword in str(user_input) for keyword in ["复盘一下", "自我反省", "反省一下", "总结最近状态"]) else "interval"
+        insights = self.insight_manager.update_from_reflection(
+            memory_items=memory_items,
+            categories=memory_categories,
+            semantic_dialogues=semantic_dialogues,
+            trigger=trigger,
+        )
+        governance = self.memory_governance_manager.govern_items(memory_items, insights)
+        self.memory_item_manager.save_items(governance.get("updated_items", memory_items))
+        reflection = self.reflection_manager.record_reflection(
+            records=records,
+            trigger=trigger,
+            semantic_dialogues=semantic_dialogues,
+            insights=insights,
+            governance=governance,
+        )
+        return {
+            "triggered": True,
+            "reflection": reflection,
+            "insights": insights[:8],
+            "governance": governance,
         }
 
     def extract_memory(self, user_input: str, assistant_output: str) -> Dict[str, Any]:
@@ -219,6 +288,18 @@ class MemoryManager:
     def get_memory_resources(self, limit: int = 20) -> List[Dict[str, Any]]:
         return self.memory_resource_manager.get_recent_resources(limit=limit)
 
+    def get_semantic_dialogues(self, limit: int = 20) -> List[Dict[str, Any]]:
+        return self.semantic_dialogue_manager.get_recent_dialogues(limit=limit)
+
+    def get_high_level_insights(self, limit: int = 20) -> List[Dict[str, Any]]:
+        return self.insight_manager.get_active_insights(limit=limit)
+
+    def get_memory_conflicts(self) -> List[Dict[str, Any]]:
+        return self.memory_governance_manager.load_conflicts()
+
+    def get_reflections(self) -> List[Dict[str, Any]]:
+        return self.reflection_manager.load_reflections()
+
     def get_supervision_state(self) -> Dict[str, Any]:
         return self.supervision_manager.build_state(
             task_view=self.get_task_view(),
@@ -233,6 +314,8 @@ class MemoryManager:
         memory_items: Optional[List[Dict[str, Any]]] = None,
         memory_categories: Optional[List[Dict[str, Any]]] = None,
         memory_resources: Optional[List[Dict[str, Any]]] = None,
+        semantic_dialogues: Optional[List[Dict[str, Any]]] = None,
+        insights: Optional[List[Dict[str, Any]]] = None,
     ) -> List[Dict[str, Any]]:
         records = records if records is not None else self.load_records()
         memory_items = memory_items if memory_items is not None else self.memory_item_manager.load_items()
@@ -240,6 +323,8 @@ class MemoryManager:
             memory_categories if memory_categories is not None else self.memory_category_manager.load_categories()
         )
         memory_resources = memory_resources if memory_resources is not None else self.memory_resource_manager.load_resources()
+        semantic_dialogues = semantic_dialogues if semantic_dialogues is not None else self.semantic_dialogue_manager.load_dialogues()
+        insights = insights if insights is not None else self.insight_manager.load_insights()
         return self.search_manager.build_index(
             records,
             daily_summaries=self.get_recent_summary(days=7).get("daily_summaries", []),
@@ -248,6 +333,8 @@ class MemoryManager:
             memory_items=memory_items,
             memory_categories=memory_categories,
             memory_resources=memory_resources,
+            semantic_dialogues=semantic_dialogues,
+            insights=insights,
         )
 
     def search_related_memories(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
@@ -261,6 +348,8 @@ class MemoryManager:
             memory_items=self.memory_item_manager.load_items(),
             memory_categories=self.memory_category_manager.load_categories(),
             memory_resources=self.memory_resource_manager.load_resources(),
+            semantic_dialogues=self.semantic_dialogue_manager.load_dialogues(),
+            insights=self.insight_manager.load_insights(),
             limit=limit,
         )
 
@@ -272,7 +361,25 @@ class MemoryManager:
 
     def get_recent_messages(self) -> List[Dict[str, str]]:
         messages: List[Dict[str, str]] = []
-        for record in self.load_records()[-self.recent_limit:]:
+        selected_records = self.load_records()[-self.recent_limit:]
+        semantic_lookup = {
+            item.get("record_id"): item
+            for item in self.semantic_dialogue_manager.load_dialogues()
+            if item.get("record_id")
+        }
+        raw_keep_count = 2
+        semantic_cutoff = max(len(selected_records) - raw_keep_count, 0)
+        for index, record in enumerate(selected_records):
+            semantic = semantic_lookup.get(record.get("id"))
+            if semantic and index < semantic_cutoff:
+                messages.append({
+                    "role": "system",
+                    "content": self._with_time(
+                        record,
+                        "[语义压缩历史]\n" + semantic.get("semantic_summary", ""),
+                    ),
+                })
+                continue
             user_text = record.get("user")
             assistant_text = record.get("assistant")
             if user_text:
@@ -350,6 +457,10 @@ class MemoryManager:
             "user_profile": self.user_profile_manager.format_for_context(),
             "task_lifecycle": self.task_manager.format_for_context(),
             "task_state": self.task_state_manager.format_for_context(),
+            "high_level_insights": self.insight_manager.format_for_context(),
+            "semantic_dialogues": self.semantic_dialogue_manager.format_for_context(),
+            "memory_governance": self.memory_governance_manager.format_for_context(),
+            "reflections": self.reflection_manager.format_for_context(),
             "memory_summary": self.get_memory_summary(),
             "structured_summary": self.get_structured_memory_summary(),
             "recent_summary": self.get_recent_summary_context(days=7),
@@ -379,6 +490,10 @@ class MemoryManager:
             {"role": "system", "content": self.user_profile_manager.format_for_context()},
             {"role": "system", "content": self.task_manager.format_for_context()},
             {"role": "system", "content": self.task_state_manager.format_for_context()},
+            {"role": "system", "content": self.insight_manager.format_for_context()},
+            {"role": "system", "content": self.semantic_dialogue_manager.format_for_context()},
+            {"role": "system", "content": self.memory_governance_manager.format_for_context()},
+            {"role": "system", "content": self.reflection_manager.format_for_context()},
             {"role": "system", "content": self.get_structured_memory_summary()},
             {"role": "system", "content": self.get_recent_summary_context(days=7)},
             {"role": "system", "content": self.commitment_manager.format_for_context()},
@@ -403,6 +518,10 @@ class MemoryManager:
             "memory_items": self.get_memory_items(limit=20),
             "memory_categories": self.get_memory_categories(limit=10),
             "memory_resources": self.get_memory_resources(limit=10),
+            "semantic_dialogues": self.get_semantic_dialogues(limit=10),
+            "high_level_insights": self.get_high_level_insights(limit=10),
+            "memory_conflicts": self.get_memory_conflicts(),
+            "reflections": self.get_reflections(),
             "supervision": self.get_supervision_state(),
         }
 

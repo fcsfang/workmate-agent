@@ -1,6 +1,49 @@
+## V0.5.2
+### 目标
+- 继续优化记忆系统，不跳到 V0.6
+- 引入自我反省机制：让 Agent 在若干轮对话后或空闲时回看历史记忆，提炼高阶 Insights
+- 引入记忆治理机制：识别陈旧事实、冲突事实和低价值记忆，并优先降权或归档，而不是直接删除
+
+### 已实现
+#### 自我反省
+- 新增 `ReflectionManager`
+- 新增 `memory/reflections.json`
+- 支持按轮次触发：默认每 5 轮对话分析一次
+- 支持手动触发：用户要求“复盘一下最近状态”“自我反省”等时触发
+- 反省结果记录触发原因、活跃 Insight 数量、治理变更数量和最近洞察
+
+#### 高阶洞察
+- 新增 `InsightManager`
+- 新增 `memory/high_level_insights.json`
+- 从 `Resource / MemoryItem / MemoryCategory` 中提炼长期行为模式和任务推进模式
+- Insight 不等同于摘要，重点关注：反复偏航、过度规划、伪努力、有效推进方式、任务结构变化
+- 支持 LLM 提炼；模型不可用时使用规则兜底
+
+#### 原始对话语义压缩
+- 新增 `SemanticDialogueManager`
+- 新增 `memory/semantic_dialogues.json`
+- 每轮对话都会把原始对话压缩成更短的核心语义
+- 压缩结果保留：用户真实意图、任务/进展/阻塞、关键承诺、重要上下文和必要时间信息
+- 压缩结果不保留：寒暄、重复表达、低价值解释、与长期监督无关的细节
+- 原始对话仍保留在 `records.json`，压缩版本作为上下文注入优先使用，目标是节省上下文窗口
+- 支持 LLM 压缩；模型不可用时根据结构化提取结果规则生成
+
+#### 冲突与陈旧记忆治理
+- 新增 `MemoryGovernanceManager`
+- 新增 `memory/memory_conflicts.json`
+- 识别类似“当前版本是 V0.4”和“当前版本是 V0.5.1 / V0.5.2”的冲突事实
+- 采用 `active -> stale -> archived` 的生命周期，先降权和隐藏，再考虑归档
+- 不默认物理删除历史记忆，保留来源以便追溯
+- `MemoryItemManager` 和 `SearchManager` 会避开 archived 记忆，并对 stale 记忆降权
+
+#### 上下文注入策略
+- `ContextPlanner` 优先注入高阶 Insight、语义压缩对话和记忆治理状态，再注入低层记忆项
+- `SearchManager` 索引 `high_level_insight` 和 `semantic_dialogue`
+- Web API 和前端侧栏暴露高阶洞察、语义压缩、反省记录和记忆冲突
+
 ## V0.5.1
 ### 目标
-- 将 ReMe 和 MemU 下载到本地后重新对照，补强 V0.5 记忆系统的细节严谨性和架构可靠性
+- 对照ReMe 和 MemU 等市面成熟记忆系统架构，补强 V0.5 记忆系统的细节严谨性和架构可靠性
 - 在不引入重型数据库/向量库依赖的前提下，吸收 ReMe 的上下文治理和 MemU 的三层记忆模型、流水线契约思想
 
 ### 已实现

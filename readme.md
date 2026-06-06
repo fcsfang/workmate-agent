@@ -22,6 +22,9 @@ Workmate Agent 是一个面向个人学习和工作执行的长期工位搭子�
 - 上下文注入：下一轮调用模型前，会读取最近几轮对话并生成长期记忆摘要
 - 统一记忆项：V0.5 起会把任务、进展、阻塞、承诺、用户偏好和监督模式沉淀到 `memory/memory_items.json`
 - 三层记忆模型：V0.5.1 起增加 `Resource / MemoryItem / MemoryCategory`，分别追踪原始来源、原子记忆和分类摘要
+- 语义压缩：V0.5.2 起把原始对话提炼为 `semantic_dialogues`，上下文注入优先使用核心语义以节省窗口
+- 自我反省：V0.5.2 起每若干轮对话或用户手动要求复盘时，提炼高阶洞察并记录反省结果
+- 记忆治理：识别陈旧/冲突事实，对旧记忆降权或归档，而不是直接删除
 - 记忆流水线：每轮对话统一经过提取、任务更新、记录保存、记忆项写入和索引刷新
 - 流水线契约：每个记忆阶段都有 `requires / produces` 诊断信息，方便定位提取、保存、索引等故障
 - 任务生命周期：把任务从当前快照升级为 `inbox / planned / active / blocked / done / abandoned` 的完整状态流，并支持主任务下的子任务
@@ -42,6 +45,10 @@ workmate-agent/
 │   ├── MemoryResourceManager.py # v0.5.1 原始对话来源/资源层
 │   ├── MemoryItemManager.py # v0.5 统一记忆项治理
 │   ├── MemoryCategoryManager.py # v0.5.1 分类摘要层
+│   ├── SemanticDialogueManager.py # v0.5.2 原始对话语义压缩
+│   ├── InsightManager.py # v0.5.2 高阶洞察
+│   ├── ReflectionManager.py # v0.5.2 自我反省触发和记录
+│   ├── MemoryGovernanceManager.py # v0.5.2 陈旧/冲突记忆治理
 │   ├── MemoryPipeline.py  # v0.5 每轮对话记忆写入流水线
 │   ├── ContextCompressor.py # v0.5 上下文预算和压缩
 │   ├── ContextPlanner.py  # 根据当前输入选择需要注入的上下文
@@ -57,6 +64,10 @@ workmate-agent/
 │   ├── memory_resources.json # 资源层索引，运行时生成
 │   ├── memory_items.json  # 统一记忆项，运行时生成
 │   ├── memory_categories.json # 分类摘要，运行时生成
+│   ├── semantic_dialogues.json # 原始对话语义压缩，运行时生成
+│   ├── high_level_insights.json # 高阶洞察，运行时生成
+│   ├── memory_conflicts.json # 冲突/陈旧记忆治理记录，运行时生成
+│   ├── reflections.json    # 自我反省记录，运行时生成
 │   ├── tasks.json         # 任务生命周期，运行时生成
 │   ├── task_events.json   # 任务事件流水，运行时生成
 │   ├── task_state.json    # 当前任务状态，运行时生成
@@ -115,7 +126,7 @@ http://127.0.0.1:7860
 
 页面会显示对话区、最近记忆、记忆摘要和本地记录数量。每次发送消息都会调用同一个 `WorkmateAgent` 流程，并写入 `memory/records.json`。
 
-0.5.1+ 版本还会在页面左侧显示当前任务生命周期、子任务、最近 7 天摘要、未关闭承诺、长期用户画像、统一记忆项、记忆分类和主动监督信号，并提供 `MODEL CONTEXT` 调试区。每日摘要会优先调用模型生成 JSON 记忆，失败时退回规则摘要；`MODEL CONTEXT` 会展示上一轮实际发送给模型的 messages、上下文规模、检索计划和流水线状态，方便检查 Agent 到底带入了哪些记忆。
+0.5.2+ 版本还会在页面左侧显示当前任务生命周期、子任务、最近 7 天摘要、未关闭承诺、长期用户画像、统一记忆项、记忆分类、高阶洞察、语义压缩和主动监督信号，并提供 `MODEL CONTEXT` 调试区。每日摘要会优先调用模型生成 JSON 记忆，失败时退回规则摘要；`MODEL CONTEXT` 会展示上一轮实际发送给模型的 messages、上下文规模、检索计划和流水线状态，方便检查 Agent 到底带入了哪些记忆。
 
 只要这个命令所在的终端窗口保持运行，页面和 API 就会保持可用。需要停止时，在该终端按 `Ctrl + C`。
 
@@ -164,4 +175,4 @@ print(response)
 
 ## 当前边界
 
-当前版本是 JSON 文件记忆，适合早期验证连续对话、任务生命周期、统一记忆项和任务监督。V0.5.1 已经具备 Resource / MemoryItem / MemoryCategory 三层结构、检索计划、流水线契约、上下文压缩和主动监督信号；后续记录变多后，可以继续加入浏览器通知、周/月总结、向量检索和后台定时监督。
+当前版本是 JSON 文件记忆，适合早期验证连续对话、任务生命周期、统一记忆项和任务监督。V0.5.2 已经具备 Resource / MemoryItem / MemoryCategory 三层结构、语义压缩、高阶洞察、自我反省、记忆治理、检索计划、流水线契约、上下文压缩和主动监督信号；后续记录变多后，可以继续加入浏览器通知、周/月总结、向量检索和后台定时监督。
