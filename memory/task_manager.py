@@ -3,6 +3,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .paths import memory_data_path
+
 
 class TaskManager:
     VALID_STATUSES = {"inbox", "planned", "active", "blocked", "done", "abandoned"}
@@ -13,9 +15,8 @@ class TaskManager:
         events_path: Optional[str] = None,
         llm_client: Optional[Any] = None,
     ):
-        memory_dir = Path(__file__).resolve().parent
-        self.tasks_path = Path(tasks_path) if tasks_path else memory_dir / "tasks.json"
-        self.events_path = Path(events_path) if events_path else memory_dir / "task_events.json"
+        self.tasks_path = Path(tasks_path) if tasks_path else memory_data_path("tasks.json")
+        self.events_path = Path(events_path) if events_path else memory_data_path("task_events.json")
         self.llm_client = llm_client
         self.tasks_path.parent.mkdir(parents=True, exist_ok=True)
         self.events_path.parent.mkdir(parents=True, exist_ok=True)

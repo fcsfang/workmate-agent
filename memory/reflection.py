@@ -3,11 +3,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .paths import memory_data_path
+
 
 class ReflectionManager:
     def __init__(self, reflections_path: Optional[str] = None, interval_turns: int = 5):
-        memory_dir = Path(__file__).resolve().parent
-        self.reflections_path = Path(reflections_path) if reflections_path else memory_dir / "reflections.json"
+        self.reflections_path = Path(reflections_path) if reflections_path else memory_data_path("reflections.json")
         self.interval_turns = interval_turns
         self.reflections_path.parent.mkdir(parents=True, exist_ok=True)
 

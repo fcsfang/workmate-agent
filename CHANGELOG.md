@@ -1,3 +1,23 @@
+## V0.5.4
+### 目标
+- 将 V0.5.3 后续的架构整理工作独立成版本
+- 降低 `memory/` 目录的文件噪音，明确代码模块、运行时数据和聚合边界
+- 保持外部调用兼容，避免架构整理影响 `from memory import MemoryManager` 等现有入口
+
+### 已实现
+#### 架构轻量化
+- 新增 `TaskState` 聚合 `TaskManager`、`TaskStateManager` 和 `CommitmentManager`
+- 新增 `ContextEngine` 聚合 `SearchManager`、`ContextPlanner` 和 `ContextCompressor`
+- `MemoryManager` 改为通过 `TaskState` 更新任务、承诺和当前状态，降低任务相关职责分散
+- `MemoryManager` 改为通过 `ContextEngine` 构建模型上下文，检索、规划、压缩和消息拼装集中在一个模块
+- 新增 `MemoryStore`，物理合并 `MemoryResourceManager`、`MemoryItemManager` 和 `MemoryCategoryManager`
+- 新增 `MemoryInterpreter`，物理合并 `MemoryExtractor`、`SemanticDialogueManager`、`SummaryManager`、`InsightManager` 和 `IntentManager`
+- 删除已合并的旧 Manager 单文件，只保留聚合后的代码文件；公共类名和缓存 JSON 格式保持兼容
+- 新增 `memory/paths.py` 统一管理运行时记忆路径，默认数据目录迁移为 `memory/data/`
+- 运行时 JSON、检索索引和每日摘要从 `memory/` 根目录移入 `memory/data/`，避免代码文件和记忆缓存混放
+- 将 `memory/` 下保留的 Python 模块统一改为 snake_case 命名，例如 `manager.py`、`pipeline.py`、`store.py`、`interpreter.py`
+- `memory/__init__.py` 继续导出原有类名，保持 `from memory import MemoryManager` 等外部调用方式不变
+
 ## V0.5.3
 ### 目标
 - 继续优化记忆系统
@@ -10,7 +30,7 @@
 
 ### 已实现
 #### 第一批优化
-- `SearchManager.search()` 改为优先读取 `memory/retrieval_index.json`，不再每次检索都重建索引
+- `SearchManager.search()` 改为优先读取 `memory/data/retrieval_index.json`，不再每次检索都重建索引
 - `refresh_search_index()` 继续作为记忆写入后的索引刷新入口，保持写入和检索分离
 - 检索索引保存 `salience`、`confidence`、`status` 和 `updated_at` 等排序元数据，避免检索时依赖原始 payload
 - `ContextPlanner` 新增 `required_context_keys()`，先判断输入意图，再返回需要加载的上下文块

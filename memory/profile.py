@@ -3,11 +3,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .paths import memory_data_path
+
 
 class UserProfileManager:
     def __init__(self, profile_path: Optional[str] = None, llm_client: Optional[Any] = None):
-        memory_dir = Path(__file__).resolve().parent
-        self.profile_path = Path(profile_path) if profile_path else memory_dir / "user_profile.json"
+        self.profile_path = Path(profile_path) if profile_path else memory_data_path("user_profile.json")
         self.llm_client = llm_client
         self.profile_path.parent.mkdir(parents=True, exist_ok=True)
 

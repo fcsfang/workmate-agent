@@ -4,25 +4,22 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .CommitmentManager import CommitmentManager
-from .ContextCompressor import ContextCompressor
-from .ContextPlanner import ContextPlanner
-from .InsightManager import InsightManager
-from .IntentManager import IntentManager
-from .MemoryCategoryManager import MemoryCategoryManager
-from .MemoryGovernanceManager import MemoryGovernanceManager
-from .MemoryExtractor import MemoryExtractor
-from .MemoryItemManager import MemoryItemManager
-from .MemoryPipeline import MemoryPipeline
-from .MemoryResourceManager import MemoryResourceManager
-from .ReflectionManager import ReflectionManager
-from .SearchManager import SearchManager
-from .SemanticDialogueManager import SemanticDialogueManager
-from .SupervisionManager import SupervisionManager
-from .SummaryManager import SummaryManager
-from .TaskManager import TaskManager
-from .TaskStateManager import TaskStateManager
-from .UserProfileManager import UserProfileManager
+from .commitment import CommitmentManager
+from .context_compressor import ContextCompressor
+from .context_engine import ContextEngine
+from .context_planner import ContextPlanner
+from .governance import MemoryGovernanceManager
+from .interpreter import InsightManager, IntentManager, MemoryExtractor, SemanticDialogueManager, SummaryManager
+from .store import MemoryCategoryManager, MemoryItemManager, MemoryResourceManager
+from .pipeline import MemoryPipeline
+from .reflection import ReflectionManager
+from .search import SearchManager
+from .supervision import SupervisionManager
+from .task_manager import TaskManager
+from .task_state import TaskState
+from .task_state_manager import TaskStateManager
+from .profile import UserProfileManager
+from .paths import memory_data_path
 
 
 class MemoryManager:
@@ -33,6 +30,7 @@ class MemoryManager:
         summary_limit: int = 20,
         commitment_manager: Optional[CommitmentManager] = None,
         context_compressor: Optional[ContextCompressor] = None,
+        context_engine: Optional[ContextEngine] = None,
         context_planner: Optional[ContextPlanner] = None,
         extractor: Optional[MemoryExtractor] = None,
         insight_manager: Optional[InsightManager] = None,
@@ -47,17 +45,22 @@ class MemoryManager:
         semantic_dialogue_manager: Optional[SemanticDialogueManager] = None,
         supervision_manager: Optional[SupervisionManager] = None,
         summary_manager: Optional[SummaryManager] = None,
+        task_state: Optional[TaskState] = None,
         task_manager: Optional[TaskManager] = None,
         task_state_manager: Optional[TaskStateManager] = None,
         user_profile_manager: Optional[UserProfileManager] = None,
     ):
-        memory_dir = Path(__file__).resolve().parent
-        self.memory_path = Path(memory_path) if memory_path else memory_dir / "records.json"
+        self.memory_path = Path(memory_path) if memory_path else memory_data_path("records.json")
         self.recent_limit = recent_limit
         self.summary_limit = summary_limit
         self.commitment_manager = commitment_manager or CommitmentManager()
-        self.context_compressor = context_compressor or ContextCompressor()
-        self.context_planner = context_planner or ContextPlanner()
+        self.context_engine = context_engine or ContextEngine(
+            search_manager=search_manager,
+            context_planner=context_planner,
+            context_compressor=context_compressor,
+        )
+        self.context_compressor = self.context_engine.context_compressor
+        self.context_planner = self.context_engine.context_planner
         self.extractor = extractor or MemoryExtractor()
         self.insight_manager = insight_manager or InsightManager()
         self.intent_manager = intent_manager or IntentManager()
@@ -67,25 +70,30 @@ class MemoryManager:
         self.memory_pipeline = memory_pipeline or MemoryPipeline()
         self.memory_resource_manager = memory_resource_manager or MemoryResourceManager()
         self.reflection_manager = reflection_manager or ReflectionManager()
-        self.search_manager = search_manager or SearchManager()
+        self.search_manager = self.context_engine.search_manager
         self.semantic_dialogue_manager = semantic_dialogue_manager or SemanticDialogueManager()
         self.supervision_manager = supervision_manager or SupervisionManager()
         self.summary_manager = summary_manager or SummaryManager()
-        self.task_manager = task_manager or TaskManager()
-        self.task_state_manager = task_state_manager or TaskStateManager()
+        self.task_state = task_state or TaskState(
+            task_manager=task_manager,
+            task_state_manager=task_state_manager,
+            commitment_manager=self.commitment_manager,
+        )
+        self.task_manager = self.task_state.task_manager
+        self.task_state_manager = self.task_state.task_state_manager
+        self.commitment_manager = self.task_state.commitment_manager
         self.user_profile_manager = user_profile_manager or UserProfileManager()
         self.last_pipeline_result: Dict[str, Any] = {}
         self.memory_path.parent.mkdir(parents=True, exist_ok=True)
 
     def set_llm_client(self, llm_client: Any) -> None:
-        self.commitment_manager.set_llm_client(llm_client)
         self.extractor.set_llm_client(llm_client)
         self.insight_manager.set_llm_client(llm_client)
         self.intent_manager.set_llm_client(llm_client)
         self.memory_governance_manager.set_llm_client(llm_client)
         self.semantic_dialogue_manager.set_llm_client(llm_client)
         self.summary_manager.set_llm_client(llm_client)
-        self.task_manager.set_llm_client(llm_client)
+        self.task_state.set_llm_client(llm_client)
         self.user_profile_manager.set_llm_client(llm_client)
 
     def set_summary_client(self, llm_client: Any) -> None:
@@ -165,7 +173,7 @@ class MemoryManager:
         records = self.load_records()
         self.summary_manager.summarize_day(records)
         recent_summary = self.get_recent_summary(days=7)
-        commitments = self.commitment_manager.update(extracted, user_input, assistant_output, task_state=task_state)
+        commitments = self.task_state.update_commitments(extracted, user_input, assistant_output, task_state=task_state)
         user_profile = self.user_profile_manager.update(
             extracted,
             user_input,
@@ -267,22 +275,16 @@ class MemoryManager:
         user_input: str,
         assistant_output: str,
     ) -> Dict[str, Any]:
-        task_lifecycle = self.task_manager.update(extracted, user_input, assistant_output)
-        return self.task_state_manager.update(
-            extracted,
-            user_input,
-            assistant_output,
-            task_lifecycle=task_lifecycle,
-        )
+        return self.task_state.update(extracted, user_input, assistant_output)
 
     def get_task_state(self) -> Dict[str, Any]:
-        return self.task_state_manager.load_state()
+        return self.task_state.current_state()
 
     def get_task_view(self) -> Dict[str, Any]:
-        return self.task_manager.get_task_view()
+        return self.task_state.task_view()
 
     def get_open_commitments(self) -> List[Dict[str, Any]]:
-        return self.commitment_manager.get_open_commitments()
+        return self.task_state.open_commitments()
 
     def get_user_profile(self) -> Dict[str, Any]:
         return self.user_profile_manager.load_profile()
@@ -311,7 +313,7 @@ class MemoryManager:
     def get_supervision_state(self) -> Dict[str, Any]:
         return self.supervision_manager.build_state(
             task_view=self.get_task_view(),
-            commitments=self.commitment_manager.load_commitments(),
+            commitments=self.task_state.all_commitments(),
             memory_items=self.memory_item_manager.load_items(),
             user_profile=self.get_user_profile(),
         )
@@ -333,11 +335,11 @@ class MemoryManager:
         memory_resources = memory_resources if memory_resources is not None else self.memory_resource_manager.load_resources()
         semantic_dialogues = semantic_dialogues if semantic_dialogues is not None else self.semantic_dialogue_manager.load_dialogues()
         insights = insights if insights is not None else self.insight_manager.load_insights()
-        return self.search_manager.build_index(
+        return self.context_engine.refresh_search_index(
             records,
             daily_summaries=self.get_recent_summary(days=7).get("daily_summaries", []),
             user_profile=self.get_user_profile(),
-            commitments=self.commitment_manager.load_commitments(),
+            commitments=self.task_state.all_commitments(),
             memory_items=memory_items,
             memory_categories=memory_categories,
             memory_resources=memory_resources,
@@ -346,7 +348,7 @@ class MemoryManager:
         )
 
     def search_related_memories(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
-        return self.search_manager.search(query, limit=limit)
+        return self.context_engine.search_related_memories(query, limit=limit)
 
     def search_memory_items(self, query: str, limit: int = 8) -> List[Dict[str, Any]]:
         return self.memory_item_manager.search_items(query, limit=limit)
@@ -443,78 +445,7 @@ class MemoryManager:
         return self.summary_manager.format_recent_summary_for_context(self.load_records(), days=days)
 
     def build_context_messages(self, current_prompt: str) -> List[Dict[str, str]]:
-        # 先做上下文规划，再按需加载和格式化对应记忆块。
-        intent_classification = self.intent_manager.classify(current_prompt)
-        required_keys = self.context_planner.required_context_keys(
-            current_prompt,
-            classification=intent_classification,
-        )
-        available_context = self._load_context_blocks(current_prompt, required_keys, intent_classification)
-        messages = self.context_planner.plan(current_prompt, available_context, classification=intent_classification)
-
-        system_messages = self.context_compressor.compress_system_messages(messages)
-        recent_messages = self.context_compressor.recent_messages(self.get_recent_messages())
-
-        messages = [*system_messages, *recent_messages]
-        messages.append(
-            {
-                "role": "user",
-                "content": self._with_current_time(current_prompt),
-            }
-        )
-        return messages
-
-    def _load_context_blocks(
-        self,
-        current_prompt: str,
-        keys: List[str],
-        intent_classification: Dict[str, Any],
-    ) -> Dict[str, str]:
-        key_set = set(keys)
-        available: Dict[str, str] = {}
-        related_memories: List[Dict[str, Any]] = []
-
-        if {"related_memories", "retrieval_plan"} & key_set:
-            related_memories = self.search_related_memories(current_prompt, limit=5)
-
-        if "intent" in key_set:
-            available["intent"] = self.intent_manager.format_for_context(intent_classification)
-        if "user_profile" in key_set:
-            available["user_profile"] = self.user_profile_manager.format_for_context()
-        if "task_lifecycle" in key_set:
-            available["task_lifecycle"] = self.task_manager.format_for_context()
-        if "task_state" in key_set:
-            available["task_state"] = self.task_state_manager.format_for_context()
-        if "high_level_insights" in key_set:
-            available["high_level_insights"] = self.insight_manager.format_for_context()
-        if "semantic_dialogues" in key_set:
-            available["semantic_dialogues"] = self.semantic_dialogue_manager.format_for_context()
-        if "memory_governance" in key_set:
-            available["memory_governance"] = self.memory_governance_manager.format_for_context()
-        if "reflections" in key_set:
-            available["reflections"] = self.reflection_manager.format_for_context()
-        if "memory_summary" in key_set:
-            available["memory_summary"] = self.get_memory_summary()
-        if "structured_summary" in key_set:
-            available["structured_summary"] = self.get_structured_memory_summary()
-        if "recent_summary" in key_set:
-            available["recent_summary"] = self.get_recent_summary_context(days=7)
-        if "commitments" in key_set:
-            available["commitments"] = self.commitment_manager.format_for_context()
-        if "related_memories" in key_set:
-            available["related_memories"] = self.search_manager.format_for_context(related_memories)
-        if "memory_categories" in key_set:
-            related_categories = self.search_memory_categories(current_prompt, limit=5) or self.get_memory_categories(limit=5)
-            available["memory_categories"] = self.memory_category_manager.format_for_context(related_categories)
-        if "memory_items" in key_set:
-            related_items = self.search_memory_items(current_prompt, limit=8)
-            available["memory_items"] = self.memory_item_manager.format_for_context(related_items)
-        if "supervision" in key_set:
-            available["supervision"] = self.supervision_manager.format_for_context(self.get_supervision_state())
-        if "retrieval_plan" in key_set:
-            retrieval_plan = self.search_manager.build_retrieval_plan(current_prompt, related_memories)
-            available["retrieval_plan"] = self.search_manager.format_retrieval_plan(retrieval_plan)
-        return available
+        return self.context_engine.build_messages(current_prompt, self)
 
     def build_context_debug(self, current_prompt: str = "") -> Dict[str, Any]:
         debug_results = self.search_related_memories(current_prompt, limit=5) if current_prompt else []
@@ -522,16 +453,16 @@ class MemoryManager:
         messages = self.build_context_messages(current_prompt) if current_prompt else [
             {"role": "system", "content": self.get_memory_summary()},
             {"role": "system", "content": self.user_profile_manager.format_for_context()},
-            {"role": "system", "content": self.task_manager.format_for_context()},
-            {"role": "system", "content": self.task_state_manager.format_for_context()},
+            {"role": "system", "content": self.task_state.format_task_lifecycle()},
+            {"role": "system", "content": self.task_state.format_current_state()},
             {"role": "system", "content": self.insight_manager.format_for_context()},
             {"role": "system", "content": self.semantic_dialogue_manager.format_for_context()},
             {"role": "system", "content": self.memory_governance_manager.format_for_context()},
             {"role": "system", "content": self.reflection_manager.format_for_context()},
             {"role": "system", "content": self.get_structured_memory_summary()},
             {"role": "system", "content": self.get_recent_summary_context(days=7)},
-            {"role": "system", "content": self.commitment_manager.format_for_context()},
-            {"role": "system", "content": self.search_manager.format_for_context([])},
+            {"role": "system", "content": self.task_state.format_commitments()},
+            {"role": "system", "content": self.context_engine.format_empty_retrieval()},
             {"role": "system", "content": self.memory_category_manager.format_for_context()},
             {"role": "system", "content": self.memory_item_manager.format_for_context()},
             {"role": "system", "content": self.supervision_manager.format_for_context(self.get_supervision_state())},
@@ -539,11 +470,11 @@ class MemoryManager:
         ]
         return {
             "messages": messages,
-            "context_stats": self.context_compressor.estimate_context(messages),
+            "context_stats": self.context_engine.estimate_context(messages),
             "memory_pipeline": self.memory_pipeline.describe(),
             "last_pipeline_result": self.last_pipeline_result,
             "intent": intent_classification,
-            "retrieval_plan": self.search_manager.build_retrieval_plan(current_prompt, debug_results) if current_prompt else {},
+            "retrieval_plan": self.context_engine.build_retrieval_plan(current_prompt, debug_results) if current_prompt else {},
             "task_state": self.get_task_state(),
             "task_view": self.get_task_view(),
             "structured_summary": self.get_structured_memory_summary(),
@@ -565,6 +496,9 @@ class MemoryManager:
         if not time_text:
             return text
         return f"[历史记录时间: {time_text}]\n{text}"
+
+    def with_current_time(self, text: str) -> str:
+        return self._with_current_time(text)
 
     def _with_current_time(self, text: str) -> str:
         current_time = datetime.now().isoformat(timespec="seconds")

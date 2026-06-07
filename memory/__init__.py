@@ -1,27 +1,24 @@
-from .CommitmentManager import CommitmentManager
-from .ContextCompressor import ContextCompressor
-from .ContextPlanner import ContextPlanner
-from .InsightManager import InsightManager
-from .IntentManager import IntentManager
-from .MemoryCategoryManager import MemoryCategoryManager
-from .MemoryGovernanceManager import MemoryGovernanceManager
-from .MemoryExtractor import MemoryExtractor
-from .MemoryItemManager import MemoryItemManager
-from .MemoryManager import MemoryManager
-from .MemoryPipeline import MemoryPipeline
-from .MemoryResourceManager import MemoryResourceManager
-from .ReflectionManager import ReflectionManager
-from .SearchManager import SearchManager
-from .SemanticDialogueManager import SemanticDialogueManager
-from .SupervisionManager import SupervisionManager
-from .SummaryManager import SummaryManager
-from .TaskManager import TaskManager
-from .TaskStateManager import TaskStateManager
-from .UserProfileManager import UserProfileManager
+from .commitment import CommitmentManager
+from .context_compressor import ContextCompressor
+from .context_engine import ContextEngine
+from .context_planner import ContextPlanner
+from .governance import MemoryGovernanceManager
+from .interpreter import InsightManager, IntentManager, MemoryExtractor, SemanticDialogueManager, SummaryManager
+from .manager import MemoryManager
+from .pipeline import MemoryPipeline
+from .store import MemoryCategoryManager, MemoryItemManager, MemoryResourceManager
+from .reflection import ReflectionManager
+from .search import SearchManager
+from .supervision import SupervisionManager
+from .task_manager import TaskManager
+from .task_state import TaskState
+from .task_state_manager import TaskStateManager
+from .profile import UserProfileManager
 
 __all__ = [
     "CommitmentManager",
     "ContextCompressor",
+    "ContextEngine",
     "ContextPlanner",
     "InsightManager",
     "IntentManager",
@@ -38,6 +35,7 @@ __all__ = [
     "SupervisionManager",
     "SummaryManager",
     "TaskManager",
+    "TaskState",
     "TaskStateManager",
     "UserProfileManager",
 ]

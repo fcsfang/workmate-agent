@@ -2,11 +2,12 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .paths import memory_data_path
+
 
 class SearchManager:
     def __init__(self, index_path: Optional[str] = None):
-        memory_dir = Path(__file__).resolve().parent
-        self.index_path = Path(index_path) if index_path else memory_dir / "retrieval_index.json"
+        self.index_path = Path(index_path) if index_path else memory_data_path("retrieval_index.json")
         self.index_path.parent.mkdir(parents=True, exist_ok=True)
 
     def build_index(

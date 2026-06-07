@@ -3,11 +3,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from .paths import memory_data_path
+
 
 class TaskStateManager:
     def __init__(self, state_path: Optional[str] = None):
-        memory_dir = Path(__file__).resolve().parent
-        self.state_path = Path(state_path) if state_path else memory_dir / "task_state.json"
+        self.state_path = Path(state_path) if state_path else memory_data_path("task_state.json")
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
 
     def load_state(self) -> Dict[str, Any]:

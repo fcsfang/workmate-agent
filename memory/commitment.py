@@ -3,11 +3,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .paths import memory_data_path
+
 
 class CommitmentManager:
     def __init__(self, commitments_path: Optional[str] = None, llm_client: Optional[Any] = None):
-        memory_dir = Path(__file__).resolve().parent
-        self.commitments_path = Path(commitments_path) if commitments_path else memory_dir / "commitments.json"
+        self.commitments_path = Path(commitments_path) if commitments_path else memory_data_path("commitments.json")
         self.llm_client = llm_client
         self.commitments_path.parent.mkdir(parents=True, exist_ok=True)
 

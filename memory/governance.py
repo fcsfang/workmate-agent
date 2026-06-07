@@ -4,13 +4,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from .paths import memory_data_path
+
 
 class MemoryGovernanceManager:
     VERSION_PATTERN = re.compile(r"V(\d+)\.(\d+)(?:\.(\d+))?", re.IGNORECASE)
 
     def __init__(self, conflicts_path: Optional[str] = None, llm_client: Optional[Any] = None):
-        memory_dir = Path(__file__).resolve().parent
-        self.conflicts_path = Path(conflicts_path) if conflicts_path else memory_dir / "memory_conflicts.json"
+        self.conflicts_path = Path(conflicts_path) if conflicts_path else memory_data_path("memory_conflicts.json")
         self.llm_client = llm_client
         self.conflicts_path.parent.mkdir(parents=True, exist_ok=True)
 

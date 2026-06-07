@@ -18,9 +18,9 @@ Workmate Agent 是一个面向个人学习和工作执行的长期工位搭子�
 ## 功能
 
 - 连续对话：命令行启动后可以多轮输入，直到用户主动退出
-- 本地记忆：每轮用户输入和 Agent 回复都会保存到 `memory/records.json`
+- 本地记忆：每轮用户输入和 Agent 回复都会保存到 `memory/data/records.json`
 - 上下文注入：下一轮调用模型前，会读取最近几轮对话并生成长期记忆摘要
-- 统一记忆项：V0.5 起会把任务、进展、阻塞、承诺、用户偏好和监督模式沉淀到 `memory/memory_items.json`
+- 统一记忆项：V0.5 起会把任务、进展、阻塞、承诺、用户偏好和监督模式沉淀到 `memory/data/memory_items.json`
 - 三层记忆模型：V0.5.1 起增加 `Resource / MemoryItem / MemoryCategory`，分别追踪原始来源、原子记忆和分类摘要
 - 语义压缩：V0.5.2 起把原始对话提炼为 `semantic_dialogues`，上下文注入优先使用核心语义以节省窗口
 - 自我反省：V0.5.2 起每若干轮对话或用户手动要求复盘时，提炼高阶洞察并记录反省结果
@@ -40,41 +40,40 @@ Workmate Agent 是一个面向个人学习和工作执行的长期工位搭子�
 ```text
 workmate-agent/
 ├── memory/
-│   ├── MemoryManager.py   # 记忆读写、摘要和上下文组装
-│   ├── MemoryExtractor.py # 每轮对话后的结构化事实提取
-│   ├── MemoryResourceManager.py # v0.5.1 原始对话来源/资源层
-│   ├── MemoryItemManager.py # v0.5 统一记忆项治理
-│   ├── MemoryCategoryManager.py # v0.5.1 分类摘要层
-│   ├── SemanticDialogueManager.py # v0.5.2 原始对话语义压缩
-│   ├── InsightManager.py # v0.5.2 高阶洞察
-│   ├── ReflectionManager.py # v0.5.2 自我反省触发和记录
-│   ├── MemoryGovernanceManager.py # v0.5.2 陈旧/冲突记忆治理
-│   ├── MemoryPipeline.py  # v0.5 每轮对话记忆写入流水线
-│   ├── ContextCompressor.py # v0.5 上下文预算和压缩
-│   ├── ContextPlanner.py  # 根据当前输入选择需要注入的上下文
-│   ├── CommitmentManager.py # 承诺和未关闭待办追踪
-│   ├── SummaryManager.py  # 模型优先的每日摘要和最近7天摘要
-│   ├── UserProfileManager.py # 长期用户画像
-│   ├── SearchManager.py   # 轻量关键词历史检索
-│   ├── SupervisionManager.py # v0.5 主动监督信号
-│   ├── TaskManager.py     # v0.4.2 任务/子任务生命周期和事件流水
-│   ├── TaskStateManager.py # 当前任务状态维护
+│   ├── manager.py         # 记忆读写、摘要和上下文组装入口
+│   ├── store.py           # 资源层、统一记忆项、分类摘要
+│   ├── interpreter.py     # 提取、语义压缩、摘要、洞察、意图识别
+│   ├── task_state.py      # 任务、当前状态、承诺聚合入口
+│   ├── context_engine.py  # 检索、上下文规划、上下文压缩聚合入口
+│   ├── reflection.py      # v0.5.2 自我反省触发和记录
+│   ├── governance.py      # v0.5.2 陈旧/冲突记忆治理
+│   ├── pipeline.py        # v0.5 每轮对话记忆写入流水线
+│   ├── context_compressor.py # v0.5 上下文预算和压缩
+│   ├── context_planner.py # 根据当前输入选择需要注入的上下文
+│   ├── commitment.py      # 承诺和未关闭待办追踪
+│   ├── profile.py         # 长期用户画像
+│   ├── search.py          # 轻量关键词历史检索
+│   ├── supervision.py     # v0.5 主动监督信号
+│   ├── task_manager.py    # v0.4.2 任务/子任务生命周期和事件流水
+│   ├── task_state_manager.py # 当前任务状态维护
+│   ├── paths.py           # 运行时记忆数据目录配置
 │   ├── __init__.py
-│   ├── records.json       # 本地对话记录，运行时生成
-│   ├── memory_resources.json # 资源层索引，运行时生成
-│   ├── memory_items.json  # 统一记忆项，运行时生成
-│   ├── memory_categories.json # 分类摘要，运行时生成
-│   ├── semantic_dialogues.json # 原始对话语义压缩，运行时生成
-│   ├── high_level_insights.json # 高阶洞察，运行时生成
-│   ├── memory_conflicts.json # 冲突/陈旧记忆治理记录，运行时生成
-│   ├── reflections.json    # 自我反省记录，运行时生成
-│   ├── tasks.json         # 任务生命周期，运行时生成
-│   ├── task_events.json   # 任务事件流水，运行时生成
-│   ├── task_state.json    # 当前任务状态，运行时生成
-│   ├── commitments.json   # 未关闭承诺，运行时生成
-│   ├── user_profile.json  # 长期画像，运行时生成
-│   ├── retrieval_index.json # 检索索引，运行时生成
-│   └── daily_summaries/   # 每日摘要，运行时生成
+│   └── data/              # 运行时记忆文件，默认不提交
+│       ├── records.json
+│       ├── memory_resources.json
+│       ├── memory_items.json
+│       ├── memory_categories.json
+│       ├── semantic_dialogues.json
+│       ├── high_level_insights.json
+│       ├── memory_conflicts.json
+│       ├── reflections.json
+│       ├── tasks.json
+│       ├── task_events.json
+│       ├── task_state.json
+│       ├── commitments.json
+│       ├── user_profile.json
+│       ├── retrieval_index.json
+│       └── daily_summaries/
 ├── src/
 │   ├── LLMClient.py       # 大模型 API 客户端
 │   ├── core.py            # WorkmateAgent 和命令行连续对话入口
@@ -124,7 +123,7 @@ conda run -n agent python -m src.web
 http://127.0.0.1:7860
 ```
 
-页面会显示对话区、最近记忆、记忆摘要和本地记录数量。每次发送消息都会调用同一个 `WorkmateAgent` 流程，并写入 `memory/records.json`。
+页面会显示对话区、最近记忆、记忆摘要和本地记录数量。每次发送消息都会调用同一个 `WorkmateAgent` 流程，并写入 `memory/data/records.json`。
 
 0.5.2+ 版本还会在页面左侧显示当前任务生命周期、子任务、最近 7 天摘要、未关闭承诺、长期用户画像、统一记忆项、记忆分类、高阶洞察、语义压缩和主动监督信号，并提供 `MODEL CONTEXT` 调试区。每日摘要会优先调用模型生成 JSON 记忆，失败时退回规则摘要；`MODEL CONTEXT` 会展示上一轮实际发送给模型的 messages、上下文规模、检索计划和流水线状态，方便检查 Agent 到底带入了哪些记忆。
 
