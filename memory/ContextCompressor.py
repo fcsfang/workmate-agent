@@ -1,3 +1,4 @@
+import re
 from typing import Dict, List
 
 
@@ -57,4 +58,35 @@ class ContextCompressor:
         text = str(text or "").strip()
         if len(text) <= max_length:
             return text
-        return text[:max_length].rstrip() + "\n...（已压缩）"
+        suffix = "\n...（已压缩）"
+        if max_length <= len(suffix) + 20:
+            return text[:max_length].rstrip()
+
+        budget = max_length - len(suffix)
+        units = self._semantic_units(text)
+        kept = []
+        used = 0
+        for unit in units:
+            separator = "\n" if kept else ""
+            addition = f"{separator}{unit}"
+            if used + len(addition) > budget:
+                break
+            kept.append(unit)
+            used += len(addition)
+
+        if kept:
+            return "\n".join(kept).rstrip() + suffix
+        return text[:budget].rstrip() + suffix
+
+    def _semantic_units(self, text: str) -> List[str]:
+        units = []
+        for paragraph in re.split(r"\n+", text):
+            paragraph = paragraph.strip()
+            if not paragraph:
+                continue
+            parts = re.split(r"(?<=[。！？!?；;])\s*", paragraph)
+            for part in parts:
+                part = part.strip()
+                if part:
+                    units.append(part)
+        return units or [text]

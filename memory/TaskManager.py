@@ -11,12 +11,17 @@ class TaskManager:
         self,
         tasks_path: Optional[str] = None,
         events_path: Optional[str] = None,
+        llm_client: Optional[Any] = None,
     ):
         memory_dir = Path(__file__).resolve().parent
         self.tasks_path = Path(tasks_path) if tasks_path else memory_dir / "tasks.json"
         self.events_path = Path(events_path) if events_path else memory_dir / "task_events.json"
+        self.llm_client = llm_client
         self.tasks_path.parent.mkdir(parents=True, exist_ok=True)
         self.events_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def set_llm_client(self, llm_client: Any) -> None:
+        self.llm_client = llm_client
 
     def load_tasks(self) -> List[Dict[str, Any]]:
         return self._load_list(self.tasks_path)
@@ -55,7 +60,23 @@ class TaskManager:
 
         if task:
             previous_status = task.get("status", "inbox")
-            self._apply_turn(task, extracted, progress, blockers, next_actions, user_commitments, subtasks, now)
+            lifecycle_decision = self._interpret_lifecycle_with_llm(
+                task,
+                extracted,
+                user_input,
+                assistant_output,
+            )
+            self._apply_turn(
+                task,
+                extracted,
+                progress,
+                blockers,
+                next_actions,
+                user_commitments,
+                subtasks,
+                now,
+                lifecycle_decision,
+            )
             if task.get("status") != previous_status:
                 self._append_event(
                     "status_changed",
@@ -185,13 +206,18 @@ class TaskManager:
         user_commitments: List[str],
         subtasks: List[Dict[str, str]],
         now: datetime,
+        lifecycle_decision: Optional[Dict[str, Any]] = None,
     ) -> None:
         now_text = now.isoformat(timespec="seconds")
+        lifecycle_decision = lifecycle_decision or {}
         if extracted.get("task") and not task.get("title"):
             task["title"] = self._compact(extracted["task"], 160)
         if progress:
             task["progress"] = self._merge_unique(task.get("progress", []), [progress], 12)
             task["last_user_update_at"] = now_text
+        llm_subtasks = self._subtasks(lifecycle_decision.get("subtask_updates", []))
+        if llm_subtasks:
+            subtasks = self._merge_subtask_updates(subtasks, llm_subtasks)
         if subtasks:
             task["subtasks"] = self._merge_subtasks(task.get("subtasks", []), subtasks, now_text)
         if blockers:
@@ -202,7 +228,8 @@ class TaskManager:
         if user_commitments:
             task["user_commitments"] = self._merge_unique(task.get("user_commitments", []), user_commitments, 10)
 
-        status = self._infer_status(extracted, task)
+        status = self._decision_status(lifecycle_decision.get("task_status", "")) if lifecycle_decision else ""
+        status = status or self._infer_status(extracted, task)
         if status == "active" and not task.get("started_at"):
             task["started_at"] = now_text
         if status == "done":
@@ -215,6 +242,67 @@ class TaskManager:
         task["status"] = status
         task["updated_at"] = now_text
         task["next_check_at"] = self._next_check_at(status, now)
+
+    def _interpret_lifecycle_with_llm(
+        self,
+        task: Dict[str, Any],
+        extracted: Dict[str, Any],
+        user_input: str,
+        assistant_output: str,
+    ) -> Dict[str, Any]:
+        if not self.llm_client:
+            return {}
+        schema = {
+            "task_status": "inbox|planned|active|blocked|done|abandoned",
+            "subtask_updates": [
+                {
+                    "title": "子任务标题，只能使用已有子任务或用户当前明确提出的子任务",
+                    "status": "inbox|planned|active|blocked|done|abandoned",
+                }
+            ],
+            "reason": "一句话说明",
+            "confidence": 0.0,
+        }
+        payload = {
+            "current_task": task,
+            "extracted": extracted,
+            "user_input": user_input,
+            "assistant_output": assistant_output,
+        }
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "你是 Workmate Agent 的任务生命周期解释器。"
+                    "只根据用户当前输入和结构化提取结果判断任务状态，不要制定技术路线。"
+                    "只输出合法 JSON，不要 Markdown，不要解释。"
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    "要求：\n"
+                    "1. 不要因为助手建议而把任务判为完成。\n"
+                    "2. 用户明确说完成/放弃/卡住时才更新到 done/abandoned/blocked。\n"
+                    "3. 用户只是提出计划时用 planned 或 active，不要夸大进展。\n"
+                    "4. subtask_updates 只能包含已有子任务或用户当前明确提出的子任务。\n"
+                    "5. 输出字段必须符合 schema。\n\n"
+                    f"schema:\n{json.dumps(schema, ensure_ascii=False, indent=2)}\n\n"
+                    f"payload:\n{json.dumps(payload, ensure_ascii=False, indent=2)}"
+                ),
+            },
+        ]
+        try:
+            raw = self.llm_client.invoke_raw(messages) if hasattr(self.llm_client, "invoke_raw") else self.llm_client.invoke(messages=messages)
+            parsed = self._parse_json_object(raw)
+            return {
+                "task_status": self._decision_status(parsed.get("task_status", "")),
+                "subtask_updates": self._subtasks(parsed.get("subtask_updates", [])),
+                "reason": self._compact(parsed.get("reason", ""), 180),
+                "confidence": self._float(parsed.get("confidence", 0.7)),
+            }
+        except Exception:
+            return {}
 
     def _infer_status(self, extracted: Dict[str, Any], task: Dict[str, Any]) -> str:
         text = " ".join([
@@ -361,6 +449,25 @@ class TaskManager:
                 })
         return merged[:20]
 
+    def _merge_subtask_updates(
+        self,
+        first: List[Dict[str, str]],
+        second: List[Dict[str, str]],
+    ) -> List[Dict[str, str]]:
+        merged = list(first)
+        for item in second:
+            title = item.get("title", "")
+            if not title:
+                continue
+            match = self._find_subtask(merged, title)
+            if match:
+                new_status = self._status(item.get("status", match.get("status", "planned")))
+                if self._status_rank(new_status) >= self._status_rank(match.get("status", "planned")):
+                    match["status"] = new_status
+            else:
+                merged.append({"title": title, "status": self._status(item.get("status", "planned"))})
+        return merged[:12]
+
     def _normalize_subtask(self, item: Dict[str, Any], now_text: str) -> Dict[str, Any]:
         title = self._compact(item.get("title", ""), 140)
         status = self._status(item.get("status", "planned"))
@@ -407,6 +514,10 @@ class TaskManager:
             return status
         return "planned"
 
+    def _decision_status(self, status: Any) -> str:
+        status = str(status or "").strip().lower()
+        return status if status in self.VALID_STATUSES else ""
+
     def _status_rank(self, status: str) -> int:
         order = {
             "inbox": 0,
@@ -421,6 +532,27 @@ class TaskManager:
     def _make_id(self, now: str, title: str) -> str:
         safe_time = now.replace("-", "").replace(":", "").replace("T", "-")
         return f"task-{safe_time}-{abs(hash(title)) % 10000:04d}"
+
+    def _parse_json_object(self, text: str) -> Dict[str, Any]:
+        text = str(text or "").strip()
+        if text.startswith("```"):
+            text = text.strip("`")
+            if text.startswith("json"):
+                text = text[4:].strip()
+        start = text.find("{")
+        end = text.rfind("}")
+        if start == -1 or end == -1 or end < start:
+            raise ValueError("task lifecycle output is not a JSON object")
+        parsed = json.loads(text[start:end + 1])
+        if not isinstance(parsed, dict):
+            raise ValueError("task lifecycle output JSON is not object")
+        return parsed
+
+    def _float(self, value: Any) -> float:
+        try:
+            return max(0.0, min(1.0, float(value)))
+        except (TypeError, ValueError):
+            return 0.7
 
     def _compact(self, text: Any, max_length: int = 140) -> str:
         text = " ".join(str(text or "").split())

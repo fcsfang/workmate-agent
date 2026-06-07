@@ -2,6 +2,7 @@ from .CommitmentManager import CommitmentManager
 from .ContextCompressor import ContextCompressor
 from .ContextPlanner import ContextPlanner
 from .InsightManager import InsightManager
+from .IntentManager import IntentManager
 from .MemoryCategoryManager import MemoryCategoryManager
 from .MemoryGovernanceManager import MemoryGovernanceManager
 from .MemoryExtractor import MemoryExtractor
@@ -23,6 +24,7 @@ __all__ = [
     "ContextCompressor",
     "ContextPlanner",
     "InsightManager",
+    "IntentManager",
     "MemoryCategoryManager",
     "MemoryGovernanceManager",
     "MemoryExtractor",

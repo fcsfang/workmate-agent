@@ -8,6 +8,27 @@
 - build_context中的available_context{} 无论如何都格式化全部 16 个数据块（优化方向： 先做意图判断，再按需加载。比如判断是 chat 意图，就只加载 3 个必要块，不加载 reflections、memory_summary 等昂贵的数据。）
 - 压缩是"一刀切截断"，可能切断关键信息(优化方向： 截断前先提取摘要（用 LLM 压缩），或者按句子边界截断，保证信息的完整性。)
 
+### 已实现
+#### 第一批优化
+- `SearchManager.search()` 改为优先读取 `memory/retrieval_index.json`，不再每次检索都重建索引
+- `refresh_search_index()` 继续作为记忆写入后的索引刷新入口，保持写入和检索分离
+- 检索索引保存 `salience`、`confidence`、`status` 和 `updated_at` 等排序元数据，避免检索时依赖原始 payload
+- `ContextPlanner` 新增 `required_context_keys()`，先判断输入意图，再返回需要加载的上下文块
+- `MemoryManager.build_context_messages()` 改为按需加载和格式化上下文，普通聊天不再预先格式化全部记忆块
+- `ContextCompressor` 改为按换行和句子边界压缩，降低截断关键信息的概率
+
+#### 第二批优化
+- 新增 `IntentManager`，用于本轮输入意图识别
+- 意图识别优先调用 LLM 输出结构化 JSON，支持 `chat`、`task`、`review`、`supervision`、`search` 五类
+- 当 LLM 不可用、输出非法或分类异常时，自动回退到规则分类
+- `ContextPlanner` 支持接收外部意图分类结果，避免同一轮重复判断
+- `MemoryManager.build_context_messages()` 会先执行意图分类，再根据分类结果按需加载上下文
+- `build_context_debug()` 暴露本轮 `intent`，方便调试分类来源和置信度
+- `CommitmentManager` 改为 LLM 优先判断承诺新增和关闭，规则逻辑作为兜底
+- `TaskManager` 改为 LLM 优先解释任务生命周期和子任务状态变化，规则状态推断作为兜底
+- `UserProfileManager` 改为 LLM 优先提取稳定用户画像增量，默认低压力沟通偏好继续作为产品约束保留
+- `MemoryGovernanceManager` 改为 LLM 优先识别陈旧事实、冲突事实、低价值记忆和显著性提升，规则治理作为兜底
+
 ## V0.5.2
 ### 目标
 - 继续优化记忆系统，不跳到 V0.6

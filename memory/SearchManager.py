@@ -112,7 +112,7 @@ class SearchManager:
     def search(
         self,
         query: str,
-        records: List[Dict[str, Any]],
+        records: Optional[List[Dict[str, Any]]] = None,
         daily_summaries: Optional[List[Dict[str, Any]]] = None,
         user_profile: Optional[Dict[str, Any]] = None,
         commitments: Optional[List[Dict[str, Any]]] = None,
@@ -126,7 +126,8 @@ class SearchManager:
         if not self.needs_retrieval(query):
             return []
 
-        items = self.build_index(
+        items = self.load_index()
+        if not items and self._has_source_data(
             records,
             daily_summaries,
             user_profile,
@@ -136,7 +137,18 @@ class SearchManager:
             memory_resources,
             semantic_dialogues,
             insights,
-        )
+        ):
+            items = self.build_index(
+                records or [],
+                daily_summaries,
+                user_profile,
+                commitments,
+                memory_items,
+                memory_categories,
+                memory_resources,
+                semantic_dialogues,
+                insights,
+            )
         query_terms = self._terms(query)
         if not query_terms:
             return []
@@ -147,15 +159,14 @@ class SearchManager:
             score = sum(item["terms"].count(term) for term in query_terms)
             if item["type"] in preferred_types:
                 score += 1
-            payload = item.get("payload", {})
-            if item["type"] == "memory_item" and isinstance(payload, dict):
-                score += float(payload.get("salience", 0))
-                if payload.get("status") == "stale":
+            if item["type"] == "memory_item":
+                score += float(item.get("salience", 0))
+                if item.get("status") == "stale":
                     score -= 0.8
-            if item["type"] == "memory_category" and isinstance(payload, dict):
-                score += float(payload.get("salience", 0))
-            if item["type"] == "high_level_insight" and isinstance(payload, dict):
-                score += 1 + float(payload.get("confidence", 0))
+            if item["type"] == "memory_category":
+                score += float(item.get("salience", 0))
+            if item["type"] == "high_level_insight":
+                score += 1 + float(item.get("confidence", 0))
             if item["type"] == "semantic_dialogue":
                 score += 0.5
             if score:
@@ -217,14 +228,58 @@ class SearchManager:
         with self.index_path.open("w", encoding="utf-8") as file:
             json.dump(serializable, file, ensure_ascii=False, indent=2)
 
+    def load_index(self) -> List[Dict[str, Any]]:
+        if not self.index_path.exists() or self.index_path.stat().st_size == 0:
+            return []
+        try:
+            with self.index_path.open("r", encoding="utf-8") as file:
+                data = json.load(file)
+        except json.JSONDecodeError:
+            return []
+        if not isinstance(data, list):
+            return []
+        return [item for item in (self._normalize_index_item(item) for item in data) if item]
+
     def _item(self, item_type: str, item_id: str, text: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         return {
             "type": item_type,
             "id": item_id,
             "text": self._compact(text, 500),
             "terms": self._terms(text),
+            "salience": float(payload.get("salience", 0)) if isinstance(payload, dict) else 0,
+            "confidence": float(payload.get("confidence", 0)) if isinstance(payload, dict) else 0,
+            "status": payload.get("status", "") if isinstance(payload, dict) else "",
+            "updated_at": payload.get("updated_at", "") if isinstance(payload, dict) else "",
             "payload": payload,
         }
+
+    def _normalize_index_item(self, item: Any) -> Dict[str, Any]:
+        if not isinstance(item, dict) or not item.get("type"):
+            return {}
+        text = self._compact(item.get("text", ""), 500)
+        if not text:
+            return {}
+        terms = item.get("terms")
+        if not isinstance(terms, list):
+            terms = self._terms(text)
+        return {
+            "type": item.get("type", ""),
+            "id": item.get("id", ""),
+            "text": text,
+            "terms": [str(term) for term in terms],
+            "salience": float(item.get("salience", 0)),
+            "confidence": float(item.get("confidence", 0)),
+            "status": item.get("status", ""),
+            "updated_at": item.get("updated_at", ""),
+        }
+
+    def _has_source_data(self, *values: Any) -> bool:
+        for value in values:
+            if isinstance(value, list) and value:
+                return True
+            if isinstance(value, dict) and any(value.values()):
+                return True
+        return False
 
     def _terms(self, text: str) -> List[str]:
         text = str(text)
