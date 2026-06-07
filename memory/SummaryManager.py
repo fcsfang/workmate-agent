@@ -41,11 +41,17 @@ class SummaryManager:
         today = date.today()
         dates = [(today - timedelta(days=offset)).isoformat() for offset in range(days - 1, -1, -1)]
         daily_summaries = []
+        records_by_date = {day: [] for day in dates}
+        for record in records:
+            record_day = self._record_date(record)
+            if record_day in records_by_date:
+                records_by_date[record_day].append(record)
+
         for day in dates:
             cached_summary = self.load_daily_summary(day)
             if cached_summary:
                 daily_summaries.append(cached_summary)
-            else:
+            elif records_by_date.get(day):
                 daily_summaries.append(self.summarize_day(records, target_date=day, save=save_daily, use_llm=use_llm))
 
         task_counter = Counter()
@@ -92,7 +98,7 @@ class SummaryManager:
     def format_recent_summary_for_context(self, records: List[Dict[str, Any]], days: int = 7) -> str:
         summary = self.summarize_recent_days(records, days=days, save_daily=True, use_llm=False)
         lines = [
-            f"以下是最近{days}天摘要。请用它判断用户近期主线、反复阻塞和下一步监督方式。",
+            f"以下是最近{days}天摘要。请用它记住用户近期主线和反复阻塞；只有相关时给一句轻量建议。",
             f"时间范围: {summary['range']['start']} 到 {summary['range']['end']}",
         ]
 
@@ -113,7 +119,7 @@ class SummaryManager:
         if summary["next_actions"]:
             lines.append("待推进下一步: " + "；".join(summary["next_actions"][:5]))
         if summary["supervision_advice"]:
-            lines.append("监督建议: " + "；".join(summary["supervision_advice"][:3]))
+            lines.append("轻量建议: " + "；".join(summary["supervision_advice"][:3]))
 
         if len(lines) == 2:
             lines.append("暂无足够记录形成趋势。")
@@ -129,7 +135,7 @@ class SummaryManager:
                 "role": "system",
                 "content": (
                     "你是 Workmate Agent 的记忆总结器。"
-                    "你的任务是把一天的对话记录总结成稳定、可复用、可监督的 JSON 记忆。"
+                    "你的任务是把一天的对话记录总结成稳定、可复用、低压力的 JSON 记忆。"
                     "只输出 JSON，不要 Markdown，不要解释。"
                 ),
             },
@@ -176,17 +182,18 @@ class SummaryManager:
             "blockers": ["阻塞、拖延、分心、风险"],
             "next_actions": ["下一步具体行动"],
             "patterns": ["当天暴露出的行为模式"],
-            "supervision_advice": "下次应该如何监督用户",
+            "supervision_advice": "下次如何低压力回应或给一句轻量建议",
         }
 
         return (
             "请根据以下一天内的对话记录生成日摘要。\n"
             "要求：\n"
-            "1. 只保留对长期监督有用的信息。\n"
+            "1. 只保留对长期记忆、任务整理和轻量陪伴有用的信息。\n"
             "2. 不要把普通寒暄写入摘要。\n"
             "3. 区分已经完成、仍在推进和遇到阻塞的内容；不要把缺少证明本身写成问题。\n"
-            "4. 所有数组最多 8 项，每项尽量短。\n"
-            "5. 必须输出合法 JSON，字段使用下面 schema。\n\n"
+            "4. 如果需要建议，保持低压力，不要催促，不要整段施压。\n"
+            "5. 所有数组最多 8 项，每项尽量短。\n"
+            "6. 必须输出合法 JSON，字段使用下面 schema。\n\n"
             f"JSON schema 示例：\n{json.dumps(schema, ensure_ascii=False, indent=2)}\n\n"
             f"对话记录：\n{json.dumps(compact_records, ensure_ascii=False, indent=2)}"
         )

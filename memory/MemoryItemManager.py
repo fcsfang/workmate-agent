@@ -141,10 +141,10 @@ class MemoryItemManager:
         items = items if items is not None else self.get_recent_items(limit=limit)
         if not items:
             return "暂无统一记忆项。"
-        lines = ["以下是统一记忆项。请优先使用高相关、高显著性的事实，不要机械复述。"]
+        lines = ["以下是统一记忆项。请优先使用高相关、高显著性的事实来记住和整理，不要机械复述，不要制造压力。"]
         for index, item in enumerate(items[:limit], start=1):
             parts = [
-                f"{index}. [{item.get('type', '')}/{item.get('category', '')}/{item.get('status', 'active')}] {item.get('content', '')}",
+                f"{index}. [{item.get('type', '')}/{item.get('category', '')}/{item.get('status', 'active')}] {self._soften_context_text(item.get('content', ''))}",
                 f"salience={item.get('salience', 0)}",
             ]
             if item.get("task_title"):
@@ -288,6 +288,20 @@ class MemoryItemManager:
 
     def _looks_like_forced_proof(self, text: str) -> bool:
         return any(keyword in str(text) for keyword in ["证据", "截图", "截屏", "强制验证", "无证据不承认"])
+
+    def _soften_context_text(self, text: Any) -> str:
+        replacements = {
+            "强制用户": "可以轻量提醒用户",
+            "直接指出": "温和指出",
+            "强调真实产出": "关注核心事项和实际进展",
+            "监督": "轻量提醒",
+            "质疑": "提出一个问题",
+            "催促": "轻轻提醒",
+        }
+        softened = str(text or "")
+        for old, new in replacements.items():
+            softened = softened.replace(old, new)
+        return self._compact(softened, 220)
 
     def _compact(self, text: Any, max_length: int = 160) -> str:
         text = " ".join(str(text or "").split())

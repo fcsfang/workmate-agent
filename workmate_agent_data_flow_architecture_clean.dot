@@ -1,0 +1,101 @@
+
+digraph G {
+  graph [
+    rankdir=TB,
+    splines=ortho,
+    bgcolor="#f8fafc",
+    pad="0.35",
+    nodesep="0.65",
+    ranksep="0.85",
+    fontname="PingFang SC",
+    labelloc="t",
+    label="Workmate Agent 数据流架构图（清晰版）\n箭头方向 = 数据流向；虚线 = 读取/检索/流式或 LLM 辅助路径",
+    fontsize=28,
+    fontcolor="#0f172a"
+  ];
+  node [shape=box, style="rounded,filled", penwidth=1.8, fontname="PingFang SC", fontsize=15, color="#1f2937", margin="0.16,0.10"];
+  edge [fontname="PingFang SC", fontsize=12, color="#0f766e", penwidth=2.0, arrowsize=0.8];
+
+  input [label="输入源\nCLI: run_chat() / stdin\nWeb: POST /api/chat\nBrowser: web/index.html", fillcolor="#dff2fe"];
+  adapter [label="HTTP / CLI 适配\nWorkmateRequestHandler\n_read_json() / SSE\n或 stdin/stdout", fillcolor="#dff2fe"];
+  agent [label="WorkmateAgent\ninvoke_stream() / invoke()\n编排本轮对话", fillcolor="#fef3c7"];
+  output [label="输出到用户\nSSE delta / stdout chunks\n完成后返回 memory/context", fillcolor="#dff2fe"];
+
+  subgraph cluster_context {
+    label="上下文构建与模型调用";
+    fontsize=18;
+    color="#bbf7d0";
+    style="rounded,filled";
+    fillcolor="#f0fdf4";
+    mm [label="MemoryManager\nbuild_context_messages(prompt)\n收集候选上下文", fillcolor="#dcfce7"];
+    search_read [label="SearchManager\nsearch_related_memories()\nbuild_retrieval_plan()", fillcolor="#dcfce7"];
+    planner [label="ContextPlanner\n按意图选择上下文\nchat/task/review/search", fillcolor="#dcfce7"];
+    comp [label="ContextCompressor\n压缩 system messages\n保留最近对话预算", fillcolor="#dcfce7"];
+    llm [label="LLMClient\n_build_messages() 加主 systemPrompt\ninvoke_stream() / invoke()", fillcolor="#f3e8ff"];
+    api [label="OpenAI-compatible API\nchat.completions.create\n返回 delta 或完整 message", fillcolor="#f3e8ff"];
+    {rank=same; mm; search_read; planner; comp; llm; api;}
+  }
+
+  subgraph cluster_pipeline {
+    label="回复完成后的记忆流水线（同步顺序执行）";
+    fontsize=18;
+    color="#fecaca";
+    style="rounded,filled";
+    fillcolor="#fff1f2";
+    pipe [label="MemoryPipeline\nprocess_turn(user, assistant)\nrecord_turn → ...", fillcolor="#fee2e2"];
+    extractor [label="MemoryExtractor\nextract_items\nLLM 提炼 extracted JSON\n失败走规则降级", fillcolor="#fee2e2"];
+    task [label="Task Managers\nTaskManager + TaskStateManager\n任务生命周期与快照", fillcolor="#fee2e2"];
+    derived [label="派生记忆 Managers\nSummary / Commitment / Profile\nResource / SemanticDialogue\nMemoryItem / Category\nReflection / Insight / Governance", fillcolor="#fee2e2"];
+    search_write [label="索引刷新\nSearchManager.build_index()\n生成 retrieval_index.json", fillcolor="#dcfce7"];
+    {rank=same; pipe; extractor; task; derived; search_write;}
+  }
+
+  subgraph cluster_store {
+    label="本地 JSON 持久化层";
+    fontsize=18;
+    color="#cbd5e1";
+    style="rounded,filled";
+    fillcolor="#eef2f7";
+    store_raw [label="原始对话与任务\nrecords.json\ntasks.json / task_events.json\ntask_state.json", fillcolor="#e5e7eb"];
+    store_long [label="长期记忆\ncommitments.json\nuser_profile.json\ndaily_summaries/*.json", fillcolor="#e5e7eb"];
+    store_high [label="高阶记忆\nmemory_items/categories/resources.json\nsemantic_dialogues.json\nhigh_level_insights.json\nreflections / conflicts", fillcolor="#e5e7eb"];
+    store_index [label="检索索引\nretrieval_index.json", fillcolor="#e5e7eb"];
+    {rank=same; store_raw; store_long; store_high; store_index;}
+  }
+
+  // Main request/response path
+  input -> adapter [label="1 prompt / HTTP 请求"];
+  adapter -> agent [label="2 prompt"];
+  agent -> mm [label="3 build_context_messages(prompt)"];
+  mm -> search_read [label="4 query"];
+  search_read -> planner [label="5 related memories + plan"];
+  planner -> comp [label="6 selected context"];
+  comp -> llm [label="7 messages"];
+  llm -> api [label="8 Chat Completions 请求"];
+  api -> llm [label="9 delta / response", style=dashed, color="#7c3aed"];
+  llm -> agent [label="10 assistant_output", style=dashed, color="#7c3aed"];
+  agent -> output [label="11 SSE delta / stdout", style=dashed, color="#7c3aed"];
+
+  // Memory write path
+  agent -> pipe [label="12 完整 response 后 process_turn()"];
+  pipe -> extractor [label="13 user + assistant"];
+  extractor -> task [label="14 extracted"];
+  task -> derived [label="15 task_state + record"];
+  derived -> search_write [label="16 刷新索引输入"];
+
+  // Storage writes
+  pipe -> store_raw [label="写 records.json", color="#c2410c"];
+  task -> store_raw [label="写 tasks/state/events", color="#c2410c"];
+  derived -> store_long [label="写长期记忆", color="#c2410c"];
+  derived -> store_high [label="写高阶记忆", color="#c2410c"];
+  search_write -> store_index [label="写 retrieval_index", color="#c2410c"];
+
+  // Reads and side LLM-assisted paths
+  store_raw -> mm [label="读 records / task state", style=dashed, color="#2563eb"];
+  store_long -> mm [label="读承诺 / 画像 / 摘要", style=dashed, color="#2563eb"];
+  store_high -> mm [label="读语义 / 洞察 / 治理", style=dashed, color="#2563eb"];
+  store_index -> search_read [label="读索引", style=dashed, color="#2563eb"];
+  extractor -> api [label="invoke_raw 提炼 JSON", style=dashed, color="#7c3aed"];
+  derived -> api [label="摘要 / 语义 / 洞察可调用 LLM", style=dashed, color="#7c3aed"];
+  adapter -> store_raw [label="GET /api/memory 或 /api/context 读取状态", style=dashed, color="#2563eb"];
+}

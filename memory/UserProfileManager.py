@@ -64,7 +64,7 @@ class UserProfileManager:
 
         profile["communication_preference"] = self._merge_unique(
             profile.get("communication_preference", []),
-            ["中文", "直接指出问题", "强调真实产出", "不要每次都强制要求证明"],
+            ["中文", "先帮用户记住和整理", "低压力回应", "只给一个小建议", "不要每次都强制要求证明"],
             limit=8,
         )
         profile["updated_at"] = now
@@ -74,7 +74,7 @@ class UserProfileManager:
     def format_for_context(self) -> str:
         profile = self.load_profile()
         lines = [
-            "以下是长期用户画像。请用它调整监督方式，但不要机械复述。",
+            "以下是长期用户画像。请用它调整回应方式：先记住和整理，必要时轻量提醒，不要机械复述。",
             f"长期目标: {profile.get('long_term_goal') or '暂无'}",
         ]
         if profile.get("working_style"):
@@ -109,11 +109,35 @@ class UserProfileManager:
         for key in ["working_style", "failure_modes", "effective_interventions", "communication_preference"]:
             values = profile.get(key, [])
             if isinstance(values, list):
-                profile[key] = [value for value in values if not self._looks_like_forced_proof(value)]
+                profile[key] = self._soften_values(values)
+        profile["communication_preference"] = self._merge_unique(
+            profile.get("communication_preference", []),
+            ["中文", "先帮用户记住和整理", "低压力回应", "只给一个小建议"],
+            limit=8,
+        )
         return profile
 
     def _looks_like_forced_proof(self, text: str) -> bool:
         return any(keyword in str(text) for keyword in ["证据", "截图", "无证据", "可验证", "验证标准", "运行结果后再认可", "不承认"])
+
+    def _soften_values(self, values: List[str]) -> List[str]:
+        result = []
+        replacements = {
+            "直接指出问题": "温和指出一个可能风险",
+            "强调真实产出": "关注核心事项和实际进展",
+            "强监督": "轻量提醒",
+            "监督": "轻量提醒",
+        }
+        for value in values:
+            if self._looks_like_forced_proof(value):
+                continue
+            text = str(value)
+            for old, new in replacements.items():
+                text = text.replace(old, new)
+            text = self._compact(text)
+            if text and text not in result:
+                result.append(text)
+        return result
 
     def _compact(self, text: str, max_length: int = 140) -> str:
         text = " ".join(str(text).split())

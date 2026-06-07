@@ -1,1 +1,254 @@
-[]
+[
+  {
+    "type": "task",
+    "category": "tasks",
+    "content": "对workmate agent项目进行改进优化",
+    "task_id": "task-20260607-141708-5427",
+    "source_record_ids": [
+      "record-20260607-141708-00001-3be69df765"
+    ],
+    "confidence": 0.75,
+    "salience": 0.88,
+    "status": "active",
+    "metadata": {},
+    "id": "mem-20260607-141717-742574c481",
+    "dedupe_key": "task|tasks|task-20260607-141708-5427|3249286586c19cc8",
+    "content_hash": "3249286586c19cc8",
+    "task_title": "对workmate agent项目进行改进优化",
+    "created_at": "2026-06-07T14:17:17",
+    "updated_at": "2026-06-07T14:17:17",
+    "last_accessed_at": "",
+    "usage_count": 0
+  },
+  {
+    "type": "progress",
+    "category": "progress",
+    "content": "读完了workmate agent项目的代码（9:00-16:00）",
+    "task_id": "task-20260607-141708-5427",
+    "source_record_ids": [
+      "record-20260607-141708-00001-3be69df765"
+    ],
+    "confidence": 0.75,
+    "salience": 0.82,
+    "status": "active",
+    "metadata": {},
+    "id": "mem-20260607-141717-12e54328aa",
+    "dedupe_key": "progress|progress|task-20260607-141708-5427|67503c6bcd50b4c3",
+    "content_hash": "67503c6bcd50b4c3",
+    "task_title": "对workmate agent项目进行改进优化",
+    "created_at": "2026-06-07T14:17:17",
+    "updated_at": "2026-06-07T14:17:17",
+    "last_accessed_at": "",
+    "usage_count": 0
+  },
+  {
+    "type": "pattern",
+    "category": "patterns",
+    "content": "一次性长时间专注阅读后直接进入改进阶段，行动力强",
+    "task_id": "task-20260607-141708-5427",
+    "source_record_ids": [
+      "record-20260607-141708-00001-3be69df765"
+    ],
+    "confidence": 0.75,
+    "salience": 0.72,
+    "status": "active",
+    "metadata": {},
+    "id": "mem-20260607-141717-212dbd43a9",
+    "dedupe_key": "pattern|patterns|task-20260607-141708-5427|46e0e1945908c1d4",
+    "content_hash": "46e0e1945908c1d4",
+    "task_title": "对workmate agent项目进行改进优化",
+    "created_at": "2026-06-07T14:17:17",
+    "updated_at": "2026-06-07T14:17:17",
+    "last_accessed_at": "",
+    "usage_count": 0
+  },
+  {
+    "type": "pattern",
+    "category": "patterns",
+    "content": "近期反复出现的阻塞是：优化方向可能过多，易散开修改",
+    "task_id": "task-20260607-141708-5427",
+    "source_record_ids": [
+      "record-20260607-141708-00001-3be69df765"
+    ],
+    "confidence": 0.75,
+    "salience": 0.72,
+    "status": "active",
+    "metadata": {},
+    "id": "mem-20260607-141717-c6a6e8a7dd",
+    "dedupe_key": "pattern|patterns|task-20260607-141708-5427|a7ba74d5bc22138f",
+    "content_hash": "a7ba74d5bc22138f",
+    "task_title": "对workmate agent项目进行改进优化",
+    "created_at": "2026-06-07T14:17:17",
+    "updated_at": "2026-06-07T14:17:17",
+    "last_accessed_at": "",
+    "usage_count": 0
+  },
+  {
+    "type": "pattern",
+    "category": "patterns",
+    "content": "下一步行动经常需要收窄范围，避免发散",
+    "task_id": "task-20260607-141708-5427",
+    "source_record_ids": [
+      "record-20260607-141708-00001-3be69df765"
+    ],
+    "confidence": 0.75,
+    "salience": 0.72,
+    "status": "active",
+    "metadata": {},
+    "id": "mem-20260607-141717-36d11b5634",
+    "dedupe_key": "pattern|patterns|task-20260607-141708-5427|d5d05444e46bd2d7",
+    "content_hash": "d5d05444e46bd2d7",
+    "task_title": "对workmate agent项目进行改进优化",
+    "created_at": "2026-06-07T14:17:17",
+    "updated_at": "2026-06-07T14:17:17",
+    "last_accessed_at": "",
+    "usage_count": 0
+  },
+  {
+    "type": "profile",
+    "category": "profile",
+    "content": "中文",
+    "task_id": "",
+    "source_record_ids": [
+      "record-20260607-141708-00001-3be69df765"
+    ],
+    "confidence": 0.75,
+    "salience": 0.7,
+    "status": "active",
+    "metadata": {},
+    "id": "mem-20260607-141717-f061ad1378",
+    "dedupe_key": "profile|profile||72415cffc440c3e6",
+    "content_hash": "72415cffc440c3e6",
+    "task_title": "对workmate agent项目进行改进优化",
+    "created_at": "2026-06-07T14:17:17",
+    "updated_at": "2026-06-07T14:17:17",
+    "last_accessed_at": "",
+    "usage_count": 0
+  },
+  {
+    "type": "profile",
+    "category": "profile",
+    "content": "先帮用户记住和整理",
+    "task_id": "",
+    "source_record_ids": [
+      "record-20260607-141708-00001-3be69df765"
+    ],
+    "confidence": 0.75,
+    "salience": 0.7,
+    "status": "active",
+    "metadata": {},
+    "id": "mem-20260607-141717-6fe1d5b0fd",
+    "dedupe_key": "profile|profile||7675c94224ff6f94",
+    "content_hash": "7675c94224ff6f94",
+    "task_title": "对workmate agent项目进行改进优化",
+    "created_at": "2026-06-07T14:17:17",
+    "updated_at": "2026-06-07T14:17:17",
+    "last_accessed_at": "",
+    "usage_count": 0
+  },
+  {
+    "type": "profile",
+    "category": "profile",
+    "content": "低压力回应",
+    "task_id": "",
+    "source_record_ids": [
+      "record-20260607-141708-00001-3be69df765"
+    ],
+    "confidence": 0.75,
+    "salience": 0.7,
+    "status": "active",
+    "metadata": {},
+    "id": "mem-20260607-141717-89c421a9b0",
+    "dedupe_key": "profile|profile||34aac2d4990dc9b9",
+    "content_hash": "34aac2d4990dc9b9",
+    "task_title": "对workmate agent项目进行改进优化",
+    "created_at": "2026-06-07T14:17:17",
+    "updated_at": "2026-06-07T14:17:17",
+    "last_accessed_at": "",
+    "usage_count": 0
+  },
+  {
+    "type": "profile",
+    "category": "profile",
+    "content": "只给一个小建议",
+    "task_id": "",
+    "source_record_ids": [
+      "record-20260607-141708-00001-3be69df765"
+    ],
+    "confidence": 0.75,
+    "salience": 0.7,
+    "status": "active",
+    "metadata": {},
+    "id": "mem-20260607-141717-c9846b1afd",
+    "dedupe_key": "profile|profile||d44ee6867ed7329b",
+    "content_hash": "d44ee6867ed7329b",
+    "task_title": "对workmate agent项目进行改进优化",
+    "created_at": "2026-06-07T14:17:17",
+    "updated_at": "2026-06-07T14:17:17",
+    "last_accessed_at": "",
+    "usage_count": 0
+  },
+  {
+    "type": "profile",
+    "category": "profile",
+    "content": "不要每次都强制要求证明",
+    "task_id": "",
+    "source_record_ids": [
+      "record-20260607-141708-00001-3be69df765"
+    ],
+    "confidence": 0.75,
+    "salience": 0.7,
+    "status": "active",
+    "metadata": {},
+    "id": "mem-20260607-141717-2c25ad38c7",
+    "dedupe_key": "profile|profile||4eb66662c1f3df2e",
+    "content_hash": "4eb66662c1f3df2e",
+    "task_title": "对workmate agent项目进行改进优化",
+    "created_at": "2026-06-07T14:17:17",
+    "updated_at": "2026-06-07T14:17:17",
+    "last_accessed_at": "",
+    "usage_count": 0
+  },
+  {
+    "type": "supervision",
+    "category": "supervision",
+    "content": "下次可先询问用户选定了哪个优化方向，确认聚焦后再讨论具体方案。",
+    "task_id": "task-20260607-141708-5427",
+    "source_record_ids": [
+      "record-20260607-141708-00001-3be69df765"
+    ],
+    "confidence": 0.75,
+    "salience": 0.68,
+    "status": "active",
+    "metadata": {},
+    "id": "mem-20260607-141717-19f5aab43d",
+    "dedupe_key": "supervision|supervision|task-20260607-141708-5427|3c1e9a9f69381260",
+    "content_hash": "3c1e9a9f69381260",
+    "task_title": "对workmate agent项目进行改进优化",
+    "created_at": "2026-06-07T14:17:17",
+    "updated_at": "2026-06-07T14:17:17",
+    "last_accessed_at": "",
+    "usage_count": 0
+  },
+  {
+    "type": "next_action",
+    "category": "actions",
+    "content": "列出几个最有把握的优化方向，选一个先落地",
+    "task_id": "task-20260607-141708-5427",
+    "source_record_ids": [
+      "record-20260607-141708-00001-3be69df765"
+    ],
+    "confidence": 0.75,
+    "salience": 0.62,
+    "status": "active",
+    "metadata": {},
+    "id": "mem-20260607-141717-94e210432b",
+    "dedupe_key": "next_action|actions|task-20260607-141708-5427|6863afcd67ab79ce",
+    "content_hash": "6863afcd67ab79ce",
+    "task_title": "对workmate agent项目进行改进优化",
+    "created_at": "2026-06-07T14:17:17",
+    "updated_at": "2026-06-07T14:17:17",
+    "last_accessed_at": "",
+    "usage_count": 0
+  }
+]

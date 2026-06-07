@@ -142,8 +142,8 @@ class InsightManager:
                 insights.append({
                     "type": "repeated_blocker",
                     "content": f"用户反复遇到的阻塞是：{blocker}",
-                    "why_it_matters": "这不是单次问题，后续监督应优先帮助用户收敛当前主线。",
-                    "suggested_intervention": "先确认真实进展，再减少新分支。",
+                    "why_it_matters": "这不是单次问题，后续可以帮用户先保留一个清晰主线。",
+                    "suggested_intervention": "先确认已记住，再给一句小建议，避免新增太多分支。",
                     "support_count": count,
                     "confidence": 0.75,
                     "source": "rule",
@@ -154,8 +154,8 @@ class InsightManager:
             insights.append({
                 "type": "planning_over_execution",
                 "content": "任务类记忆明显多于进展类记忆，用户可能在持续增加规划而不是交付产出。",
-                "why_it_matters": "这会让任务系统膨胀，但真实推进不足。",
-                "suggested_intervention": "提醒用户选择一个主线，并汇报具体产出。",
+                "why_it_matters": "这会让任务系统变得分散，用户可能更需要整理而不是压力。",
+                "suggested_intervention": "帮用户把任务整理成一个主线；必要时只补一句小建议。",
                 "support_count": category_counts.get("tasks", 0),
                 "confidence": 0.72,
                 "source": "rule",
@@ -166,8 +166,8 @@ class InsightManager:
             insights.append({
                 "type": "architecture_drift",
                 "content": "近期对话偏向架构优化和规划，但完成/跑通类信号不足。",
-                "why_it_matters": "这可能让记忆系统越做越复杂，却缺少可验证的实际闭环。",
-                "suggested_intervention": "把下一步收束到一个可运行改动或一次明确验证。",
+                "why_it_matters": "这可能让记忆系统越做越复杂，用户需要更清爽的主线感。",
+                "suggested_intervention": "可以建议先保留一个最小闭环，不要展开成技术路线。",
                 "support_count": 1,
                 "confidence": 0.68,
                 "source": "rule",
@@ -184,7 +184,7 @@ class InsightManager:
             "type": "repeated_blocker|planning_over_execution|architecture_drift|effective_intervention|task_pattern",
             "content": "高阶洞察，不是普通摘要",
             "why_it_matters": "为什么重要",
-            "suggested_intervention": "以后如何监督",
+            "suggested_intervention": "以后如何低压力回应或给一句轻量建议",
             "support_count": 2,
             "confidence": 0.7,
         }]
@@ -196,9 +196,10 @@ class InsightManager:
         return (
             "请从近期记忆中提炼高阶洞察。\n"
             "要求：\n"
-            "1. 不要做普通摘要；只输出长期行为模式、任务推进模式、反复风险、有效监督方式。\n"
+            "1. 不要做普通摘要；只输出长期行为模式、任务推进模式、反复风险、有效低压力回应方式。\n"
             "2. 不要提供技术路线，不要新增任务。\n"
-            "3. 输出 JSON 数组，最多 8 项。\n\n"
+            "3. 建议必须轻，不要催促用户，不要把整段回复变成压力提醒。\n"
+            "4. 输出 JSON 数组，最多 8 项。\n\n"
             f"schema:\n{json.dumps(schema, ensure_ascii=False, indent=2)}\n\n"
             f"payload:\n{json.dumps(payload, ensure_ascii=False, indent=2)}"
         )

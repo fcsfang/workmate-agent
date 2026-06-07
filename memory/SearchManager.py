@@ -21,6 +21,15 @@ class SearchManager:
         semantic_dialogues: Optional[List[Dict[str, Any]]] = None,
         insights: Optional[List[Dict[str, Any]]] = None,
     ) -> List[Dict[str, Any]]:
+        #把所有类型的记忆（对话记录、日摘、用户画像、承诺、知识点…）全部转换成统一格式：
+        #python
+        #{
+        #    "type": "memory_item",       # 这条记忆是什么类型
+        #    "id":   "item-xxx",
+        #    "text": "简历 优化 AI实习 ...",  # 把内容拍平成一个大字符串
+        #    "terms": ["简历", "优化", "ai实习"],  # 分词后的词列表
+        #    "payload": { ...原始数据... }
+        #}
         items = []
         for index, record in enumerate(records[-120:]):
             text = " ".join([
@@ -270,5 +279,23 @@ class SearchManager:
         for line in str(text or "").splitlines():
             if any(keyword in line for keyword in ["证据", "截图", "截屏", "强制验证", "不承认无证据"]):
                 continue
+            line = self._soften_pressure_text(line)
             lines.append(line)
         return "\n".join(lines)
+
+    def _soften_pressure_text(self, text: str) -> str:
+        replacements = {
+            "强制用户": "可以轻量提醒用户",
+            "直接指出问题": "温和指出一个可能风险",
+            "直接指出": "温和指出",
+            "强调真实产出": "关注核心事项和实际进展",
+            "监督用户": "轻量提醒用户",
+            "监督方式": "轻量提醒方式",
+            "质疑": "提出一个问题",
+            "催促": "轻轻提醒",
+            "不要委婉": "保持温和直接",
+        }
+        softened = str(text or "")
+        for old, new in replacements.items():
+            softened = softened.replace(old, new)
+        return softened

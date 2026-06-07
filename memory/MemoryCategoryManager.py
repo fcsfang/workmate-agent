@@ -14,7 +14,7 @@ class MemoryCategoryManager:
         "actions": "下一步行动建议",
         "commitments": "用户明确承诺的事项",
         "patterns": "长期行为模式",
-        "supervision": "对用户有效的监督方式",
+        "supervision": "对用户有效的轻量提醒方式",
         "profile": "长期用户画像和沟通偏好",
         "general": "其他可复用记忆",
     }
@@ -104,11 +104,11 @@ class MemoryCategoryManager:
         categories = categories if categories is not None else self.get_top_categories(limit=limit)
         if not categories:
             return "暂无记忆分类摘要。"
-        lines = ["以下是记忆分类摘要。请用它先判断当前问题应关注哪类记忆。"]
+        lines = ["以下是记忆分类摘要。请用它先判断当前问题应关注哪类记忆；回应时优先记住和整理。"]
         for index, category in enumerate(categories[:limit], start=1):
             lines.append(
                 f"{index}. [{category.get('name', '')}] "
-                f"items={category.get('item_count', 0)} | {category.get('summary', '')}"
+                f"items={category.get('item_count', 0)} | {self._soften_context_text(category.get('summary', ''))}"
             )
         return "\n".join(lines)
 
@@ -159,3 +159,19 @@ class MemoryCategoryManager:
         if len(text) <= max_length:
             return text
         return text[:max_length].rstrip() + "..."
+
+    def _soften_context_text(self, text: Any) -> str:
+        replacements = {
+            "强制用户": "可以轻量提醒用户",
+            "直接指出问题": "温和指出一个可能风险",
+            "直接指出": "温和指出",
+            "强调真实产出": "关注核心事项和实际进展",
+            "监督方式": "轻量提醒方式",
+            "监督": "轻量提醒",
+            "质疑": "提出一个问题",
+            "催促": "轻轻提醒",
+        }
+        softened = str(text or "")
+        for old, new in replacements.items():
+            softened = softened.replace(old, new)
+        return self._compact(softened, 360)

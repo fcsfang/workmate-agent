@@ -448,11 +448,15 @@ class MemoryManager:
         return self.summary_manager.format_recent_summary_for_context(self.load_records(), days=days)
 
     def build_context_messages(self, current_prompt: str) -> List[Dict[str, str]]:
+         # ── 第一阶段：信息"收集" ──────────────────────────────────
         related_memories = self.search_related_memories(current_prompt, limit=5)
         related_items = self.search_memory_items(current_prompt, limit=8)
         related_categories = self.search_memory_categories(current_prompt, limit=5) or self.get_memory_categories(limit=5)
         supervision_state = self.get_supervision_state()
         retrieval_plan = self.search_manager.build_retrieval_plan(current_prompt, related_memories)
+
+        # ── 第二阶段：信息"格式化" ──────────────────────────────────
+#这个 available_context里面有 16 种不同类型的记忆，已经格式化成文字，随时可以放进 prompt。
         available_context = {
             "user_profile": self.user_profile_manager.format_for_context(),
             "task_lifecycle": self.task_manager.format_for_context(),
@@ -471,9 +475,15 @@ class MemoryManager:
             "supervision": self.supervision_manager.format_for_context(supervision_state),
             "retrieval_plan": self.search_manager.format_retrieval_plan(retrieval_plan),
         }
+
+        # ── 第三阶段：智能"筛选" ──────────────────────────────────
         messages = self.context_planner.plan(current_prompt, available_context)
+
+        # ── 第四阶段：防溢出"压缩" ──────────────────────────────────
         system_messages = self.context_compressor.compress_system_messages(messages)
         recent_messages = self.context_compressor.recent_messages(self.get_recent_messages())
+
+        # ── 第五阶段：拼装最终消息 ──────────────────────────────────
         messages = [*system_messages, *recent_messages]
         messages.append(
             {

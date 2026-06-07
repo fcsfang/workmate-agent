@@ -78,7 +78,7 @@ class TaskStateManager:
     def format_for_context(self) -> str:
         state = self.load_state()
         lines = [
-            "以下是当前任务状态。请优先用它判断用户是否偏离主线、是否完成了承诺、下一步该做什么。",
+            "以下是当前任务状态。主要用于记住和整理用户任务；只有在相关时轻量判断是否需要一句小提醒。",
             f"状态: {state.get('status') or 'idle'}",
             f"当前任务: {state.get('active_task') or '暂无'}",
             f"当前进度: {state.get('current_progress') or '暂无'}",

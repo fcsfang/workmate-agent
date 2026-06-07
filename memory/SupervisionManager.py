@@ -22,24 +22,24 @@ class SupervisionManager:
         if open_commitments:
             signals.append({
                 "type": "open_commitment",
-                "severity": "medium",
-                "message": f"还有 {len(open_commitments)} 个未关闭承诺，回复时应帮助用户回到已答应推进的事项。",
+                "severity": "low",
+                "message": f"还有 {len(open_commitments)} 个未关闭承诺；只在相关时顺手提醒用户这些事项还被记着。",
             })
 
         repeated_blockers = self._repeated_blockers(memory_items)
         if repeated_blockers:
             signals.append({
                 "type": "repeated_blocker",
-                "severity": "high",
-                "message": "反复出现的阻塞/风险: " + "、".join(repeated_blockers[:4]),
+                "severity": "medium",
+                "message": "反复出现的阻塞/风险，可在相关时给一句小建议: " + "、".join(repeated_blockers[:4]),
             })
 
         active_tasks = task_view.get("active") or []
         if len(active_tasks) >= 4:
             signals.append({
                 "type": "too_many_open_tasks",
-                "severity": "medium",
-                "message": "未关闭任务偏多，回复时应提醒用户收敛主线。",
+                "severity": "low",
+                "message": "未关闭任务偏多；如果用户正在新增任务，可以轻轻建议先保留一个主线。",
             })
 
         prompt = self._build_prompt(signals, current, user_profile or {})
@@ -52,12 +52,12 @@ class SupervisionManager:
 
     def format_for_context(self, state: Dict[str, Any]) -> str:
         if not state.get("signals"):
-            return "暂无需要主动监督的明显信号。"
-        lines = ["以下是主动监督信号。请只在相关时自然提醒，不要制造压力，不要要求证据。"]
+            return "暂无需要主动提醒的明显信号。"
+        lines = ["以下是轻量提醒信号。请优先记住和整理；只在相关时给一句小建议，不要制造压力，不要要求证据。"]
         for index, signal in enumerate(state["signals"][:5], start=1):
             lines.append(f"{index}. [{signal.get('severity', 'low')}] {signal.get('message', '')}")
         if state.get("proactive_message"):
-            lines.append("建议监督语气: " + state["proactive_message"])
+            lines.append("建议回应语气: " + state["proactive_message"])
         return "\n".join(lines)
 
     def _staleness_signal(self, task: Dict[str, Any], now: datetime) -> Dict[str, str]:
@@ -70,14 +70,14 @@ class SupervisionManager:
         if hours >= 24:
             return {
                 "type": "stale_task",
-                "severity": "high",
-                "message": f"当前任务已约 {int(hours)} 小时没有更新，适合询问实际进展并帮助收敛下一步。",
+                "severity": "medium",
+                "message": f"当前任务已约 {int(hours)} 小时没有更新；可以温和询问是否需要更新进展。",
             }
         if hours >= 6:
             return {
                 "type": "stale_task",
-                "severity": "medium",
-                "message": f"当前任务已有一段时间未更新，适合温和提醒用户回到主线。",
+                "severity": "low",
+                "message": "当前任务已有一段时间未更新；暂不催促，必要时轻轻提醒它还被记着。",
             }
         return {}
 
@@ -99,8 +99,8 @@ class SupervisionManager:
         task_title = task.get("title", "")
         preference = "；".join((profile.get("communication_preference") or [])[:3])
         if task_title:
-            return f"围绕“{task_title}”做一次短提醒：先问真实进展，再帮用户收敛当前主线。{preference}"
-        return f"做一次短提醒：关注真实产出和当前主线。{preference}"
+            return f"围绕“{task_title}”保持低压力回应：先确认已记住；如有必要，只补一句小建议。{preference}"
+        return f"保持低压力回应：先记住和整理；如有必要，只补一句小建议。{preference}"
 
     def _parse_time(self, text: str) -> Optional[datetime]:
         if not text:
