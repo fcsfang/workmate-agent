@@ -880,6 +880,7 @@
     const contextPreview = document.querySelector("#contextPreview");
 
     let localTurns = 0;
+    let transcriptRestored = false;
 
     function setStatus(text, busy = false) {
       statusText.textContent = text;
@@ -1038,6 +1039,32 @@
       return { message, body };
     }
 
+    function clearTranscript() {
+      transcript.querySelectorAll(".message").forEach((item) => item.remove());
+    }
+
+    function appendRestoredMessage(role, content, time) {
+      const target = appendMessage(role, content || "");
+      if (time) {
+        const roleLabel = target.message.querySelector(".message-role");
+        roleLabel.textContent = `${role === "user" ? "YOU" : "WORKMATE"} · ${time}`;
+      }
+    }
+
+    function restoreTranscript(records = []) {
+      const usableRecords = records.filter((record) => record.user || record.assistant);
+      if (!usableRecords.length) return;
+
+      clearTranscript();
+      usableRecords.forEach((record) => {
+        if (record.user) appendRestoredMessage("user", record.user, record.time);
+        if (record.assistant) appendRestoredMessage("agent", record.assistant, record.time);
+      });
+      transcriptRestored = true;
+      localTurns = usableRecords.length;
+      lastEvent.textContent = `restored ${usableRecords.length} saved turns`;
+    }
+
     function updateAgentMessage(target, content) {
       target.body.innerHTML = renderMarkdown(content);
       transcript.scrollTop = transcript.scrollHeight;
@@ -1137,9 +1164,10 @@
         : "暂无主动监督信号";
     }
 
-    function renderMemory(memory) {
+    function renderMemory(memory, options = {}) {
       const records = memory.recent || [];
       memoryCount.textContent = memory.count || 0;
+      turnCount.textContent = memory.count || localTurns;
       memorySummary.textContent = [
         memory.structured_summary || "暂无结构化记忆。",
         "",
@@ -1154,6 +1182,9 @@
       renderHighLevelInsights(memory.high_level_insights || []);
       renderSemanticDialogues(memory.semantic_dialogues || []);
       renderSupervision(memory.supervision || {});
+      if (options.restoreTranscript || (!transcriptRestored && records.length)) {
+        restoreTranscript(records);
+      }
       recordList.innerHTML = "";
 
       if (!records.length) {
@@ -1181,10 +1212,10 @@
       });
     }
 
-    async function loadMemory() {
+    async function loadMemory(options = {}) {
       const response = await fetch("/api/memory");
       const memory = await response.json();
-      renderMemory(memory);
+      renderMemory(memory, options);
     }
 
     async function loadContext() {
@@ -1240,7 +1271,7 @@
         if (payload.type === "done") {
           renderMemory(payload.memory);
           renderContext(payload.context);
-          localTurns += 1;
+          localTurns = payload.memory?.count || localTurns + 1;
           turnCount.textContent = localTurns;
           lastEvent.textContent = "memory saved";
           return;
@@ -1319,7 +1350,7 @@
 
     updateClock();
     setInterval(updateClock, 15000);
-    Promise.all([loadMemory(), loadContext()]).catch((error) => {
+    Promise.all([loadMemory({ restoreTranscript: true }), loadContext()]).catch((error) => {
       memorySummary.textContent = error.message;
     });
   </script>

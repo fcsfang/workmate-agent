@@ -48,7 +48,7 @@ class WorkmateWebApp:
 
     def memory_state(self):
         records = self.memory_manager.load_records()
-        recent_records = records[-8:]
+        recent_records = records[-30:]
         context_debug = self.memory_manager.build_context_debug()
         return {
             "count": len(records),
