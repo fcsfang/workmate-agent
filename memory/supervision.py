@@ -71,7 +71,7 @@ class SupervisionManager:
             return {
                 "type": "stale_task",
                 "severity": "medium",
-                "message": f"当前任务已约 {int(hours)} 小时没有更新；可以温和询问是否需要更新进展。",
+                "message": f"当前任务已约 {int(hours)} 小时没有更新；可以温和提醒用户回来同步进展，不要用追问催促。",
             }
         if hours >= 6:
             return {
