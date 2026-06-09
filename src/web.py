@@ -21,8 +21,17 @@ WEB_ROOT = PROJECT_ROOT / "web"
 
 class WorkmateWebApp:
     def __init__(self):
+        import threading
+        from memory import Notifier
+
         self.memory_manager = MemoryManager()
         self.agent = None
+        
+        self.notifier = Notifier()
+        self.notified_focus_ids = set()
+        self.notified_commitment_keys = set()
+
+        threading.Thread(target=self.start_scheduler, daemon=True).start()
 
     def get_agent(self):
         if self.agent is None:
@@ -132,6 +141,58 @@ class WorkmateWebApp:
         if not self.agent:
             return []
         return self.agent.get_last_tool_calls()
+
+    def start_scheduler(self):
+        import time
+        import sys
+        # 启动等待 5 秒以避开服务初始载入
+        time.sleep(5)
+        while True:
+            try:
+                self.run_background_checks()
+            except Exception as e:
+                print(f"[Background Scheduler Error] {e}", file=sys.stderr)
+            time.sleep(60) # 每分钟扫描一次
+
+    def run_background_checks(self):
+        from datetime import datetime, date
+        today_str = date.today().isoformat()
+        
+        # 1. 专注会话超时监控
+        focus_state = self.memory_manager.get_focus_session_state()
+        current_session = focus_state.get("current") or {}
+        if current_session.get("status") == "expired" and current_session.get("id"):
+            sess_id = current_session["id"]
+            if sess_id not in self.notified_focus_ids:
+                title = "专注超时提醒 ⏳"
+                body = f"专注会话【{current_session.get('goal')}】已超时，建议回来跟 Agent 记录进度哦！"
+                self.notifier.send_notification(title, body)
+                self.notified_focus_ids.add(sess_id)
+
+        # 2. 承诺到期监控
+        open_commitments = self.memory_manager.get_open_commitments()
+        now = datetime.now()
+        for c in open_commitments:
+            c_id = c.get("id")
+            deadline_str = c.get("deadline")
+            if not c_id or not deadline_str:
+                continue
+            try:
+                deadline_dt = datetime.fromisoformat(deadline_str)
+                is_overdue = deadline_dt < now
+                is_due_today = deadline_dt.date() == now.date()
+                
+                if is_overdue or is_due_today:
+                    notify_key = f"{c_id}_{today_str}"
+                    if notify_key not in self.notified_commitment_keys:
+                        title = "承诺逾期提醒 ⚠" if is_overdue else "承诺今日到期提醒 ⏰"
+                        desc = "已超出承诺截止时间" if is_overdue else "截止今天完成"
+                        body = f"你有一个承诺【{c.get('commitment')}】{desc}，请记得及时处理。"
+                        
+                        self.notifier.send_notification(title, body)
+                        self.notified_commitment_keys.add(notify_key)
+            except Exception as e:
+                pass
 
 
 APP = WorkmateWebApp()

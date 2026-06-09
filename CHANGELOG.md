@@ -1,3 +1,21 @@
+## V0.8.4
+### 目标
+- 脱离网页一直打开的限制，实现后台守护线程常驻调度和多通道通知（Mac系统弹窗 / iOS手机推送 / 飞书机器人），降低交互摩擦并强化主动陪伴能力
+
+### 已实现
+#### 后台推送模块
+- 新增 `Notifier` 推送模块（`memory/notifier.py`），封装了三类推送渠道：
+  - **Local macOS Native Alert**：使用 `subprocess` 调用 macOS AppleScript 原生通知弹窗，免三方库安装。
+  - **Bark Push**：发送 HTTP GET 请求，直接推送通知到用户 iOS 手机上，点击可跳转。
+  - **Lark/Feishu Webhook**：通过飞书自定义群机器人 Webhook 以 JSON POST 请求形式推送卡片信息。
+- 提供配置化设计，用户可通过修改 `.env` 决定启用哪些通知通道（如 `PUSH_CHANNELS=local,bark`）并配置对应的 Key/Webhook。
+
+#### 后台守护线程与状态监控 (Scheduler)
+- 在 Web 服务类 `WorkmateWebApp` 载入时自动开启一个 `daemon` 守护线程作为后台调度器，每 60 秒执行一次全自动状态检查。
+- **专注超时监测**：自动检测进行中或超时的 focus session。一旦超时，立即触发推送。
+- **承诺到期监测**：自动检测所有 open 状态的承诺，如果在今天到期或已经逾期，触发推送。
+- 后台自主维护已通知 focus session ID 和 commitment 每日通知 Key（`id_date`），防范重复弹窗打扰。
+
 ## V0.8.3
 ### 目标
 - 实现浏览器桌面主动弹窗通知，强化自律监督并降低用户交互负担
@@ -12,13 +30,18 @@
 
 ## V0.8.2
 ### 目标
-- 感知时间间隔与今日对话状态，为用户回归和早晨开启提供更柔和、具有情境感的反馈策略
+- 感知时间间隔、今日对话状态和下班收工行为，为用户回归、早晨开启和晚间收工提供更柔和、具有情境感的自适应反馈策略
 
 ### 已实现
 #### 首次对话早间简报 (C)
 - `BehaviorStatsManager` 新增 `is_first_message_today()`，判断当前对话是否为今天首次交流
 - 新增 `format_morning_briefing()` 格式化组件：汇总昨日遗留承诺、今天到期/逾期承诺、今日主线任务、本周专注及承诺统计指标，并提供温和问候与轻量启动建议的 Agent 回应指引
 - 在 Context 规划中动态引入 `morning_briefing` 数据块
+
+#### 纯自然语言晚间总结复盘 (C)
+- `BehaviorStatsManager` 新增 `format_evening_review()`：在傍晚/夜间时间段，当检测到用户输入包含“下班/收工/走啦/明天见”等收工意向时，自动开启晚间总结复盘
+- 动态汇总今日累计完成专注次数、累计时长、今日关闭承诺、当前卡点阻塞项目，并注入上下文引导指令
+- 约束 Agent 以纯自然语言（不带表格、列表或分隔符）流畅温暖地对今天的工作进行总结复盘并告别，严禁提问，实现无交互摩擦的轻量自然收尾
 
 #### 间隔与专注超时感知 (B)
 - `BehaviorStatsManager` 新增 `get_conversation_gap_minutes()` 计算对话静默时长

@@ -10,6 +10,7 @@ class ContextPlanner:
         classification: Dict[str, str] = None,
         is_morning: bool = False,
         has_gap: bool = False,
+        is_goodbye: bool = False,
     ) -> List[Dict[str, str]]:
         messages: List[Dict[str, str]] = []
         for key in self.required_context_keys(
@@ -17,9 +18,18 @@ class ContextPlanner:
             classification=classification,
             is_morning=is_morning,
             has_gap=has_gap,
+            is_goodbye=is_goodbye,
         ):
             self._append(messages, available.get(key))
         return messages
+
+    def is_evening_goodbye(self, prompt: str) -> bool:
+        hour = datetime.now().hour
+        # 傍晚/深夜/清晨时段可能准备收工
+        if hour >= 18 or hour < 6:
+            goodbye_kws = ["下班", "收工", "走啦", "走人", "今天先到这里", "明天见", "休息了", "不搞了", "睡觉了", "晚安"]
+            return any(kw in prompt for kw in goodbye_kws)
+        return False
 
     def required_context_keys(
         self,
@@ -27,6 +37,7 @@ class ContextPlanner:
         classification: Dict[str, str] = None,
         is_morning: bool = False,
         has_gap: bool = False,
+        is_goodbye: bool = False,
     ) -> List[str]:
         intent = (classification or {}).get("intent") or self.intent(current_prompt)
         period = self.time_period()
@@ -34,6 +45,8 @@ class ContextPlanner:
 
         if is_morning:
             keys.append("morning_briefing")
+        if is_goodbye:
+            keys.append("evening_review")
         if has_gap:
             keys.append("gap_context")
 

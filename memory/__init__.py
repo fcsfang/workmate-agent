@@ -17,6 +17,7 @@ from .task_manager import TaskManager
 from .task_state import TaskState
 from .task_state_manager import TaskStateManager
 from .profile import UserProfileManager
+from .notifier import Notifier
 
 __all__ = [
     "BehaviorStatsManager",
@@ -34,6 +35,7 @@ __all__ = [
     "MemoryManager",
     "MemoryPipeline",
     "MemoryResourceManager",
+    "Notifier",
     "ReflectionManager",
     "SearchManager",
     "SemanticDialogueManager",

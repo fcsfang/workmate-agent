@@ -20,6 +20,7 @@ class ContextEngine:
         intent_classification = memory_manager.intent_manager.classify(current_prompt)
         
         is_morning = memory_manager.stats_manager.is_first_message_today()
+        is_goodbye = self.context_planner.is_evening_goodbye(current_prompt)
         gap_min = memory_manager.stats_manager.get_conversation_gap_minutes()
         focus_state = memory_manager.get_focus_session_state()
         current_session = focus_state.get("current") or {}
@@ -30,6 +31,7 @@ class ContextEngine:
             classification=intent_classification,
             is_morning=is_morning,
             has_gap=has_gap,
+            is_goodbye=is_goodbye,
         )
         available_context = self.load_context_blocks(
             current_prompt,
@@ -43,6 +45,7 @@ class ContextEngine:
             classification=intent_classification,
             is_morning=is_morning,
             has_gap=has_gap,
+            is_goodbye=is_goodbye,
         )
         system_messages = self.context_compressor.compress_system_messages(planned_messages)
         recent_messages = self.context_compressor.recent_messages(memory_manager.get_recent_messages())
@@ -83,6 +86,8 @@ class ContextEngine:
             available["time_context"] = memory_manager.stats_manager.format_time_context()
         if "morning_briefing" in key_set:
             available["morning_briefing"] = memory_manager.stats_manager.format_morning_briefing(memory_manager)
+        if "evening_review" in key_set:
+            available["evening_review"] = memory_manager.stats_manager.format_evening_review(memory_manager)
         if "gap_context" in key_set:
             available["gap_context"] = memory_manager.stats_manager.format_gap_context(memory_manager)
         if "behavior_stats" in key_set:

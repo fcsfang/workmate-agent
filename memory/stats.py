@@ -295,6 +295,44 @@ class BehaviorStatsManager:
 
         return "\n".join(lines)
 
+    def format_evening_review(self, memory_manager: Any) -> str:
+        today_str = date.today().isoformat()
+        
+        # 统计今日完成的专注会话
+        sessions = self._load_json(self.focus_sessions_path)
+        completed_today = [
+            s for s in sessions 
+            if s.get("status") == "completed" and s.get("started_at", "")[:10] == today_str
+        ]
+        total_minutes = sum(int(s.get("elapsed_minutes") or 0) for s in completed_today)
+        
+        # 统计今日关闭的承诺
+        commitments = memory_manager.task_state.all_commitments()
+        closed_today = [
+            c for c in commitments
+            if c.get("status") == "closed" and c.get("closed_at", "")[:10] == today_str
+        ]
+        
+        # 获取当前阻塞任务
+        task_view = memory_manager.get_task_view()
+        current_task = task_view.get("current", {})
+        blockers = current_task.get("blockers", []) if current_task else []
+
+        lines = [
+            "[晚间收工复盘指令]",
+            "用户已表达下班/收工/走啦等意向。请用极其温暖、有同理心的纯自然语言口吻总结用户今天的成果并说再见。",
+            "【今日数据参考】：",
+            f"  - 累计完成专注会话：{len(completed_today)} 次，共 {total_minutes} 分钟",
+            f"  - 今日关闭的承诺：{', '.join([c.get('commitment') for c in closed_today]) or '无'}",
+            f"  - 当前卡点/阻塞项：{', '.join(blockers) or '无'}",
+            "",
+            "【Agent 回复策略（非常重要）】：",
+            "1. 必须使用自然的段落式口吻，顺带提及上述工作进展与卡点（比如：“虽然跨域问题把你卡住了... 搞定了写简历... 专注了2次...”）。",
+            "2. 严禁使用任何表格、硬性的 Markdown 列表、分割线或带有符号的清单，保持纯文本自然对话流。",
+            "3. 绝对不要向用户提任何问题！直接给予温暖的祝愿（如“晚上好好休息，明天见”）收尾，引导对话自然结束。"
+        ]
+        return "\n".join(lines)
+
     def format_gap_context(self, memory_manager: Any) -> str:
         gap_min = self.get_conversation_gap_minutes()
         focus_state = memory_manager.get_focus_session_state()
