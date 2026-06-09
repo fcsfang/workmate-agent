@@ -1,0 +1,134 @@
+[
+  {
+    "id": "deep-work-attention-residue",
+    "source": "Deep Work",
+    "topic": "focus",
+    "trigger_states": ["scattered", "overplanning"],
+    "keywords": ["分心", "切换", "任务太多", "发散", "读书", "深度工作"],
+    "principle": "频繁切换会让注意力停留在上一个任务上，降低进入深度状态的可能性。",
+    "gentle_application": "当用户任务过散时，回应可以帮助他保住一个主线，而不是继续增加任务。",
+    "soft_focus": "这一段可以先放轻一点，只保住一个主线就好。",
+    "avoid": "不要要求用户立刻制定完整计划。"
+  },
+  {
+    "id": "deep-work-ritual-start",
+    "source": "Deep Work",
+    "topic": "focus",
+    "trigger_states": ["avoidant", "scattered", "stuck"],
+    "keywords": ["开始", "不想做", "拖延", "进入状态", "专注"],
+    "principle": "清晰、固定、很小的开始动作能降低进入深度工作的阻力。",
+    "gentle_application": "当用户准备开始但状态松散时，可以给一个很小的进入动作。",
+    "soft_focus": "先从一个很小的入口开始就好，不需要一下子把状态拉满。",
+    "avoid": "不要催促用户立刻高强度投入。"
+  },
+  {
+    "id": "atomic-habits-two-minute-entry",
+    "source": "Atomic Habits",
+    "topic": "habit",
+    "trigger_states": ["avoidant", "tired"],
+    "keywords": ["拖延", "不想动", "没力气", "开始", "习惯"],
+    "principle": "把行动缩小到足够容易开始的程度，可以帮助人越过启动阻力。",
+    "gentle_application": "当用户低能量或拖延时，把目标压到最小可开始动作。",
+    "soft_focus": "先做一个两分钟也能完成的小入口，后面自然接上就好。",
+    "avoid": "不要把小动作包装成必须完成的硬指标。"
+  },
+  {
+    "id": "atomic-habits-environment-cue",
+    "source": "Atomic Habits",
+    "topic": "habit",
+    "trigger_states": ["scattered", "avoidant"],
+    "keywords": ["手机", "环境", "分心", "刷", "注意力"],
+    "principle": "环境线索会显著影响行动倾向，减少干扰比单靠意志力更稳。",
+    "gentle_application": "当用户容易分心时，建议轻轻减少一个明显干扰源。",
+    "soft_focus": "如果方便，可以先把最容易打断你的东西放远一点。",
+    "avoid": "不要责备用户自控力差。"
+  },
+  {
+    "id": "getting-things-done-open-loop",
+    "source": "Getting Things Done",
+    "topic": "task_clarity",
+    "trigger_states": ["anxious", "scattered", "overplanning"],
+    "keywords": ["乱", "焦虑", "事情多", "想不清", "下一步"],
+    "principle": "未澄清的待办会占用注意力，把它们外化并明确下一步能减轻心理负担。",
+    "gentle_application": "当用户脑子乱时，先帮他把一件事落成下一步，而不是继续展开全部问题。",
+    "soft_focus": "先不用整理全部，能落出一个最靠前的下一步就够。",
+    "avoid": "不要要求用户一次性清空所有待办。"
+  },
+  {
+    "id": "self-compassion-normalize-difficulty",
+    "source": "self-compassion notes",
+    "topic": "emotion_regulation",
+    "trigger_states": ["anxious", "tired", "stuck"],
+    "keywords": ["焦虑", "烦", "失败", "没用", "不行", "压力"],
+    "principle": "人在压力下更需要先降低自我攻击，才能恢复行动能力。",
+    "gentle_application": "当用户自责时，先承认困难，再把任务缩小。",
+    "soft_focus": "先别急着证明自己没问题，把眼前这一步放小一点就好。",
+    "avoid": "不要诊断用户，也不要用治疗化语言。"
+  },
+  {
+    "id": "cbt-thought-distance",
+    "source": "CBT-inspired notes",
+    "topic": "emotion_regulation",
+    "trigger_states": ["anxious", "stuck"],
+    "keywords": ["焦虑", "担心", "害怕", "完蛋", "一定", "总是"],
+    "principle": "把念头当作念头而不是事实，可以给行动留出空间。",
+    "gentle_application": "当用户陷入灾难化表达时，帮助他把判断放轻，再回到可做的小动作。",
+    "soft_focus": "这个念头可以先放在旁边一点点，先看现在最小能做什么。",
+    "avoid": "不要争辩用户的感受是真是假。"
+  },
+  {
+    "id": "flow-clear-goal-feedback",
+    "source": "Flow",
+    "topic": "focus",
+    "trigger_states": ["scattered", "stuck"],
+    "keywords": ["沉浸", "专注", "刷题", "写作", "读书", "学习"],
+    "principle": "清晰目标和即时反馈有助于进入更稳定的投入状态。",
+    "gentle_application": "当用户要开始学习或刷题时，给一个轻量观察点，而不是完整验收标准。",
+    "soft_focus": "这一轮只留意一个反馈点就好：哪里顺了，哪里卡了。",
+    "avoid": "不要要求完整复盘。"
+  },
+  {
+    "id": "reading-one-sentence",
+    "source": "reading practice notes",
+    "topic": "learning",
+    "trigger_states": ["scattered", "tired", "execution_focus"],
+    "keywords": ["读书", "阅读", "深度工作", "看书", "书"],
+    "principle": "阅读时保留一个有触动的句子或观点，常比追求完整总结更容易留下痕迹。",
+    "gentle_application": "当用户准备读书时，可以给一个很轻的阅读焦点。",
+    "soft_focus": "读的时候可以只留意一句最碰到你的话，不用急着完整总结。",
+    "avoid": "不要要求用户读完后提交读书笔记。"
+  },
+  {
+    "id": "leetcode-core-pattern",
+    "source": "learning practice notes",
+    "topic": "learning",
+    "trigger_states": ["stuck", "scattered", "execution_focus"],
+    "keywords": ["力扣", "leetcode", "算法", "刷题", "题解"],
+    "principle": "刷题时抓住题目的核心模式，比追求立刻写完整题解更能帮助迁移。",
+    "gentle_application": "当用户准备刷题时，给一个轻量思路焦点。",
+    "soft_focus": "做的时候可以轻轻盯住一点：这题大概在考哪种思路。",
+    "avoid": "不要替用户展开技术路线。"
+  },
+  {
+    "id": "writing-rough-draft",
+    "source": "writing practice notes",
+    "topic": "creation",
+    "trigger_states": ["avoidant", "overplanning", "stuck"],
+    "keywords": ["写", "文档", "总结", "整理", "方案", "草稿"],
+    "principle": "先得到一个粗糙版本，常常比直接追求完整表达更能推动任务前进。",
+    "gentle_application": "当用户准备写作或整理方案时，允许粗糙开始。",
+    "soft_focus": "先有一个粗糙轮廓就可以，完整度可以后面慢慢修。",
+    "avoid": "不要要求第一版就完整漂亮。"
+  },
+  {
+    "id": "debug-layer-focus",
+    "source": "engineering practice notes",
+    "topic": "debugging",
+    "trigger_states": ["stuck", "scattered"],
+    "keywords": ["调试", "bug", "报错", "代码", "实现", "开发", "卡住"],
+    "principle": "调试时先确定问题所在层级，能减少盲目尝试。",
+    "gentle_application": "当用户技术任务卡住时，只给任务层面的轻量焦点，不展开具体技术路线。",
+    "soft_focus": "先不用展开太深，能看清现在卡在哪一层就可以。",
+    "avoid": "不要主动替用户决定阅读哪些函数或怎么实现。"
+  }
+]

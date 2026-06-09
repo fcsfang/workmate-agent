@@ -15,6 +15,7 @@ from .pipeline import MemoryPipeline
 from .reflection import ReflectionManager
 from .search import SearchManager
 from .supervision import SupervisionManager
+from .support_knowledge import SupportKnowledgeManager
 from .task_manager import TaskManager
 from .task_state import TaskState
 from .task_state_manager import TaskStateManager
@@ -44,6 +45,7 @@ class MemoryManager:
         search_manager: Optional[SearchManager] = None,
         semantic_dialogue_manager: Optional[SemanticDialogueManager] = None,
         supervision_manager: Optional[SupervisionManager] = None,
+        support_knowledge_manager: Optional[SupportKnowledgeManager] = None,
         summary_manager: Optional[SummaryManager] = None,
         task_state: Optional[TaskState] = None,
         task_manager: Optional[TaskManager] = None,
@@ -73,6 +75,7 @@ class MemoryManager:
         self.search_manager = self.context_engine.search_manager
         self.semantic_dialogue_manager = semantic_dialogue_manager or SemanticDialogueManager()
         self.supervision_manager = supervision_manager or SupervisionManager()
+        self.support_knowledge_manager = support_knowledge_manager or SupportKnowledgeManager()
         self.summary_manager = summary_manager or SummaryManager()
         self.task_state = task_state or TaskState(
             task_manager=task_manager,
@@ -318,6 +321,9 @@ class MemoryManager:
             user_profile=self.get_user_profile(),
         )
 
+    def get_support_knowledge_state(self, current_prompt: str = "") -> Dict[str, Any]:
+        return self.support_knowledge_manager.build_state(current_prompt)
+
     def refresh_search_index(
         self,
         records: Optional[List[Dict[str, Any]]] = None,
@@ -466,6 +472,7 @@ class MemoryManager:
             {"role": "system", "content": self.memory_category_manager.format_for_context()},
             {"role": "system", "content": self.memory_item_manager.format_for_context()},
             {"role": "system", "content": self.supervision_manager.format_for_context(self.get_supervision_state())},
+            {"role": "system", "content": self.support_knowledge_manager.format_for_context(self.get_support_knowledge_state(current_prompt))},
             *self.get_recent_messages(),
         ]
         return {
@@ -489,6 +496,7 @@ class MemoryManager:
             "memory_conflicts": self.get_memory_conflicts(),
             "reflections": self.get_reflections(),
             "supervision": self.get_supervision_state(),
+            "support_knowledge": self.get_support_knowledge_state(current_prompt),
         }
 
     def _with_time(self, record: Dict[str, Any], text: str) -> str:

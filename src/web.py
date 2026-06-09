@@ -33,7 +33,7 @@ class WorkmateWebApp:
         response = self.get_agent().invoke(prompt)
         return {
             "response": response,
-            "memory": self.memory_state(),
+            "memory": self.memory_state(prompt),
             "context": self.context_state(),
         }
 
@@ -42,11 +42,11 @@ class WorkmateWebApp:
             yield {"type": "delta", "content": chunk}
         yield {
             "type": "done",
-            "memory": self.memory_state(),
+            "memory": self.memory_state(prompt),
             "context": self.context_state(),
         }
 
-    def memory_state(self):
+    def memory_state(self, current_prompt=""):
         records = self.memory_manager.load_records()
         recent_records = records[-30:]
         context_debug = self.memory_manager.build_context_debug()
@@ -69,6 +69,7 @@ class WorkmateWebApp:
             "memory_conflicts": self.memory_manager.get_memory_conflicts(),
             "reflections": self.memory_manager.get_reflections(),
             "supervision": self.memory_manager.get_supervision_state(),
+            "support_knowledge": self.memory_manager.get_support_knowledge_state(current_prompt),
             "memory_pipeline": context_debug.get("memory_pipeline", {}),
             "last_pipeline_result": context_debug.get("last_pipeline_result", {}),
             "context_stats": context_debug.get("context_stats", {}),
@@ -95,6 +96,7 @@ class WorkmateWebApp:
             "memory_conflicts": self.memory_manager.get_memory_conflicts(),
             "reflections": self.memory_manager.get_reflections(),
             "supervision": self.memory_manager.get_supervision_state(),
+            "support_knowledge": self.memory_manager.get_support_knowledge_state(""),
             "last_pipeline_result": self.memory_manager.last_pipeline_result,
         }
 

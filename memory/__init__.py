@@ -10,6 +10,7 @@ from .store import MemoryCategoryManager, MemoryItemManager, MemoryResourceManag
 from .reflection import ReflectionManager
 from .search import SearchManager
 from .supervision import SupervisionManager
+from .support_knowledge import SupportKnowledgeManager
 from .task_manager import TaskManager
 from .task_state import TaskState
 from .task_state_manager import TaskStateManager
@@ -33,6 +34,7 @@ __all__ = [
     "SearchManager",
     "SemanticDialogueManager",
     "SupervisionManager",
+    "SupportKnowledgeManager",
     "SummaryManager",
     "TaskManager",
     "TaskState",

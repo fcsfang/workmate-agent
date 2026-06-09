@@ -23,6 +23,9 @@ class ContextPlanner:
         if intent in {"task", "review", "supervision"}:
             keys.append("supervision")
 
+        if self.needs_support_knowledge(current_prompt):
+            keys.append("support_knowledge")
+
         if intent in {"task", "review", "search", "supervision"}:
             keys.extend(["retrieval_plan", "semantic_dialogues", "memory_categories", "memory_items"])
 
@@ -48,6 +51,20 @@ class ContextPlanner:
         if self._has_any(prompt, ["总结", "复盘", "回顾", "最近", "历史", "记忆"]):
             return "review"
         return "chat"
+
+    def needs_support_knowledge(self, prompt: str) -> bool:
+        return self._has_any(
+            str(prompt or ""),
+            [
+                "焦虑", "慌", "烦", "压力", "害怕", "担心",
+                "分心", "走神", "乱", "发散", "任务太多",
+                "累", "困", "疲惫", "没力气", "低能量",
+                "拖延", "不想做", "逃避", "刷手机", "开始不了",
+                "过度规划", "想太多", "卡住", "卡在", "不会", "没思路",
+                "接下来读", "先去读", "准备读", "接下来刷题", "先去刷题",
+                "接下来写", "先去写", "接下来整理", "先去整理", "接下来调试",
+            ],
+        )
 
     def _append(self, messages: List[Dict[str, str]], content: str) -> None:
         if content and content.strip() and content not in [message["content"] for message in messages]:

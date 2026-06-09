@@ -92,6 +92,9 @@ class ContextEngine:
             available["memory_items"] = memory_manager.memory_item_manager.format_for_context(related_items)
         if "supervision" in key_set:
             available["supervision"] = memory_manager.supervision_manager.format_for_context(memory_manager.get_supervision_state())
+        if "support_knowledge" in key_set:
+            support_state = memory_manager.get_support_knowledge_state(current_prompt)
+            available["support_knowledge"] = memory_manager.support_knowledge_manager.format_for_context(support_state)
         if "retrieval_plan" in key_set:
             retrieval_plan = self.search_manager.build_retrieval_plan(current_prompt, related_memories)
             available["retrieval_plan"] = self.search_manager.format_retrieval_plan(retrieval_plan)

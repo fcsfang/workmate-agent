@@ -31,6 +31,7 @@ Workmate Agent 是一个面向个人学习和工作执行的长期工位搭子�
 - 上下文规划：根据用户输入选择注入任务、摘要、承诺、统一记忆项或相关历史，减少每轮全量上下文
 - 上下文压缩：系统记忆和最近对话分别控制预算，避免长对话让模型上下文膨胀
 - 主动监督信号：根据任务停滞、未关闭承诺、反复阻塞和任务过散生成监督提醒
+- 支持性知识层：V0.6 起在用户焦虑、分散、拖延、疲惫、卡住或准备执行学习任务时，按需注入轻量方法论卡片
 - 时间感：当前输入会附带当前时间，历史输入会附带历史记录时间
 - 进度监督：Agent 关注任务进展、偏航和伪努力；多任务场景会用无序列表帮用户理顺主任务和子任务，但不会主动提供技术路线或设置时间限制
 - 角色边界：Agent 负责总体规划和监督，不负责替用户解释技术细节、设计专业方案或完成任务
@@ -54,6 +55,7 @@ workmate-agent/
 │   ├── profile.py         # 长期用户画像
 │   ├── search.py          # 轻量关键词历史检索
 │   ├── supervision.py     # v0.5 主动监督信号
+│   ├── support_knowledge.py # v0.6 支持性知识层检索
 │   ├── task_manager.py    # v0.4.2 任务/子任务生命周期和事件流水
 │   ├── task_state_manager.py # 当前任务状态维护
 │   ├── paths.py           # 运行时记忆数据目录配置
@@ -74,6 +76,8 @@ workmate-agent/
 │       ├── user_profile.json
 │       ├── retrieval_index.json
 │       └── daily_summaries/
+├── knowledge/
+│   └── support_notes.json # 注意力、学习、时间管理和情绪调节短卡片
 ├── src/
 │   ├── LLMClient.py       # 大模型 API 客户端
 │   ├── core.py            # WorkmateAgent 和命令行连续对话入口

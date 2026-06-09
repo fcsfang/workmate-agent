@@ -788,6 +788,10 @@
               <span class="task-label">supervision</span>
               <span class="task-value" id="supervisionSignals">暂无主动监督信号</span>
             </div>
+            <div class="task-field">
+              <span class="task-label">support</span>
+              <span class="task-value" id="supportKnowledge">暂无支持性知识</span>
+            </div>
           </div>
         </section>
 
@@ -877,6 +881,7 @@
     const highLevelInsights = document.querySelector("#highLevelInsights");
     const semanticDialogues = document.querySelector("#semanticDialogues");
     const supervisionSignals = document.querySelector("#supervisionSignals");
+    const supportKnowledge = document.querySelector("#supportKnowledge");
     const contextPreview = document.querySelector("#contextPreview");
 
     let localTurns = 0;
@@ -1164,6 +1169,20 @@
         : "暂无主动监督信号";
     }
 
+    function renderSupportKnowledge(support = {}) {
+      const states = support.states || [];
+      const notes = support.notes || [];
+      if (!states.length || !notes.length) {
+        supportKnowledge.textContent = "暂无支持性知识";
+        return;
+      }
+      supportKnowledge.textContent = notes
+        .slice(0, 2)
+        .map((item) => `${states.join("/")} · ${item.soft_focus || item.gentle_application || item.principle || ""}`)
+        .filter(Boolean)
+        .join("；");
+    }
+
     function renderMemory(memory, options = {}) {
       const records = memory.recent || [];
       memoryCount.textContent = memory.count || 0;
@@ -1182,6 +1201,7 @@
       renderHighLevelInsights(memory.high_level_insights || []);
       renderSemanticDialogues(memory.semantic_dialogues || []);
       renderSupervision(memory.supervision || {});
+      renderSupportKnowledge(memory.support_knowledge || {});
       if (options.restoreTranscript || (!transcriptRestored && records.length)) {
         restoreTranscript(records);
       }
