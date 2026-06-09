@@ -45,6 +45,7 @@
     }
 
     button,
+    input,
     textarea {
       font: inherit;
     }
@@ -218,6 +219,52 @@
       font-size: 13px;
       line-height: 1.45;
       color: var(--ink);
+    }
+
+    .focus-controls {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 70px;
+      gap: 8px;
+    }
+
+    .focus-input,
+    .focus-duration {
+      width: 100%;
+      min-width: 0;
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      color: var(--ink);
+      background: rgba(255, 252, 242, 0.74);
+      outline: none;
+      font-size: 12px;
+    }
+
+    .focus-actions {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .focus-button {
+      min-height: 32px;
+      border: 1px solid var(--line-strong);
+      border-radius: 4px;
+      color: var(--ink);
+      background: rgba(255, 252, 242, 0.72);
+      cursor: pointer;
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .focus-button:hover:not(:disabled) {
+      border-color: var(--cinnabar);
+      background: rgba(255, 252, 242, 0.96);
+    }
+
+    .focus-button:disabled {
+      cursor: default;
+      opacity: 0.48;
     }
 
     .record {
@@ -733,6 +780,32 @@
           </div>
         </section>
 
+        <section class="task-panel" aria-label="Focus session">
+          <div class="section-title">
+            <span>FOCUS SESSION</span>
+            <span id="focusStatus">idle</span>
+          </div>
+          <div class="task-grid">
+            <div class="task-field">
+              <span class="task-label">goal</span>
+              <span class="task-value" id="focusGoal">暂无专注会话</span>
+            </div>
+            <div class="task-field">
+              <span class="task-label">time</span>
+              <span class="task-value" id="focusTime">--</span>
+            </div>
+            <div class="focus-controls">
+              <input class="focus-input" id="focusGoalInput" placeholder="接下来这一段做什么" autocomplete="off">
+              <input class="focus-duration" id="focusDurationInput" type="number" min="5" max="240" value="45" aria-label="专注分钟数">
+            </div>
+            <div class="focus-actions">
+              <button class="focus-button" id="startFocus" type="button">START</button>
+              <button class="focus-button" id="completeFocus" type="button">DONE</button>
+              <button class="focus-button" id="abandonFocus" type="button">STOP</button>
+            </div>
+          </div>
+        </section>
+
         <section class="task-panel" aria-label="Recent summary">
           <div class="section-title">
             <span>7D SUMMARY</span>
@@ -887,6 +960,14 @@
     const supervisionSignals = document.querySelector("#supervisionSignals");
     const supportKnowledge = document.querySelector("#supportKnowledge");
     const toolCalls = document.querySelector("#toolCalls");
+    const focusStatus = document.querySelector("#focusStatus");
+    const focusGoal = document.querySelector("#focusGoal");
+    const focusTime = document.querySelector("#focusTime");
+    const focusGoalInput = document.querySelector("#focusGoalInput");
+    const focusDurationInput = document.querySelector("#focusDurationInput");
+    const startFocus = document.querySelector("#startFocus");
+    const completeFocus = document.querySelector("#completeFocus");
+    const abandonFocus = document.querySelector("#abandonFocus");
     const contextPreview = document.querySelector("#contextPreview");
 
     let localTurns = 0;
@@ -1174,6 +1255,31 @@
         : "暂无主动监督信号";
     }
 
+    function renderFocusSession(focus = {}) {
+      const current = focus.current || {};
+      const recent = focus.recent || [];
+      const hasCurrent = Boolean(current.goal);
+      const active = current.status === "active" || current.status === "expired";
+
+      focusStatus.textContent = hasCurrent ? current.status : "idle";
+      focusGoal.textContent = current.goal || "暂无专注会话";
+
+      if (hasCurrent) {
+        focusTime.textContent = `${current.elapsed_minutes || 0} / ${current.duration_minutes || 0} min`;
+      } else if (focus.last_gap_minutes !== null && focus.last_gap_minutes !== undefined) {
+        focusTime.textContent = `距上一段约 ${focus.last_gap_minutes} min`;
+      } else if (recent.length) {
+        const last = recent[0];
+        focusTime.textContent = `${last.status || "done"} · ${last.elapsed_minutes || 0} min`;
+      } else {
+        focusTime.textContent = "--";
+      }
+
+      startFocus.disabled = active;
+      completeFocus.disabled = !active;
+      abandonFocus.disabled = !active;
+    }
+
     function renderSupportKnowledge(support = {}) {
       const states = support.states || [];
       const notes = support.notes || [];
@@ -1217,6 +1323,7 @@
       renderHighLevelInsights(memory.high_level_insights || []);
       renderSemanticDialogues(memory.semantic_dialogues || []);
       renderSupervision(memory.supervision || {});
+      renderFocusSession(memory.focus_session || {});
       renderSupportKnowledge(memory.support_knowledge || {});
       renderToolCalls(memory.tool_calls || []);
       if (options.restoreTranscript || (!transcriptRestored && records.length)) {
@@ -1259,6 +1366,33 @@
       const response = await fetch("/api/context");
       const context = await response.json();
       renderContext(context);
+      renderFocusSession(context.focus_session || {});
+    }
+
+    async function updateFocus(action) {
+      const payload = { action };
+      if (action === "start") {
+        const goal = focusGoalInput.value.trim() || activeTask.textContent.trim() || "专注任务";
+        payload.goal = goal;
+        payload.duration_minutes = Number(focusDurationInput.value || 45);
+      }
+
+      const response = await fetch("/api/focus", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Focus update failed");
+      }
+
+      renderFocusSession(data.focus_session || {});
+      if (data.memory) renderMemory(data.memory);
+      if (data.context) renderContext(data.context);
+      if (action === "start") focusGoalInput.value = "";
+      lastEvent.textContent = action === "start" ? "focus started" : "focus updated";
     }
 
     async function sendPrompt(prompt) {
@@ -1386,8 +1520,42 @@
       }
     });
 
+    startFocus.addEventListener("click", async () => {
+      setStatus("focus", true);
+      try {
+        await updateFocus("start");
+      } catch (error) {
+        lastEvent.textContent = error.message;
+      } finally {
+        setStatus("ready", false);
+      }
+    });
+
+    completeFocus.addEventListener("click", async () => {
+      setStatus("focus", true);
+      try {
+        await updateFocus("complete");
+      } catch (error) {
+        lastEvent.textContent = error.message;
+      } finally {
+        setStatus("ready", false);
+      }
+    });
+
+    abandonFocus.addEventListener("click", async () => {
+      setStatus("focus", true);
+      try {
+        await updateFocus("abandon");
+      } catch (error) {
+        lastEvent.textContent = error.message;
+      } finally {
+        setStatus("ready", false);
+      }
+    });
+
     updateClock();
     setInterval(updateClock, 15000);
+    setInterval(() => loadMemory().catch(() => {}), 60000);
     Promise.all([loadMemory({ restoreTranscript: true }), loadContext()]).catch((error) => {
       memorySummary.textContent = error.message;
     });

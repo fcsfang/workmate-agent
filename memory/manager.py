@@ -8,6 +8,7 @@ from .commitment import CommitmentManager
 from .context_compressor import ContextCompressor
 from .context_engine import ContextEngine
 from .context_planner import ContextPlanner
+from .focus_session import FocusSessionManager
 from .governance import MemoryGovernanceManager
 from .interpreter import InsightManager, IntentManager, MemoryExtractor, SemanticDialogueManager, SummaryManager
 from .store import MemoryCategoryManager, MemoryItemManager, MemoryResourceManager
@@ -34,6 +35,7 @@ class MemoryManager:
         context_engine: Optional[ContextEngine] = None,
         context_planner: Optional[ContextPlanner] = None,
         extractor: Optional[MemoryExtractor] = None,
+        focus_session_manager: Optional[FocusSessionManager] = None,
         insight_manager: Optional[InsightManager] = None,
         intent_manager: Optional[IntentManager] = None,
         memory_category_manager: Optional[MemoryCategoryManager] = None,
@@ -64,6 +66,7 @@ class MemoryManager:
         self.context_compressor = self.context_engine.context_compressor
         self.context_planner = self.context_engine.context_planner
         self.extractor = extractor or MemoryExtractor()
+        self.focus_session_manager = focus_session_manager or FocusSessionManager()
         self.insight_manager = insight_manager or InsightManager()
         self.intent_manager = intent_manager or IntentManager()
         self.memory_category_manager = memory_category_manager or MemoryCategoryManager()
@@ -321,6 +324,24 @@ class MemoryManager:
             user_profile=self.get_user_profile(),
         )
 
+    def get_focus_session_state(self) -> Dict[str, Any]:
+        return self.focus_session_manager.build_state()
+
+    def start_focus_session(self, goal: str, duration_minutes: int = 45) -> Dict[str, Any]:
+        current = self.get_task_view().get("current") or {}
+        return self.focus_session_manager.start_session(
+            goal=goal,
+            duration_minutes=duration_minutes,
+            task_id=current.get("id", ""),
+            task_title=current.get("title", ""),
+        )
+
+    def complete_focus_session(self, outcome: str = "") -> Dict[str, Any]:
+        return self.focus_session_manager.complete_current(outcome=outcome)
+
+    def abandon_focus_session(self, outcome: str = "") -> Dict[str, Any]:
+        return self.focus_session_manager.abandon_current(outcome=outcome)
+
     def get_support_knowledge_state(self, current_prompt: str = "") -> Dict[str, Any]:
         return self.support_knowledge_manager.build_state(current_prompt)
 
@@ -468,6 +489,7 @@ class MemoryManager:
             {"role": "system", "content": self.get_structured_memory_summary()},
             {"role": "system", "content": self.get_recent_summary_context(days=7)},
             {"role": "system", "content": self.task_state.format_commitments()},
+            {"role": "system", "content": self.focus_session_manager.format_for_context()},
             {"role": "system", "content": self.context_engine.format_empty_retrieval()},
             {"role": "system", "content": self.memory_category_manager.format_for_context()},
             {"role": "system", "content": self.memory_item_manager.format_for_context()},
@@ -496,6 +518,7 @@ class MemoryManager:
             "memory_conflicts": self.get_memory_conflicts(),
             "reflections": self.get_reflections(),
             "supervision": self.get_supervision_state(),
+            "focus_session": self.get_focus_session_state(),
             "support_knowledge": self.get_support_knowledge_state(current_prompt),
         }
 

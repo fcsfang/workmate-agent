@@ -71,6 +71,7 @@ class WorkmateWebApp:
             "memory_conflicts": self.memory_manager.get_memory_conflicts(),
             "reflections": self.memory_manager.get_reflections(),
             "supervision": self.memory_manager.get_supervision_state(),
+            "focus_session": self.memory_manager.get_focus_session_state(),
             "support_knowledge": self.memory_manager.get_support_knowledge_state(current_prompt),
             "tool_calls": self.tool_state(),
             "memory_pipeline": context_debug.get("memory_pipeline", {}),
@@ -99,9 +100,32 @@ class WorkmateWebApp:
             "memory_conflicts": self.memory_manager.get_memory_conflicts(),
             "reflections": self.memory_manager.get_reflections(),
             "supervision": self.memory_manager.get_supervision_state(),
+            "focus_session": self.memory_manager.get_focus_session_state(),
             "support_knowledge": self.memory_manager.get_support_knowledge_state(""),
             "tool_calls": self.tool_state(),
             "last_pipeline_result": self.memory_manager.last_pipeline_result,
+        }
+
+    def focus(self, payload):
+        action = str(payload.get("action", "")).strip().lower()
+        if action == "start":
+            goal = str(payload.get("goal", "")).strip()
+            duration_minutes = int(payload.get("duration_minutes", 45) or 45)
+            session = self.memory_manager.start_focus_session(goal, duration_minutes=duration_minutes)
+        elif action == "complete":
+            outcome = str(payload.get("outcome", "")).strip()
+            session = self.memory_manager.complete_focus_session(outcome=outcome)
+        elif action == "abandon":
+            outcome = str(payload.get("outcome", "")).strip()
+            session = self.memory_manager.abandon_focus_session(outcome=outcome)
+        else:
+            raise ValueError("Unknown focus action")
+
+        return {
+            "session": session,
+            "focus_session": self.memory_manager.get_focus_session_state(),
+            "memory": self.memory_state(),
+            "context": self.context_state(),
         }
 
     def tool_state(self):
@@ -142,12 +166,16 @@ class WorkmateRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
-        if path != "/api/chat":
-            self._send_error(404, "Not found")
-            return
-
         try:
             payload = self._read_json()
+            if path == "/api/focus":
+                self._send_json(APP.focus(payload))
+                return
+
+            if path != "/api/chat":
+                self._send_error(404, "Not found")
+                return
+
             prompt = str(payload.get("prompt", "")).strip()
             if not prompt:
                 self._send_error(400, "Prompt is required")

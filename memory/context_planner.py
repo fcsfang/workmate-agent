@@ -15,7 +15,7 @@ class ContextPlanner:
 
     def required_context_keys(self, current_prompt: str, classification: Dict[str, str] = None) -> List[str]:
         intent = (classification or {}).get("intent") or self.intent(current_prompt)
-        keys = ["intent", "user_profile", "task_lifecycle", "task_state"]
+        keys = ["intent", "user_profile", "task_lifecycle", "task_state", "focus_session"]
 
         if intent in {"task", "review", "supervision", "search"}:
             keys.extend(["high_level_insights", "memory_governance"])

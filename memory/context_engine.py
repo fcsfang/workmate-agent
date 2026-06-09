@@ -66,6 +66,8 @@ class ContextEngine:
             available["task_lifecycle"] = memory_manager.task_state.format_task_lifecycle()
         if "task_state" in key_set:
             available["task_state"] = memory_manager.task_state.format_current_state()
+        if "focus_session" in key_set:
+            available["focus_session"] = memory_manager.focus_session_manager.format_for_context()
         if "high_level_insights" in key_set:
             available["high_level_insights"] = memory_manager.insight_manager.format_for_context()
         if "semantic_dialogues" in key_set:

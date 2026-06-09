@@ -2,6 +2,7 @@ from .commitment import CommitmentManager
 from .context_compressor import ContextCompressor
 from .context_engine import ContextEngine
 from .context_planner import ContextPlanner
+from .focus_session import FocusSessionManager
 from .governance import MemoryGovernanceManager
 from .interpreter import InsightManager, IntentManager, MemoryExtractor, SemanticDialogueManager, SummaryManager
 from .manager import MemoryManager
@@ -21,6 +22,7 @@ __all__ = [
     "ContextCompressor",
     "ContextEngine",
     "ContextPlanner",
+    "FocusSessionManager",
     "InsightManager",
     "IntentManager",
     "MemoryCategoryManager",
