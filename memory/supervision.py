@@ -19,6 +19,8 @@ class SupervisionManager:
             signals.append(stale)
 
         open_commitments = [item for item in commitments if item.get("status") == "open"]
+        for signal in self._commitment_deadline_signals(open_commitments, now):
+            signals.append(signal)
         if open_commitments:
             signals.append({
                 "type": "open_commitment",
@@ -101,6 +103,37 @@ class SupervisionManager:
         if task_title:
             return f"围绕“{task_title}”保持低压力回应：先确认已记住；如有必要，只补一句小建议。{preference}"
         return f"保持低压力回应：先记住和整理；如有必要，只补一句小建议。{preference}"
+
+    def _commitment_deadline_signals(self, open_commitments: List[Dict[str, Any]], now: datetime) -> List[Dict[str, Any]]:
+        overdue = []
+        due_today = []
+        for item in open_commitments:
+            deadline_str = item.get("deadline", "")
+            if not deadline_str:
+                continue
+            try:
+                deadline_dt = datetime.fromisoformat(deadline_str)
+                if deadline_dt < now:
+                    overdue.append(item.get("commitment", ""))
+                elif deadline_dt.date() == now.date():
+                    due_today.append(item.get("commitment", ""))
+            except ValueError:
+                continue
+
+        signals = []
+        if overdue:
+            signals.append({
+                "type": "overdue_commitment",
+                "severity": "medium",
+                "message": f"{len(overdue)} 个承诺已逾期；回复时可以顺手轻提，帮用户决定关闭或延期。",
+            })
+        if due_today:
+            signals.append({
+                "type": "due_today",
+                "severity": "low",
+                "message": f"今天有 {len(due_today)} 个承诺到期；可以在相关时轻轻提一句。",
+            })
+        return signals
 
     def _parse_time(self, text: str) -> Optional[datetime]:
         if not text:

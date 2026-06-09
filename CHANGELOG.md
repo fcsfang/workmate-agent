@@ -1,3 +1,62 @@
+## V0.8.3
+### 目标
+- 实现浏览器桌面主动弹窗通知，强化自律监督并降低用户交互负担
+
+### 已实现
+#### 桌面主动通知
+- 前端自动检测并请求浏览器 `Notification` API 权限
+- 实现 `checkAndNotify` 桌面提醒逻辑，集成于 1 分钟的前端数据轮询流水线中
+- 支持专注会话超时提醒：当专注状态为 `expired` 时触发弹窗
+- 支持承诺到期/逾期提醒：当存在今天到期或已逾期的 open 承诺时触发弹窗
+- 引入本地防重复打扰机制，利用 `localStorage` 记录已通知的会话 ID 以及承诺当天已通知状态，避免重复触发弹窗
+
+## V0.8.2
+### 目标
+- 感知时间间隔与今日对话状态，为用户回归和早晨开启提供更柔和、具有情境感的反馈策略
+
+### 已实现
+#### 首次对话早间简报 (C)
+- `BehaviorStatsManager` 新增 `is_first_message_today()`，判断当前对话是否为今天首次交流
+- 新增 `format_morning_briefing()` 格式化组件：汇总昨日遗留承诺、今天到期/逾期承诺、今日主线任务、本周专注及承诺统计指标，并提供温和问候与轻量启动建议的 Agent 回应指引
+- 在 Context 规划中动态引入 `morning_briefing` 数据块
+
+#### 间隔与专注超时感知 (B)
+- `BehaviorStatsManager` 新增 `get_conversation_gap_minutes()` 计算对话静默时长
+- 新增 `format_gap_context()` 格式化组件：当两次对话间隔超过 30 分钟或当前专注会话超时，向上下文注入具体的静默间隔与超时时间，指引 Agent 更加人性化地询问进展或引导继续话题
+- 在 Context 规划中动态引入 `gap_context` 数据块
+
+## V0.8.1
+### 目标
+- 基于 V0.8 的专注会话和时间感知数据，补全"有量化数据"和"有时间情境"两层能力
+- 让承诺追踪真正具备时效性，不再只是文字记录
+- 把工具层与专注会话打通，降低会话操作摩擦
+
+### 已实现
+#### 承诺 Deadline 感知
+- `CommitmentManager` 新增 `_extract_deadline()`，从承诺文本中用关键词规则提取 deadline
+- 支持识别：今天/今晚/今日、明天/明日、后天、这周/本周/周末、下周
+- 每条新承诺自动写入 `deadline` 字段（ISO 8601 格式）
+- `format_for_context()` 展示时标注 `[⚠ 已逾期]`、`[今天到期]`、`[截止 MM/DD]`
+- `SupervisionManager` 新增 `overdue_commitment`（medium）和 `due_today`（low）两类监督信号，优先于泛化承诺提醒触发
+
+#### 行为统计层
+- 新增 `BehaviorStatsManager`（`memory/stats.py`）
+- 实时从已有 JSON 文件计算，不新增存储文件
+- 统计维度：专注会话完成率和累计时长、承诺本周履行率、连续活跃天数
+- 上午和傍晚对话、用户触发 `review` 意图时，行为统计自动注入上下文
+
+#### 时间情境感知
+- `ContextPlanner` 新增 `time_period()` 方法，按时段返回 `morning / afternoon / evening / night`
+- `time_context` 成为基础上下文块（每次对话都注入），包含当前时段、今日专注情况和 Agent 应对策略提示
+- 深夜（23:00–06:00）自动屏蔽 `supervision` 信号，避免在休息时段加压
+- 上午和傍晚额外注入 `behavior_stats`，支持更具体的启动和收束建议
+
+#### 工具层接入专注会话
+- `tools/workmate_tools.py` 新增三个工具：`start_focus_session`、`complete_focus_session`、`abandon_focus_session`
+- AI 在对话中判断用户明确说"去做某事"时可直接启动专注会话，无需用户手动操作 UI
+- 工具描述内置触发约束，避免在普通聊天或计划讨论中误触发
+- `complete` / `abandon` 在无进行中会话时返回 `{completed: false}` 而非报错
+
 ## V0.8
 ### 目标
 - 从“被动等待用户汇报”迈向轻量主动陪伴的第一步

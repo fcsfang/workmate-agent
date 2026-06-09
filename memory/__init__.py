@@ -7,6 +7,7 @@ from .governance import MemoryGovernanceManager
 from .interpreter import InsightManager, IntentManager, MemoryExtractor, SemanticDialogueManager, SummaryManager
 from .manager import MemoryManager
 from .pipeline import MemoryPipeline
+from .stats import BehaviorStatsManager
 from .store import MemoryCategoryManager, MemoryItemManager, MemoryResourceManager
 from .reflection import ReflectionManager
 from .search import SearchManager
@@ -18,6 +19,7 @@ from .task_state_manager import TaskStateManager
 from .profile import UserProfileManager
 
 __all__ = [
+    "BehaviorStatsManager",
     "CommitmentManager",
     "ContextCompressor",
     "ContextEngine",

@@ -15,6 +15,7 @@ from .store import MemoryCategoryManager, MemoryItemManager, MemoryResourceManag
 from .pipeline import MemoryPipeline
 from .reflection import ReflectionManager
 from .search import SearchManager
+from .stats import BehaviorStatsManager
 from .supervision import SupervisionManager
 from .support_knowledge import SupportKnowledgeManager
 from .task_manager import TaskManager
@@ -46,6 +47,7 @@ class MemoryManager:
         reflection_manager: Optional[ReflectionManager] = None,
         search_manager: Optional[SearchManager] = None,
         semantic_dialogue_manager: Optional[SemanticDialogueManager] = None,
+        stats_manager: Optional[BehaviorStatsManager] = None,
         supervision_manager: Optional[SupervisionManager] = None,
         support_knowledge_manager: Optional[SupportKnowledgeManager] = None,
         summary_manager: Optional[SummaryManager] = None,
@@ -77,6 +79,7 @@ class MemoryManager:
         self.reflection_manager = reflection_manager or ReflectionManager()
         self.search_manager = self.context_engine.search_manager
         self.semantic_dialogue_manager = semantic_dialogue_manager or SemanticDialogueManager()
+        self.stats_manager = stats_manager or BehaviorStatsManager()
         self.supervision_manager = supervision_manager or SupervisionManager()
         self.support_knowledge_manager = support_knowledge_manager or SupportKnowledgeManager()
         self.summary_manager = summary_manager or SummaryManager()
@@ -326,6 +329,9 @@ class MemoryManager:
 
     def get_focus_session_state(self) -> Dict[str, Any]:
         return self.focus_session_manager.build_state()
+
+    def get_behavior_stats(self) -> Dict[str, Any]:
+        return self.stats_manager.get_behavior_stats()
 
     def start_focus_session(self, goal: str, duration_minutes: int = 45) -> Dict[str, Any]:
         current = self.get_task_view().get("current") or {}

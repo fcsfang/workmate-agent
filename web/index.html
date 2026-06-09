@@ -1354,6 +1354,60 @@
         item.append(time, text);
         recordList.append(item);
       });
+      checkAndNotify(memory.focus_session || {}, memory.open_commitments || []);
+    }
+
+    function initNotifications() {
+      if ("Notification" in window) {
+        if (Notification.permission === "default") {
+          Notification.requestPermission();
+        }
+      }
+    }
+
+    function checkAndNotify(focusSession = {}, openCommitments = []) {
+      if (!("Notification" in window) || Notification.permission !== "granted") {
+        return;
+      }
+
+      const todayStr = new Date().toISOString().slice(0, 10);
+
+      // 1. 专注会话超时通知
+      const current = focusSession.current || {};
+      if (current.status === "expired" && current.id) {
+        const notifiedFocusKey = `notified_focus_${current.id}`;
+        if (!localStorage.getItem(notifiedFocusKey)) {
+          new Notification("专注超时提醒 ⏳", {
+            body: `专注会话【${current.goal}】已超出计划时长（计划 ${current.duration_minutes} 分钟），建议回来跟 Agent 记录进度哦！`
+          });
+          localStorage.setItem(notifiedFocusKey, "true");
+        }
+      }
+
+      // 2. 承诺到期提醒 (逾期或今天到期)
+      const now = new Date();
+      openCommitments.forEach((item) => {
+        if (!item.id || !item.deadline) return;
+        try {
+          const deadlineDt = new Date(item.deadline);
+          const isOverdue = deadlineDt < now;
+          const isDueToday = deadlineDt.toISOString().slice(0, 10) === todayStr;
+
+          if (isOverdue || isDueToday) {
+            const notifiedCommitmentKey = `notified_commit_${item.id}_${todayStr}`;
+            if (!localStorage.getItem(notifiedCommitmentKey)) {
+              const title = isOverdue ? "承诺逾期提醒 ⚠" : "承诺今日到期提醒 ⏰";
+              const desc = isOverdue ? "已超出承诺截止时间" : "截止今天完成";
+              new Notification(title, {
+                body: `承诺：【${item.commitment}】${desc}，记得及时处理哦！`
+              });
+              localStorage.setItem(notifiedCommitmentKey, "true");
+            }
+          }
+        } catch (e) {
+          console.error("解析承诺日期失败:", e);
+        }
+      });
     }
 
     async function loadMemory(options = {}) {
@@ -1554,6 +1608,7 @@
     });
 
     updateClock();
+    initNotifications();
     setInterval(updateClock, 15000);
     setInterval(() => loadMemory().catch(() => {}), 60000);
     Promise.all([loadMemory({ restoreTranscript: true }), loadContext()]).catch((error) => {

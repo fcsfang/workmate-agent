@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Dict, List
 
 
@@ -7,20 +8,42 @@ class ContextPlanner:
         current_prompt: str,
         available: Dict[str, str],
         classification: Dict[str, str] = None,
+        is_morning: bool = False,
+        has_gap: bool = False,
     ) -> List[Dict[str, str]]:
         messages: List[Dict[str, str]] = []
-        for key in self.required_context_keys(current_prompt, classification=classification):
+        for key in self.required_context_keys(
+            current_prompt,
+            classification=classification,
+            is_morning=is_morning,
+            has_gap=has_gap,
+        ):
             self._append(messages, available.get(key))
         return messages
 
-    def required_context_keys(self, current_prompt: str, classification: Dict[str, str] = None) -> List[str]:
+    def required_context_keys(
+        self,
+        current_prompt: str,
+        classification: Dict[str, str] = None,
+        is_morning: bool = False,
+        has_gap: bool = False,
+    ) -> List[str]:
         intent = (classification or {}).get("intent") or self.intent(current_prompt)
-        keys = ["intent", "user_profile", "task_lifecycle", "task_state", "focus_session"]
+        period = self.time_period()
+        keys = ["intent", "user_profile", "task_lifecycle", "task_state", "focus_session", "time_context"]
+
+        if is_morning:
+            keys.append("morning_briefing")
+        if has_gap:
+            keys.append("gap_context")
+
+        if period in {"morning", "evening"}:
+            keys.append("behavior_stats")
 
         if intent in {"task", "review", "supervision", "search"}:
             keys.extend(["high_level_insights", "memory_governance"])
 
-        if intent in {"task", "review", "supervision"}:
+        if intent in {"task", "review", "supervision"} and period != "night":
             keys.append("supervision")
 
         if self.needs_support_knowledge(current_prompt):
@@ -36,10 +59,20 @@ class ContextPlanner:
             keys.append("related_memories")
 
         if intent == "review":
-            keys.extend(["reflections", "memory_summary", "structured_summary"])
+            keys.extend(["reflections", "memory_summary", "structured_summary", "behavior_stats"])
         elif intent == "task":
             keys.append("structured_summary")
         return self._unique(keys)
+
+    def time_period(self) -> str:
+        hour = datetime.now().hour
+        if 6 <= hour < 11:
+            return "morning"
+        if 11 <= hour < 18:
+            return "afternoon"
+        if 18 <= hour < 22:
+            return "evening"
+        return "night"
 
     def intent(self, prompt: str) -> str:
         if self._has_any(prompt, ["提醒", "监督", "检查", "催我"]):

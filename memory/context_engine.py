@@ -18,9 +18,18 @@ class ContextEngine:
 
     def build_messages(self, current_prompt: str, memory_manager: Any) -> List[Dict[str, str]]:
         intent_classification = memory_manager.intent_manager.classify(current_prompt)
+        
+        is_morning = memory_manager.stats_manager.is_first_message_today()
+        gap_min = memory_manager.stats_manager.get_conversation_gap_minutes()
+        focus_state = memory_manager.get_focus_session_state()
+        current_session = focus_state.get("current") or {}
+        has_gap = (gap_min >= 30) or (current_session.get("status") == "expired")
+
         required_keys = self.context_planner.required_context_keys(
             current_prompt,
             classification=intent_classification,
+            is_morning=is_morning,
+            has_gap=has_gap,
         )
         available_context = self.load_context_blocks(
             current_prompt,
@@ -32,6 +41,8 @@ class ContextEngine:
             current_prompt,
             available_context,
             classification=intent_classification,
+            is_morning=is_morning,
+            has_gap=has_gap,
         )
         system_messages = self.context_compressor.compress_system_messages(planned_messages)
         recent_messages = self.context_compressor.recent_messages(memory_manager.get_recent_messages())
@@ -68,6 +79,14 @@ class ContextEngine:
             available["task_state"] = memory_manager.task_state.format_current_state()
         if "focus_session" in key_set:
             available["focus_session"] = memory_manager.focus_session_manager.format_for_context()
+        if "time_context" in key_set:
+            available["time_context"] = memory_manager.stats_manager.format_time_context()
+        if "morning_briefing" in key_set:
+            available["morning_briefing"] = memory_manager.stats_manager.format_morning_briefing(memory_manager)
+        if "gap_context" in key_set:
+            available["gap_context"] = memory_manager.stats_manager.format_gap_context(memory_manager)
+        if "behavior_stats" in key_set:
+            available["behavior_stats"] = memory_manager.stats_manager.format_for_context()
         if "high_level_insights" in key_set:
             available["high_level_insights"] = memory_manager.insight_manager.format_for_context()
         if "semantic_dialogues" in key_set:

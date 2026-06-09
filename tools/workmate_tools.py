@@ -82,6 +82,58 @@ def build_workmate_tool_registry(memory_manager: Any) -> ToolRegistry:
         lambda args: _add_memory_note(memory_manager, args),
     )
 
+    registry.register(
+        "start_focus_session",
+        (
+            "开始一段专注会话。"
+            "只在用户明确表示接下来要去做某件具体的事（如'我去写代码了'/'开始专注45分钟'）时调用。"
+            "普通聊天、计划讨论、模糊意图时不调用。"
+        ),
+        {
+            "type": "object",
+            "properties": {
+                "goal": {"type": "string", "description": "这段专注时间要做的事"},
+                "duration_minutes": {"type": "integer", "minimum": 5, "maximum": 240, "description": "计划专注时长（分钟），默认45"},
+            },
+            "required": ["goal"],
+        },
+        lambda args: _start_focus_session(memory_manager, args),
+    )
+
+    registry.register(
+        "complete_focus_session",
+        (
+            "标记当前专注会话为完成。"
+            "只在用户回来汇报刚才的任务完成了时调用。"
+            "如果用户只是回来聊天或没有进行中的专注会话，不调用。"
+        ),
+        {
+            "type": "object",
+            "properties": {
+                "outcome": {"type": "string", "description": "完成了什么，可选"},
+            },
+            "required": [],
+        },
+        lambda args: _complete_focus_session(memory_manager, args),
+    )
+
+    registry.register(
+        "abandon_focus_session",
+        (
+            "放弃或中断当前专注会话。"
+            "只在用户明确说被打断、放弃或没做成时调用。"
+            "如果没有进行中的专注会话，不调用。"
+        ),
+        {
+            "type": "object",
+            "properties": {
+                "outcome": {"type": "string", "description": "发生了什么，可选"},
+            },
+            "required": [],
+        },
+        lambda args: _abandon_focus_session(memory_manager, args),
+    )
+
     return registry
 
 
@@ -225,8 +277,52 @@ def _note_id(now: str, content: str) -> str:
     return f"note-{safe_time}-{digest}"
 
 
+def _start_focus_session(memory_manager: Any, args: Dict[str, Any]) -> Dict[str, Any]:
+    goal = _compact(args.get("goal", ""), 180)
+    if not goal:
+        raise ValueError("goal is required")
+    duration_minutes = _bounded_int(args.get("duration_minutes", 45), 5, 240)
+    session = memory_manager.start_focus_session(goal, duration_minutes=duration_minutes)
+    return {
+        "started": True,
+        "goal": session.get("goal", ""),
+        "duration_minutes": session.get("duration_minutes", 0),
+        "started_at": session.get("started_at", ""),
+        "expected_end_at": session.get("expected_end_at", ""),
+    }
+
+
+def _complete_focus_session(memory_manager: Any, args: Dict[str, Any]) -> Dict[str, Any]:
+    outcome = _compact(args.get("outcome", ""), 220)
+    try:
+        session = memory_manager.complete_focus_session(outcome=outcome)
+        return {
+            "completed": True,
+            "goal": session.get("goal", ""),
+            "elapsed_minutes": session.get("elapsed_minutes", 0),
+            "outcome": session.get("outcome", ""),
+        }
+    except ValueError as exc:
+        return {"completed": False, "reason": str(exc)}
+
+
+def _abandon_focus_session(memory_manager: Any, args: Dict[str, Any]) -> Dict[str, Any]:
+    outcome = _compact(args.get("outcome", ""), 220)
+    try:
+        session = memory_manager.abandon_focus_session(outcome=outcome)
+        return {
+            "abandoned": True,
+            "goal": session.get("goal", ""),
+            "elapsed_minutes": session.get("elapsed_minutes", 0),
+            "outcome": session.get("outcome", ""),
+        }
+    except ValueError as exc:
+        return {"abandoned": False, "reason": str(exc)}
+
+
 def _compact(text: Any, max_length: int = 160) -> str:
     text = " ".join(str(text or "").split())
     if len(text) <= max_length:
         return text
     return text[:max_length].rstrip() + "..."
+

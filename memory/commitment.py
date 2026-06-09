@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -137,6 +137,7 @@ class CommitmentManager:
         if not open_items:
             return "暂无未关闭承诺。"
 
+        now = datetime.now()
         lines = [
             "以下是未关闭承诺。请关注用户和 Agent 已经明确答应要做的事，不要让它们被新话题覆盖。",
         ]
@@ -147,6 +148,9 @@ class CommitmentManager:
             ]
             if item.get("task"):
                 parts.append(f"task={item['task']}")
+            deadline_label = self._format_deadline_label(item.get("deadline", ""), now)
+            if deadline_label:
+                parts.append(deadline_label)
             lines.append(" | ".join(parts))
         return "\n".join(lines)
 
@@ -167,6 +171,7 @@ class CommitmentManager:
             "owner": owner,
             "task": task,
             "commitment": self._compact(commitment),
+            "deadline": self._extract_deadline(commitment),
             "status": "open",
             "created_at": now,
             "closed_at": "",
@@ -244,6 +249,38 @@ class CommitmentManager:
         if not isinstance(value, list):
             return []
         return [str(item) for item in value if str(item).strip()]
+
+    def _extract_deadline(self, text: str) -> str:
+        """Extract deadline from commitment text using keyword rules."""
+        today = date.today()
+        if any(kw in text for kw in ["今天", "今晚", "今日"]):
+            target = today
+        elif any(kw in text for kw in ["明天", "明日"]):
+            target = today + timedelta(days=1)
+        elif "后天" in text:
+            target = today + timedelta(days=2)
+        elif any(kw in text for kw in ["这周", "本周", "周末"]):
+            target = today + timedelta(days=6 - today.weekday())
+        elif "下周" in text:
+            target = today + timedelta(days=6 - today.weekday() + 7)
+        else:
+            return ""
+        return f"{target.isoformat()}T23:59:00"
+
+    def _format_deadline_label(self, deadline_str: str, now: datetime) -> str:
+        """Return a human-readable deadline label for context injection."""
+        if not deadline_str:
+            return ""
+        try:
+            deadline_dt = datetime.fromisoformat(deadline_str)
+            if deadline_dt < now:
+                return "[⚠ 已逾期]"
+            elif deadline_dt.date() == now.date():
+                return "[今天到期]"
+            else:
+                return f"[截止 {deadline_dt.strftime('%m/%d')}]"
+        except ValueError:
+            return ""
 
     def _make_id(self, now: str, text: str) -> str:
         safe_time = now.replace("-", "").replace(":", "").replace("T", "-")
