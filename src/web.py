@@ -213,6 +213,18 @@ class WorkmateRequestHandler(BaseHTTPRequestHandler):
             self._send_json(APP.context_state())
             return
 
+        if path == "/api/notify/status":
+            import os
+            channels = [c.strip() for c in os.getenv("PUSH_CHANNELS", "").split(",") if c.strip()]
+            status = {
+                "enabled_channels": channels,
+                "local_configured": True,  # macOS native is always supported
+                "bark_configured": bool(os.getenv("BARK_URL")),
+                "lark_configured": bool(os.getenv("LARK_WEBHOOK")),
+            }
+            self._send_json(status)
+            return
+
         safe_path = path.lstrip("/")
         file_path = (WEB_ROOT / safe_path).resolve()
         if WEB_ROOT.resolve() not in file_path.parents and file_path != WEB_ROOT.resolve():
@@ -231,6 +243,17 @@ class WorkmateRequestHandler(BaseHTTPRequestHandler):
             payload = self._read_json()
             if path == "/api/focus":
                 self._send_json(APP.focus(payload))
+                return
+
+            if path == "/api/notify/test":
+                try:
+                    APP.notifier.send_notification(
+                        "自检测试通知 🔔",
+                        "这是一条来自 Workmate Agent 的自检测试通知，听到/看到声音表示配置正确！"
+                    )
+                    self._send_json({"success": True})
+                except Exception as e:
+                    self._send_json({"success": False, "error": str(e)}, status=500)
                 return
 
             if path != "/api/chat":

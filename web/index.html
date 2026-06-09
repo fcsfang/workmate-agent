@@ -4,6 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Workmate Agent Console</title>
+  <!-- marked.js for Markdown parsing -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <!-- Prism.js for syntax highlighting -->
+  <link href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-okaidia.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
   <style>
     :root {
       --paper: #f4f0e6;
@@ -36,7 +42,7 @@
     body {
       margin: 0;
       color: var(--ink);
-      font-family: var(--sans);
+      font-family: var(--serif);
       background:
         linear-gradient(90deg, rgba(184, 64, 42, 0.08), transparent 28%, rgba(102, 118, 66, 0.10)),
         url("/assets/ledger-field.png"),
@@ -718,6 +724,105 @@
         min-height: 46px;
       }
     }
+
+    /* V0.8.6 Added CSS Styles */
+    .transcript {
+      scroll-behavior: smooth;
+    }
+
+    /* Markdown Tables Styling */
+    .message-content table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0;
+      font-size: 13px;
+      background: rgba(255, 252, 242, 0.6);
+    }
+    .message-content th,
+    .message-content td {
+      border: 1px solid var(--line-strong);
+      padding: 8px 12px;
+      text-align: left;
+    }
+    .message-content th {
+      background-color: var(--paper-deep);
+      font-weight: 600;
+      color: var(--ink);
+    }
+    .message-content tr:nth-child(even) {
+      background-color: rgba(24, 22, 18, 0.03);
+    }
+
+    /* Code blocks container with Copy button */
+    .code-block-wrapper {
+      position: relative;
+      margin: 12px 0;
+      border-radius: 5px;
+      overflow: hidden;
+    }
+    .code-block-wrapper pre {
+      margin: 0 !important;
+    }
+    .copy-code-btn {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      padding: 4px 8px;
+      font-family: var(--mono);
+      font-size: 10px;
+      border: 1px solid rgba(244, 240, 230, 0.2);
+      border-radius: 4px;
+      background: rgba(29, 33, 28, 0.82);
+      color: var(--paper);
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 160ms ease, background-color 160ms ease;
+    }
+    .code-block-wrapper:hover .copy-code-btn {
+      opacity: 1;
+    }
+    .copy-code-btn:hover {
+      background: var(--cinnabar);
+      border-color: var(--cinnabar);
+    }
+
+    /* Collapsible Config Panel */
+    .config-panel {
+      padding: 10px 0;
+      display: grid;
+      gap: 8px;
+    }
+    .config-channel {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      padding: 6px 8px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: rgba(255, 252, 242, 0.4);
+    }
+    .channel-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: #6e675d;
+    }
+    .channel-dot.active {
+      background: var(--moss);
+    }
+    .channel-dot.inactive {
+      background: var(--cinnabar);
+    }
+    .channel-name {
+      flex-grow: 1;
+      color: var(--ink);
+    }
+    .channel-status {
+      font-family: var(--mono);
+      color: var(--muted);
+      font-size: 10px;
+    }
   </style>
 </head>
 <body>
@@ -883,6 +988,29 @@
         <pre class="summary" id="memorySummary">loading memory...</pre>
       </div>
 
+      <details class="context-box" id="systemConfigBox">
+        <summary>SYSTEM CONFIG & PUSH TEST</summary>
+        <div class="config-panel">
+          <div class="config-channel" id="channelLocal">
+            <span class="channel-dot"></span>
+            <span class="channel-name">macOS Native Notification</span>
+            <span class="channel-status">checking...</span>
+          </div>
+          <div class="config-channel" id="channelBark">
+            <span class="channel-dot"></span>
+            <span class="channel-name">Bark Mobile Push</span>
+            <span class="channel-status">checking...</span>
+          </div>
+          <div class="config-channel" id="channelLark">
+            <span class="channel-dot"></span>
+            <span class="channel-name">Feishu Bot Push</span>
+            <span class="channel-status">checking...</span>
+          </div>
+          <button class="focus-button" id="testNotifyBtn" type="button" style="margin-top: 10px; width: 100%;">发送测试通知 🔔</button>
+          <div id="testNotifyResult" style="margin-top: 6px; font-size: 10px; font-family: var(--mono); text-align: center;"></div>
+        </div>
+      </details>
+
       <details class="context-box">
         <summary>MODEL CONTEXT</summary>
         <pre class="context-preview" id="contextPreview">还没有发送过消息。本区会显示下一轮/上一轮实际发给模型的上下文。</pre>
@@ -996,115 +1124,53 @@
         .replaceAll("'", "&#39;");
     }
 
-    function renderInlineMarkdown(value) {
-      return escapeHtml(value)
-        .replace(/`([^`]+)`/g, "<code>$1</code>")
-        .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-        .replace(/__([^_]+)__/g, "<strong>$1</strong>")
-        .replace(/\*([^*]+)\*/g, "<em>$1</em>");
-    }
-
-    function renderParagraph(lines) {
-      const text = lines.join("\n").trim();
-      if (!text) return "";
-      return `<p>${renderInlineMarkdown(text)}</p>`;
+    // Configure marked options if marked is loaded
+    if (typeof marked !== "undefined") {
+      marked.setOptions({
+        gfm: true,
+        breaks: true
+      });
     }
 
     function renderMarkdown(markdown) {
-      const lines = String(markdown || "").replace(/\r\n/g, "\n").split("\n");
-      const html = [];
-      let paragraph = [];
-      let list = null;
-      let quote = [];
-      let inCode = false;
-      let codeLines = [];
-
-      function flushParagraph() {
-        const block = renderParagraph(paragraph);
-        if (block) html.push(block);
-        paragraph = [];
+      if (typeof marked !== "undefined" && typeof marked.parse === "function") {
+        return marked.parse(markdown);
       }
+      return `<p>${escapeHtml(markdown)}</p>`;
+    }
 
-      function flushList() {
-        if (!list) return;
-        html.push(`<${list.type}>${list.items.map((item) => `<li>${renderInlineMarkdown(item)}</li>`).join("")}</${list.type}>`);
-        list = null;
+    function processMessageContent(body, content) {
+      body.innerHTML = renderMarkdown(content);
+      
+      body.querySelectorAll("pre").forEach((pre) => {
+        if (pre.parentElement.classList.contains("code-block-wrapper")) {
+          return;
+        }
+        const wrapper = document.createElement("div");
+        wrapper.className = "code-block-wrapper";
+        pre.parentNode.insertBefore(wrapper, pre);
+        
+        const copyBtn = document.createElement("button");
+        copyBtn.className = "copy-code-btn";
+        copyBtn.textContent = "COPY";
+        copyBtn.type = "button";
+        copyBtn.addEventListener("click", () => {
+          const codeText = pre.querySelector("code")?.textContent || "";
+          navigator.clipboard.writeText(codeText).then(() => {
+            copyBtn.textContent = "COPIED!";
+            setTimeout(() => { copyBtn.textContent = "COPY"; }, 1500);
+          }).catch((err) => {
+            console.error("Failed to copy code: ", err);
+          });
+        });
+
+        wrapper.appendChild(pre);
+        wrapper.appendChild(copyBtn);
+      });
+
+      if (typeof Prism !== "undefined") {
+        Prism.highlightAllUnder(body);
       }
-
-      function flushQuote() {
-        if (!quote.length) return;
-        html.push(`<blockquote>${renderParagraph(quote)}</blockquote>`);
-        quote = [];
-      }
-
-      function flushOpenBlocks() {
-        flushParagraph();
-        flushList();
-        flushQuote();
-      }
-
-      for (const line of lines) {
-        const fence = line.match(/^```/);
-        if (fence) {
-          if (inCode) {
-            html.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
-            codeLines = [];
-            inCode = false;
-          } else {
-            flushOpenBlocks();
-            inCode = true;
-          }
-          continue;
-        }
-
-        if (inCode) {
-          codeLines.push(line);
-          continue;
-        }
-
-        if (!line.trim()) {
-          flushOpenBlocks();
-          continue;
-        }
-
-        const heading = line.match(/^(#{1,3})\s+(.+)$/);
-        if (heading) {
-          flushOpenBlocks();
-          const level = heading[1].length;
-          html.push(`<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`);
-          continue;
-        }
-
-        const quoteLine = line.match(/^>\s?(.*)$/);
-        if (quoteLine) {
-          flushParagraph();
-          flushList();
-          quote.push(quoteLine[1]);
-          continue;
-        }
-
-        const ordered = line.match(/^\s*\d+\.\s+(.+)$/);
-        const unordered = line.match(/^\s*[-*]\s+(.+)$/);
-        if (ordered || unordered) {
-          flushParagraph();
-          flushQuote();
-          const type = ordered ? "ol" : "ul";
-          if (!list || list.type !== type) flushList();
-          if (!list) list = { type, items: [] };
-          list.items.push((ordered || unordered)[1]);
-          continue;
-        }
-
-        flushList();
-        flushQuote();
-        paragraph.push(line);
-      }
-
-      if (inCode) {
-        html.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
-      }
-      flushOpenBlocks();
-      return html.join("");
     }
 
     function appendMessage(role, content) {
@@ -1119,7 +1185,7 @@
       const body = document.createElement("div");
       body.className = "message-content";
       if (role === "agent") {
-        body.innerHTML = renderMarkdown(content);
+        processMessageContent(body, content);
       } else {
         body.textContent = content;
       }
@@ -1157,7 +1223,7 @@
     }
 
     function updateAgentMessage(target, content) {
-      target.body.innerHTML = renderMarkdown(content);
+      processMessageContent(target.body, content);
       transcript.scrollTop = transcript.scrollHeight;
     }
 
@@ -1607,11 +1673,94 @@
       }
     });
 
+    async function loadNotificationStatus() {
+      const channelLocalDot = document.querySelector("#channelLocal .channel-dot");
+      const channelLocalStatus = document.querySelector("#channelLocal .channel-status");
+      const channelBarkDot = document.querySelector("#channelBark .channel-dot");
+      const channelBarkStatus = document.querySelector("#channelBark .channel-status");
+      const channelLarkDot = document.querySelector("#channelLark .channel-dot");
+      const channelLarkStatus = document.querySelector("#channelLark .channel-status");
+
+      try {
+        const response = await fetch("/api/notify/status");
+        if (!response.ok) throw new Error("Failed to fetch notification status");
+        const status = await response.json();
+        
+        const enabled = status.enabled_channels || [];
+
+        // Local
+        if (enabled.includes("local")) {
+          channelLocalDot.className = "channel-dot active";
+          channelLocalStatus.textContent = "ENABLED";
+        } else {
+          channelLocalDot.className = "channel-dot";
+          channelLocalStatus.textContent = "DISABLED";
+        }
+
+        // Bark
+        if (enabled.includes("bark")) {
+          channelBarkDot.className = "channel-dot active";
+          channelBarkStatus.textContent = status.bark_configured ? "ENABLED" : "KEY MISSING";
+          if (!status.bark_configured) channelBarkDot.className = "channel-dot inactive";
+        } else {
+          channelBarkDot.className = "channel-dot";
+          channelBarkStatus.textContent = "DISABLED";
+        }
+
+        // Lark
+        if (enabled.includes("lark")) {
+          channelLarkDot.className = "channel-dot active";
+          channelLarkStatus.textContent = status.lark_configured ? "ENABLED" : "WEBHOOK MISSING";
+          if (!status.lark_configured) channelLarkDot.className = "channel-dot inactive";
+        } else {
+          channelLarkDot.className = "channel-dot";
+          channelLarkStatus.textContent = "DISABLED";
+        }
+      } catch (err) {
+        console.error("加载推送状态失败:", err);
+      }
+    }
+
+    const testNotifyBtn = document.querySelector("#testNotifyBtn");
+    const testNotifyResult = document.querySelector("#testNotifyResult");
+
+    testNotifyBtn.addEventListener("click", async () => {
+      testNotifyBtn.disabled = true;
+      testNotifyBtn.textContent = "正在测试...";
+      testNotifyResult.textContent = "";
+      testNotifyResult.style.color = "var(--muted)";
+
+      try {
+        const response = await fetch("/api/notify/test", { method: "POST" });
+        const resData = await response.json();
+        if (response.ok && resData.success) {
+          testNotifyResult.textContent = "测试成功! 请检查通知。";
+          testNotifyResult.style.color = "var(--moss)";
+        } else {
+          testNotifyResult.textContent = `失败: ${resData.error || "未知错误"}`;
+          testNotifyResult.style.color = "var(--cinnabar)";
+        }
+      } catch (err) {
+        testNotifyResult.textContent = `失败: ${err.message}`;
+        testNotifyResult.style.color = "var(--cinnabar)";
+      } finally {
+        testNotifyBtn.disabled = false;
+        testNotifyBtn.textContent = "发送测试通知 🔔";
+        setTimeout(() => {
+          testNotifyResult.textContent = "";
+        }, 5000);
+      }
+    });
+
     updateClock();
     initNotifications();
     setInterval(updateClock, 15000);
     setInterval(() => loadMemory().catch(() => {}), 60000);
-    Promise.all([loadMemory({ restoreTranscript: true }), loadContext()]).catch((error) => {
+    Promise.all([
+      loadMemory({ restoreTranscript: true }), 
+      loadContext(),
+      loadNotificationStatus()
+    ]).catch((error) => {
       memorySummary.textContent = error.message;
     });
   </script>
