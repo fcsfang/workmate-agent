@@ -1107,7 +1107,7 @@ class InsightManager:
         return text[:max_length].rstrip() + "..."
 
 class IntentManager:
-    VALID_INTENTS = {"chat", "task", "review", "supervision", "search"}
+    VALID_INTENTS = {"chat", "task", "review", "supervision", "search", "weekly_report"}
 
     def __init__(self, llm_client: Optional[Any] = None):
         self.llm_client = llm_client
@@ -1135,6 +1135,8 @@ class IntentManager:
 
     def rule_intent(self, prompt: str) -> str:
         prompt = str(prompt or "")
+        if self._has_any(prompt, ["周报", "周复盘", "每周总结", "每周回顾", "本周总结", "本周复盘"]):
+            return "weekly_report"
         if self._has_any(prompt, ["提醒", "监督", "检查", "催我"]):
             return "supervision"
         if self._has_any(prompt, ["之前", "上次", "相关", "找一下"]):
@@ -1173,11 +1175,12 @@ class IntentManager:
                     "可选 intent:\n"
                     "- chat: 普通聊天、表达想法、让我记住但不需要历史检索\n"
                     "- task: 任务规划、进度汇报、下一步、卡住、开发或优化\n"
-                    "- review: 总结、复盘、回顾最近状态、查看记忆趋势\n"
+                    "- review: 总结、复盘、回顾最近状态、查看记忆趋势 (注意：若是请求生成本周总结或周报/每周回顾等周度总结，请归类为 weekly_report)\n"
+                    "- weekly_report: 请求生成本周总结、周报、每周复盘或每周回顾等周度总结\n"
                     "- supervision: 明确要求提醒、监督、检查、催促\n"
                     "- search: 明确询问之前、上次、相关历史或要求查找旧记录\n\n"
                     "输出 schema:\n"
-                    '{"intent":"chat|task|review|supervision|search","confidence":0.0,"reason":"一句话理由"}\n\n'
+                    '{"intent":"chat|task|review|supervision|search|weekly_report","confidence":0.0,"reason":"一句话理由"}\n\n'
                     f"用户输入:\n{prompt[:1200]}"
                 ),
             },

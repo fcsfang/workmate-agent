@@ -88,6 +88,8 @@ class ContextEngine:
             available["morning_briefing"] = memory_manager.stats_manager.format_morning_briefing(memory_manager)
         if "evening_review" in key_set:
             available["evening_review"] = memory_manager.stats_manager.format_evening_review(memory_manager)
+        if "weekly_report_data" in key_set:
+            available["weekly_report_data"] = memory_manager.stats_manager.format_weekly_review_context(memory_manager)
         if "gap_context" in key_set:
             available["gap_context"] = memory_manager.stats_manager.format_gap_context(memory_manager)
         if "behavior_stats" in key_set:

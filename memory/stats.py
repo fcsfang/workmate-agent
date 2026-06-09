@@ -333,6 +333,66 @@ class BehaviorStatsManager:
         ]
         return "\n".join(lines)
 
+    def format_weekly_review_context(self, memory_manager: Any) -> str:
+        now = datetime.now()
+        seven_days_ago = (now - timedelta(days=7)).isoformat()
+        
+        # 1. 专注会话统计 (过去 7 天)
+        sessions = self._load_json(self.focus_sessions_path)
+        sessions_week = [s for s in sessions if s.get("started_at", "") >= seven_days_ago]
+        completed_week = [s for s in sessions_week if s.get("status") == "completed"]
+        expired_week = [s for s in sessions_week if s.get("status") == "expired"]
+        abandoned_week = [s for s in sessions_week if s.get("status") == "abandoned"]
+        
+        total_focus_min = sum(int(s.get("elapsed_minutes") or 0) for s in completed_week)
+        avg_session_min = total_focus_min // len(completed_week) if completed_week else 0
+        completion_rate = round(len(completed_week) / len(sessions_week), 2) if sessions_week else 0.0
+        
+        # 2. 承诺统计 (过去 7 天)
+        commitments = memory_manager.task_state.all_commitments()
+        opened_week = [c for c in commitments if c.get("created_at", "") >= seven_days_ago]
+        closed_week = [c for c in commitments if c.get("status") == "closed" and c.get("closed_at", "") >= seven_days_ago]
+        open_items = [c for c in commitments if c.get("status") == "open"]
+        overdue_items = [
+            c for c in open_items 
+            if c.get("deadline") and c.get("deadline") < now.isoformat()
+        ]
+        
+        fulfillment_rate = round(len(closed_week) / len(opened_week), 2) if opened_week else 0.0
+        
+        # 3. 活跃度统计 (过去 7 天)
+        activity = self.compute_activity_stats()
+        
+        # 4. 获取高阶画像洞察
+        insights = memory_manager.get_high_level_insights(limit=5)
+        insights_str = "\n".join([f"  * [{i.get('type')}] {i.get('content')}" for i in insights]) if insights else "  * 暂无长期模式洞察"
+
+        lines = [
+            "[本周自律与专注行为统计数据]",
+            f"- 统计区间：{seven_days_ago[:10]} 至 {now.date().isoformat()}",
+            "- 专注会话分析：",
+            f"  * 开启会话总数：{len(sessions_week)} 次 (完成: {len(completed_week)} 次, 超时: {len(expired_week)} 次, 中途放弃: {len(abandoned_week)} 次)",
+            f"  * 累计专注时长：{total_focus_min} 分钟，平均单次专注时长：{avg_session_min} 分钟",
+            f"  * 专注会话完成率：{int(completion_rate * 100)}%",
+            "- 承诺履行分析：",
+            f"  * 本周新增承诺：{len(opened_week)} 个，本周已关闭承诺：{len(closed_week)} 个，承诺履行率：{int(fulfillment_rate * 100)}%",
+            f"  * 遗留待处理承诺：{len(open_items)} 个 (其中已逾期承诺：{len(overdue_items)} 个)",
+            "- 对话与活跃度：",
+            f"  * 过去 7 天活跃天数：{activity.get('active_days_this_week', 0)} 天，当前连续打卡天数：{activity.get('consecutive_active_days', 0)} 天",
+            "- 长期行为模式洞察 (High-level Insights)：",
+            insights_str,
+            "",
+            "【Agent 回复策略指引（重要）】：",
+            "用户正在请求生成本周自律与专注报告（周报）。请为用户撰写一份【周度自律诊断报告】。",
+            "要求包含以下模块：",
+            "1. 📊 数据概览：使用 Markdown 表格或简易文本格式，列出专注时长、会话完成率、承诺履行率和活跃打卡天数。",
+            "2. 🔍 注意力诊断：归纳本周做得好的地方，分析专注超时 (expired) 或放弃 (abandoned) 的高发原因（如是不是因为遇到了特定卡点导致逃避？）。",
+            "3. ⚠ 长期拖延预警：特别挑出本周创建且已逾期的承诺进行提醒，温和指出其中是否包含过度承诺或“伪努力”倾向。",
+            "4. 🛠 下周自律指南：针对本周暴露的问题，为用户定制 1-2 条具体的、无压力的下周行动建议（如：把单次专注设为 30 分钟以减小阻力，或下周先清理 1 项逾期承诺）。",
+            "请以极其亲和、温暖、平等的搭子口吻撰写，避免冷漠的说教，多给予鼓励和成长性建议。"
+        ]
+        return "\n".join(lines)
+
     def format_gap_context(self, memory_manager: Any) -> str:
         gap_min = self.get_conversation_gap_minutes()
         focus_state = memory_manager.get_focus_session_state()

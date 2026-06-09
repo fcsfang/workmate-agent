@@ -75,6 +75,8 @@ class ContextPlanner:
             keys.extend(["reflections", "memory_summary", "structured_summary", "behavior_stats"])
         elif intent == "task":
             keys.append("structured_summary")
+        elif intent == "weekly_report":
+            keys.extend(["weekly_report_data", "high_level_insights", "behavior_stats", "commitments", "reflections"])
         return self._unique(keys)
 
     def time_period(self) -> str:
@@ -88,6 +90,8 @@ class ContextPlanner:
         return "night"
 
     def intent(self, prompt: str) -> str:
+        if self._has_any(prompt, ["周报", "周复盘", "每周总结", "每周回顾", "本周总结", "本周复盘"]):
+            return "weekly_report"
         if self._has_any(prompt, ["提醒", "监督", "检查", "催我"]):
             return "supervision"
         if self._has_any(prompt, ["之前", "上次", "相关", "找一下"]):

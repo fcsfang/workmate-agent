@@ -1,3 +1,19 @@
+## V0.8.5
+### 目标
+- 实现周度自律诊断与“偏航/拖延”模式报告（Weekly Review），当用户提出“生成周报”、“周度复盘”等诉求时，系统会深度汇总过去 7 天的专注会话状态、承诺履约表现以及长期画像，为用户生成一份具有“成长性思维”且极具诊断价值的 Markdown 总结。
+
+### 已实现
+#### 意图分类与上下文规划更新
+- **意图分类器支持 `"weekly_report"`**：在 `IntentManager`（`memory/interpreter.py`）中新增合法意图 `"weekly_report"`，在规则分类器中增加“周报、周复盘、每周总结、每周回顾、本周总结、本周复盘”等关键字检测，并更新了大模型意图分类的 Prompt 提示词与 JSON schema，确保能准确识别用户的周报/周复盘请求。
+- **上下文规划器更新**：`ContextPlanner` (`memory/context_planner.py`) 在 `required_context_keys` 中加入 `"weekly_report"` 处理分支，智能规划并延伸引入 `"weekly_report_data"`, `"high_level_insights"`, `"behavior_stats"`, `"commitments"`, `"reflections"` 等必要上下文数据块。
+
+#### 周度数据汇总与回复策略指引
+- **新增周报数据提取与回复指引**：`BehaviorStatsManager` (`memory/stats.py`) 中新增 `format_weekly_review_context(memory_manager)` 方法，动态计算过去 7 天专注会话（次数、完成、超时、放弃、总时长、平均时长、完成率）、承诺履行（新增、关闭、履行率、逾期遗留）及活跃打卡情况，并附加 【Agent 回复策略指引】。
+- **无交互摩擦的回复策略**：在回复指引中，指导 Agent 撰写温暖、亲和、具有成长性思维的【周度自律诊断报告】（包含数据概览表格、注意力诊断、长期拖延预警和下周自律指南等模块），且要求以纯自然语言/Markdown 流畅收尾，默认不以问句结尾，避免给用户造成打扰。
+
+#### 上下文加载与加载流集成
+- **上下文引擎对接**：`ContextEngine` (`memory/context_engine.py`) 在 `load_context_blocks` 中补全了对 `"weekly_report_data"` 键的解析，并在加载上下文时通过调用 `stats_manager.format_weekly_review_context` 组装对应的数据块并注入到大模型的上下文提示中。
+
 ## V0.8.4
 ### 目标
 - 脱离网页一直打开的限制，实现后台守护线程常驻调度和多通道通知（Mac系统弹窗 / iOS手机推送 / 飞书机器人），降低交互摩擦并强化主动陪伴能力
