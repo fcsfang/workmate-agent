@@ -32,6 +32,7 @@ Workmate Agent 是一个面向个人学习和工作执行的长期工位搭子�
 - 上下文压缩：系统记忆和最近对话分别控制预算，避免长对话让模型上下文膨胀
 - 主动监督信号：根据任务停滞、未关闭承诺、反复阻塞和任务过散生成监督提醒
 - 支持性知识层：V0.6 起在用户焦虑、分散、拖延、疲惫、卡住或准备执行学习任务时，按需注入轻量方法论卡片
+- 内部状态工具层：V0.7 起支持受控工具调用，用于读取和更新任务、承诺、记忆等 Workmate 内部状态
 - 时间感：当前输入会附带当前时间，历史输入会附带历史记录时间
 - 进度监督：Agent 关注任务进展、偏航和伪努力；多任务场景会用无序列表帮用户理顺主任务和子任务，但不会主动提供技术路线或设置时间限制
 - 角色边界：Agent 负责总体规划和监督，不负责替用户解释技术细节、设计专业方案或完成任务
@@ -78,6 +79,10 @@ workmate-agent/
 │       └── daily_summaries/
 ├── knowledge/
 │   └── support_notes.json # 注意力、学习、时间管理和情绪调节短卡片
+├── tools/
+│   ├── registry.py        # 内部工具注册表
+│   ├── executor.py        # 结构化工具调用执行器
+│   └── workmate_tools.py  # 任务、承诺、记忆等内部状态工具
 ├── src/
 │   ├── LLMClient.py       # 大模型 API 客户端
 │   ├── core.py            # WorkmateAgent 和命令行连续对话入口
@@ -92,33 +97,52 @@ workmate-agent/
 
 ## 环境准备
 
-项目运行环境使用 conda 中名为 `agent` 的环境。
+### 快速启动
 
 ```bash
-conda activate agent
-pip install -r requirements.txt
+git clone https://github.com/fcsfang/workmate-agent.git
+cd workmate-agent
+cp .env.example .env
 ```
 
-在项目根目录创建 `.env`，配置大模型 API：
+打开 `.env`，填写你的模型 API 配置。OpenRouter 示例：
 
 ```env
-LLM_MODEL_ID=your-model-id
-LLM_API_KEY=your-api-key
-LLM_BASE_URL=https://your-api-base-url
+LLM_MODEL_ID=moonshotai/kimi-k2.6:free
+LLM_API_KEY=your-api-key-here
+LLM_BASE_URL=https://openrouter.ai/api/v1
 ```
+
+然后运行：
+
+```bash
+./run.sh
+```
+
+脚本会自动：
+
+- 检查 `.env` 是否存在
+- 检查 `LLM_API_KEY` 是否已填写
+- 优先使用本机已有的 conda `agent` 环境
+- 如果没有 conda `agent` 环境，则创建本地 `.venv`
+- 安装/检查依赖
+- 启动 Web 服务
+- 自动打开浏览器访问 `http://127.0.0.1:7860`
+
+保持运行 `./run.sh` 的终端窗口即可持续使用页面和 API。需要停止时，在该终端按 `Ctrl+C`。
 
 `.env` 不应提交到 Git。
 
 ## 运行方式
 
-### Web 调试界面
+### 推荐方式
 
 当前推荐入口是 `src.web`。启动它以后，整个项目就跑起来了：本地前端页面、`/api/chat` 对话接口、`/api/memory` 记忆接口会一起启动。
 
 推荐使用前端界面调试连续对话：
 
 ```bash
-conda run -n agent python -m src.web
+./run.sh
 ```
 
 启动后打开：
@@ -131,7 +155,23 @@ http://127.0.0.1:7860
 
 0.5.2+ 版本还会在页面左侧显示当前任务生命周期、子任务、最近 7 天摘要、未关闭承诺、长期用户画像、统一记忆项、记忆分类、高阶洞察、语义压缩和主动监督信号，并提供 `MODEL CONTEXT` 调试区。每日摘要会优先调用模型生成 JSON 记忆，失败时退回规则摘要；`MODEL CONTEXT` 会展示上一轮实际发送给模型的 messages、上下文规模、检索计划和流水线状态，方便检查 Agent 到底带入了哪些记忆。
 
-只要这个命令所在的终端窗口保持运行，页面和 API 就会保持可用。需要停止时，在该终端按 `Ctrl + C`。
+只要这个命令所在的终端窗口保持运行，页面和 API 就会保持可用。需要停止时，在该终端按 `Ctrl+C`。
+
+### 手动启动 Web
+
+如果你已经准备好 conda 中名为 `agent` 的环境，也可以手动运行：
+
+```bash
+conda run -n agent python -m src.web
+```
+
+或者先激活环境：
+
+```bash
+conda activate agent
+pip install -r requirements.txt
+python -m src.web
+```
 
 ### 命令行模式
 
@@ -139,13 +179,6 @@ http://127.0.0.1:7860
 
 ```bash
 conda run -n agent python -m src.core
-```
-
-也可以先激活环境：
-
-```bash
-conda activate agent
-python -m src.core
 ```
 
 启动后可以连续输入消息。输入 `exit`、`quit`、`q`、`退出` 或 `结束` 可以结束对话。

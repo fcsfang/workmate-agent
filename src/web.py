@@ -35,6 +35,7 @@ class WorkmateWebApp:
             "response": response,
             "memory": self.memory_state(prompt),
             "context": self.context_state(),
+            "tool_calls": self.tool_state(),
         }
 
     def chat_stream(self, prompt):
@@ -44,6 +45,7 @@ class WorkmateWebApp:
             "type": "done",
             "memory": self.memory_state(prompt),
             "context": self.context_state(),
+            "tool_calls": self.tool_state(),
         }
 
     def memory_state(self, current_prompt=""):
@@ -70,6 +72,7 @@ class WorkmateWebApp:
             "reflections": self.memory_manager.get_reflections(),
             "supervision": self.memory_manager.get_supervision_state(),
             "support_knowledge": self.memory_manager.get_support_knowledge_state(current_prompt),
+            "tool_calls": self.tool_state(),
             "memory_pipeline": context_debug.get("memory_pipeline", {}),
             "last_pipeline_result": context_debug.get("last_pipeline_result", {}),
             "context_stats": context_debug.get("context_stats", {}),
@@ -97,8 +100,14 @@ class WorkmateWebApp:
             "reflections": self.memory_manager.get_reflections(),
             "supervision": self.memory_manager.get_supervision_state(),
             "support_knowledge": self.memory_manager.get_support_knowledge_state(""),
+            "tool_calls": self.tool_state(),
             "last_pipeline_result": self.memory_manager.last_pipeline_result,
         }
+
+    def tool_state(self):
+        if not self.agent:
+            return []
+        return self.agent.get_last_tool_calls()
 
 
 APP = WorkmateWebApp()

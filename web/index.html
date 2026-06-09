@@ -792,6 +792,10 @@
               <span class="task-label">support</span>
               <span class="task-value" id="supportKnowledge">暂无支持性知识</span>
             </div>
+            <div class="task-field">
+              <span class="task-label">tools</span>
+              <span class="task-value" id="toolCalls">暂无工具调用</span>
+            </div>
           </div>
         </section>
 
@@ -882,6 +886,7 @@
     const semanticDialogues = document.querySelector("#semanticDialogues");
     const supervisionSignals = document.querySelector("#supervisionSignals");
     const supportKnowledge = document.querySelector("#supportKnowledge");
+    const toolCalls = document.querySelector("#toolCalls");
     const contextPreview = document.querySelector("#contextPreview");
 
     let localTurns = 0;
@@ -1183,6 +1188,17 @@
         .join("；");
     }
 
+    function renderToolCalls(calls = []) {
+      if (!calls.length) {
+        toolCalls.textContent = "暂无工具调用";
+        return;
+      }
+      toolCalls.textContent = calls
+        .slice(0, 3)
+        .map((item) => `${item.tool || "tool"}:${item.status || "unknown"}`)
+        .join("；");
+    }
+
     function renderMemory(memory, options = {}) {
       const records = memory.recent || [];
       memoryCount.textContent = memory.count || 0;
@@ -1202,6 +1218,7 @@
       renderSemanticDialogues(memory.semantic_dialogues || []);
       renderSupervision(memory.supervision || {});
       renderSupportKnowledge(memory.support_knowledge || {});
+      renderToolCalls(memory.tool_calls || []);
       if (options.restoreTranscript || (!transcriptRestored && records.length)) {
         restoreTranscript(records);
       }
@@ -1291,6 +1308,7 @@
         if (payload.type === "done") {
           renderMemory(payload.memory);
           renderContext(payload.context);
+          renderToolCalls(payload.tool_calls || payload.memory?.tool_calls || []);
           localTurns = payload.memory?.count || localTurns + 1;
           turnCount.textContent = localTurns;
           lastEvent.textContent = "memory saved";

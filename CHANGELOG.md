@@ -1,3 +1,46 @@
+## V0.7
+### 目标
+- 为 Workmate Agent 增加受控的内部状态工具层
+- 工具调用只用于读取和更新任务、承诺、记忆等内部状态，不做外部自动化
+- 不采用完整 ReAct 文本框架，改用结构化 JSON tool call loop，降低工具误用风险
+
+### 已实现
+#### 内部状态工具层
+- 新增 `tools/registry.py`
+- 新增 `tools/executor.py`
+- 新增 `tools/workmate_tools.py`
+- 支持工具：`get_current_task`、`list_open_tasks`、`update_task_status`、`list_open_commitments`、`search_memory`、`add_memory_note`
+- 工具层禁止访问外部网页、任意文件、shell、GitHub 或其他外部自动化能力
+- 工具选择失败时自动降级为空工具调用，不影响普通对话
+
+#### Agent 调用链
+- `WorkmateAgent` 在生成最终回复前先执行最多 3 次内部状态工具调用
+- 工具 observation 作为 system context 注入最终回复
+- 流式输出同样先完成工具调用，再流式生成自然语言回复
+- 保留现有记忆流水线；工具层作为内部状态辅助，不替代记忆提取和任务生命周期管理
+
+#### Web 调试
+- `/api/chat`、`/api/memory`、`/api/context` 暴露本轮 `tool_calls`
+- 前端侧栏新增 `tools` 区域，显示最近工具调用状态
+
+## V0.6.1
+### 目标
+- 降低 GitHub clone 后的本地启动门槛
+- 让用户按“复制配置、填写 API Key、运行脚本、自动打开页面”的路径使用 Workmate Agent
+
+### 已实现
+#### 一键启动
+- 新增 `.env.example`，提供 OpenRouter/Kimi 的 OpenAI-compatible 配置示例
+- 新增 `run.sh`
+- `run.sh` 会检查 `.env` 和 `LLM_API_KEY`
+- 优先使用本机 conda `agent` 环境；没有该环境时自动创建本地 `.venv`
+- 自动安装/检查依赖，启动 `src.web`，并打开 `http://127.0.0.1:7860`
+- `.gitignore` 新增 `.venv/`，避免提交本地虚拟环境
+
+#### 文档
+- README 新增快速启动路径：`cp .env.example .env` -> 填 API Key -> `./run.sh`
+- README 保留手动 conda 启动和命令行模式作为备用方式
+
 ## V0.6
 ### 目标
 - 引入轻量支持性知识层，在用户焦虑、分散、拖延、疲惫或卡住时提供温和支撑
