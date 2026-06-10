@@ -29,6 +29,26 @@ class TaskState:
             task_lifecycle=task_lifecycle,
         )
 
+    def update_task_status(self, task_id: str, status: str) -> Dict[str, Any]:
+        task = self.task_manager.update_task_status(task_id, status)
+        if task:
+            from datetime import datetime
+            state = self.task_state_manager.load_state()
+            if state.get("task_id") == task_id or (not state.get("task_id") and state.get("active_task") == task.get("title")):
+                state["status"] = self.task_state_manager._state_status(status)
+                state["task_id"] = task_id
+                state["active_task"] = task.get("title", "")
+                if status == "done":
+                    state["current_progress"] = "任务已完成"
+                elif status == "abandoned":
+                    state["current_progress"] = "任务已放弃"
+                state["updated_at"] = datetime.now().isoformat(timespec="seconds")
+                self.task_state_manager.save_state(state)
+        return {
+            "task_view": self.task_view(),
+            "updated_task": task
+        }
+
     def update_commitments(
         self,
         extracted: Dict[str, Any],

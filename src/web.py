@@ -142,6 +142,19 @@ class WorkmateWebApp:
             return []
         return self.agent.get_last_tool_calls()
 
+    def update_task_status(self, payload):
+        task_id = payload.get("id")
+        status = payload.get("status")
+        if not task_id or not status:
+            raise ValueError("id and status are required")
+        res = self.memory_manager.update_task_status(task_id, status)
+        return {
+            "task_view": res.get("task_view"),
+            "task_details": res.get("updated_task"),
+            "memory": self.memory_state(),
+            "context": self.context_state(),
+        }
+
     def start_scheduler(self):
         import time
         import sys
@@ -254,6 +267,10 @@ class WorkmateRequestHandler(BaseHTTPRequestHandler):
                     self._send_json({"success": True})
                 except Exception as e:
                     self._send_json({"success": False, "error": str(e)}, status=500)
+                return
+
+            if path == "/api/task/update-status":
+                self._send_json(APP.update_task_status(payload))
                 return
 
             if path != "/api/chat":

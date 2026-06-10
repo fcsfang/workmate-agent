@@ -122,6 +122,58 @@ class TaskManager:
             "counts": self._counts(tasks),
         }
 
+    def update_task_status(self, task_id: str, status: str) -> Optional[Dict[str, Any]]:
+        if status not in self.VALID_STATUSES:
+            raise ValueError(f"Invalid status: {status}")
+        tasks = self.load_tasks()
+        target_task = None
+        for task in tasks:
+            if task.get("id") == task_id:
+                target_task = task
+                break
+        if not target_task:
+            return None
+
+        previous_status = target_task.get("status", "inbox")
+        if previous_status == status:
+            return target_task
+
+        now = datetime.now()
+        now_text = now.isoformat(timespec="seconds")
+
+        target_task["status"] = status
+        target_task["updated_at"] = now_text
+        
+        # Calculate elapsed time
+        elapsed_seconds = None
+        if status in {"done", "abandoned"}:
+            start_str = target_task.get("started_at") or target_task.get("created_at")
+            if start_str:
+                try:
+                    start_dt = datetime.fromisoformat(start_str)
+                    elapsed_seconds = int((now - start_dt).total_seconds())
+                except Exception:
+                    pass
+        target_task["elapsed_seconds"] = elapsed_seconds
+
+        if status == "active" and not target_task.get("started_at"):
+            target_task["started_at"] = now_text
+        elif status == "done":
+            target_task["completed_at"] = now_text
+            self._mark_all_open_subtasks(target_task, "done", now_text)
+        elif status == "abandoned":
+            target_task["abandoned_at"] = now_text
+            self._mark_all_open_subtasks(target_task, "abandoned", now_text)
+
+        self._append_event(
+            "status_changed",
+            target_task,
+            now_text,
+            {"from": previous_status, "to": status, "via": "web_ui"},
+        )
+        self.save_tasks(self._sort_tasks(tasks))
+        return target_task
+
     def format_for_context(self) -> str:
         view = self.get_task_view(limit=5)
         current = view["current"]
@@ -366,9 +418,37 @@ class TaskManager:
         return counts
 
     def _same_task(self, left: str, right: str) -> bool:
-        left = self._compact(left, 160)
-        right = self._compact(right, 160)
-        return bool(left and right and (left == right or left in right or right in left))
+        left = self._compact(left, 160).strip().lower()
+        right = self._compact(right, 160).strip().lower()
+        if not left or not right:
+            return False
+        if left == right or left in right or right in left:
+            return True
+        return self._calculate_similarity(left, right) >= 0.5
+
+    def _calculate_similarity(self, title1: str, title2: str) -> float:
+        tokens1 = self._get_semantic_tokens(title1)
+        tokens2 = self._get_semantic_tokens(title2)
+        if not tokens1 or not tokens2:
+            return 0.0
+        intersection = tokens1.intersection(tokens2)
+        union = tokens1.union(tokens2)
+        return len(intersection) / len(union)
+
+    def _get_semantic_tokens(self, text: str) -> set:
+        import re
+        text = str(text or "").lower()
+        # Extract English words and numbers
+        eng_words = set(re.findall(r'[a-zA-Z0-9]+', text))
+        
+        # Extract Chinese characters
+        ch_chars = set()
+        stop_chars = set("的了和与在于是个我你他它以之及或等但而且也还又就已")
+        for char in text:
+            if '\u4e00' <= char <= '\u9fff':
+                if char not in stop_chars:
+                    ch_chars.add(char)
+        return eng_words.union(ch_chars)
 
     def _shares_keywords(self, left: str, right: str) -> bool:
         left_terms = set(self._terms(left))

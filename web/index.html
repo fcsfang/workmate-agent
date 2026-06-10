@@ -75,11 +75,55 @@
 
     .rail {
       display: grid;
-      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      grid-template-rows: auto auto auto minmax(0, 1fr) auto;
       height: 100%;
       min-height: 0;
       overflow: hidden;
       border-radius: 6px;
+    }
+
+    /* Tabs Layout Styling */
+    .tabs-header {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border-bottom: 1px solid var(--line-strong);
+      background: var(--paper-deep);
+    }
+
+    .tab-btn {
+      padding: 11px 10px;
+      border: 0;
+      border-bottom: 2px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.05em;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      transition: color 150ms ease, border-color 150ms ease, background-color 150ms ease;
+    }
+
+    .tab-btn:hover {
+      color: var(--ink);
+    }
+
+    .tab-btn.active {
+      color: var(--cinnabar);
+      border-bottom-color: var(--cinnabar);
+      background: var(--panel);
+    }
+
+    .tab-content {
+      display: none;
+      min-height: 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+
+    .tab-content.active {
+      display: block;
     }
 
     .brand {
@@ -196,6 +240,131 @@
     .task-panel {
       padding: 14px;
       border-bottom: 1px solid var(--line);
+    }
+
+    /* Todo List Styling */
+    .todo-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 8px;
+      max-height: 260px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+
+    .todo-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: rgba(255, 252, 242, 0.4);
+      transition: background-color 150ms ease, transform 150ms ease;
+      cursor: pointer;
+    }
+
+    .todo-item:hover {
+      background: rgba(255, 252, 242, 0.8);
+      transform: translateY(-1px);
+    }
+
+    .todo-item.completed {
+      background: rgba(24, 22, 18, 0.02);
+      border-color: rgba(24, 22, 18, 0.08);
+    }
+
+    .todo-checkbox {
+      flex-shrink: 0;
+      width: 16px;
+      height: 16px;
+      margin-top: 2px;
+      border: 1px solid var(--line-strong);
+      border-radius: 3px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #fff;
+      transition: background-color 150ms ease, border-color 150ms ease;
+    }
+
+    .todo-item.completed .todo-checkbox {
+      background: var(--moss);
+      border-color: var(--moss);
+    }
+
+    .todo-checkbox::after {
+      content: "✓";
+      color: #fff;
+      font-size: 11px;
+      font-weight: bold;
+      display: none;
+    }
+
+    .todo-item.completed .todo-checkbox::after {
+      display: block;
+    }
+
+    .todo-content {
+      flex-grow: 1;
+      min-width: 0;
+    }
+
+    .todo-title {
+      font-size: 13px;
+      line-height: 1.4;
+      color: var(--ink);
+      word-break: break-all;
+    }
+
+    .todo-item.completed .todo-title {
+      color: var(--muted);
+      text-decoration: line-through;
+      text-decoration-color: var(--cinnabar);
+    }
+
+    .todo-meta {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 4px;
+      font-family: var(--mono);
+      font-size: 9px;
+      color: var(--muted);
+    }
+
+    .todo-status-tag {
+      padding: 1px 4px;
+      border-radius: 3px;
+      font-size: 8px;
+      text-transform: uppercase;
+      font-weight: bold;
+    }
+
+    .todo-status-active {
+      background: rgba(102, 118, 66, 0.15);
+      color: var(--moss);
+      border: 1px solid rgba(102, 118, 66, 0.3);
+    }
+
+    .todo-status-blocked {
+      background: rgba(184, 64, 42, 0.12);
+      color: var(--cinnabar);
+      border: 1px solid rgba(184, 64, 42, 0.25);
+    }
+
+    .todo-status-planned {
+      background: rgba(167, 123, 50, 0.12);
+      color: var(--brass);
+      border: 1px solid rgba(167, 123, 50, 0.25);
+    }
+
+    .todo-status-inbox {
+      background: rgba(24, 22, 18, 0.06);
+      color: var(--muted);
+      border: 1px solid var(--line);
     }
 
     .task-grid {
@@ -462,15 +631,23 @@
       width: min(760px, 86%);
       padding: 14px 15px;
       border: 1px solid var(--line);
-      border-radius: 5px;
+      border-radius: 8px;
       animation: rise 280ms ease both;
+      box-shadow: 0 4px 16px rgba(25, 22, 16, 0.04), 0 1px 3px rgba(25, 22, 16, 0.02);
+      transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+    }
+
+    .message:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(25, 22, 16, 0.07), 0 2px 4px rgba(25, 22, 16, 0.03);
     }
 
     .message-user {
       justify-self: end;
-      background: var(--carbon);
-      color: var(--paper);
-      border-color: rgba(29, 33, 28, 0.78);
+      background: #e2e8da; /* Soft pale sage green paper note */
+      color: var(--ink);
+      border-color: rgba(102, 118, 66, 0.35);
+      border-right: 5px solid var(--moss);
     }
 
     .message-agent {
@@ -480,11 +657,28 @@
     }
 
     .message-role {
-      margin-bottom: 8px;
+      margin-bottom: 10px;
+      border-bottom: 1px dashed rgba(24, 22, 18, 0.08);
+      padding-bottom: 6px;
       font-family: var(--mono);
       font-size: 11px;
+      letter-spacing: 0.08em;
       color: currentColor;
-      opacity: 0.58;
+      opacity: 0.8;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .message-user .message-role {
+      border-bottom-color: rgba(102, 118, 66, 0.14);
+    }
+
+    .message-timestamp {
+      font-size: 11px;
+      font-style: normal;
+      opacity: 0.85;
+      font-family: var(--mono);
     }
 
     .message-content {
@@ -589,9 +783,10 @@
       position: relative;
       z-index: 1;
       flex-shrink: 0;
-      padding: 14px;
+      padding: 16px 20px;
       border-top: 1px solid var(--line);
-      background: rgba(244, 240, 230, 0.78);
+      background: rgba(244, 240, 230, 0.88);
+      backdrop-filter: blur(10px);
     }
 
     .composer-box {
@@ -607,40 +802,50 @@
       resize: vertical;
       padding: 14px;
       border: 1px solid var(--line-strong);
-      border-radius: 5px;
+      border-radius: 6px;
       color: var(--ink);
       background: rgba(255, 252, 242, 0.92);
       outline: none;
       line-height: 1.6;
+      transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
     }
 
     textarea:focus {
       border-color: var(--cinnabar);
-      box-shadow: 0 0 0 3px rgba(184, 64, 42, 0.14);
+      background: rgba(255, 252, 242, 0.98);
+      box-shadow: 0 0 0 3px rgba(184, 64, 42, 0.12), inset 0 1px 3px rgba(24, 22, 18, 0.05);
     }
 
     .send-button {
       width: 48px;
       min-height: 78px;
-      border: 0;
-      border-radius: 5px;
+      border: 1px solid rgba(184, 64, 42, 0.2);
+      border-radius: 6px;
       color: var(--paper);
-      background: var(--cinnabar);
+      background: linear-gradient(135deg, var(--cinnabar), #9f321f);
+      box-shadow: 0 2px 8px rgba(184, 64, 42, 0.16);
       cursor: pointer;
       font-family: var(--mono);
-      font-size: 24px;
-      transition: transform 160ms ease, background 160ms ease;
+      font-size: 20px;
+      transition: transform 150ms ease, background 150ms ease, box-shadow 150ms ease;
     }
 
-    .send-button:hover {
-      transform: translateY(-1px);
-      background: #9f321f;
+    .send-button:hover:not(:disabled) {
+      transform: translateY(-2px);
+      background: linear-gradient(135deg, #c74d37, var(--cinnabar));
+      box-shadow: 0 4px 12px rgba(184, 64, 42, 0.28);
+    }
+
+    .send-button:active:not(:disabled) {
+      transform: translateY(0);
+      box-shadow: 0 1px 4px rgba(184, 64, 42, 0.16);
     }
 
     .send-button:disabled {
       cursor: wait;
       opacity: 0.62;
       transform: none;
+      box-shadow: none;
     }
 
     .composer-meta {
@@ -851,7 +1056,14 @@
         </div>
       </section>
 
-      <div class="diagnostics">
+      <!-- Tabs Header -->
+      <div class="tabs-header">
+        <button class="tab-btn active" id="tabBtnExecution" type="button">🎯 EXECUTION</button>
+        <button class="tab-btn" id="tabBtnMemory" type="button">🧠 MEMORY</button>
+      </div>
+
+      <!-- Tab Content: Execution -->
+      <div class="tab-content active" id="tabContentExecution">
         <section class="task-panel" aria-label="Task state">
           <div class="section-title">
             <span>CURRENT TASK</span>
@@ -885,6 +1097,16 @@
           </div>
         </section>
 
+        <section class="task-panel" aria-label="Todo list">
+          <div class="section-title">
+            <span>TODO LIST</span>
+            <span id="todoCount" style="font-size: 10px; color: var(--muted); font-family: var(--mono);">0 active</span>
+          </div>
+          <div class="todo-list" id="todoListContainer">
+            <!-- Dynamic Todo items will go here -->
+          </div>
+        </section>
+
         <section class="task-panel" aria-label="Focus session">
           <div class="section-title">
             <span>FOCUS SESSION</span>
@@ -910,7 +1132,10 @@
             </div>
           </div>
         </section>
+      </div>
 
+      <!-- Tab Content: Memory -->
+      <div class="tab-content" id="tabContentMemory">
         <section class="task-panel" aria-label="Recent summary">
           <div class="section-title">
             <span>7D SUMMARY</span>
@@ -980,7 +1205,7 @@
         <section class="memory">
           <div class="section-title">
             <span>RECENT MEMORY</span>
-            <button class="icon-button" id="refreshMemory" title="刷新记忆" type="button">↻</button>
+            <button class="icon-button" id="refreshMemory" title="↻" type="button">↻</button>
           </div>
           <div class="record-list" id="recordList"></div>
         </section>
@@ -1074,6 +1299,8 @@
     const taskSubtasks = document.querySelector("#taskSubtasks");
     const taskNextAction = document.querySelector("#taskNextAction");
     const taskLifecycle = document.querySelector("#taskLifecycle");
+    const todoListContainer = document.querySelector("#todoListContainer");
+    const todoCount = document.querySelector("#todoCount");
     const summaryRange = document.querySelector("#summaryRange");
     const summaryTasks = document.querySelector("#summaryTasks");
     const summaryRisks = document.querySelector("#summaryRisks");
@@ -1173,14 +1400,31 @@
       }
     }
 
-    function appendMessage(role, content) {
+    function appendMessage(role, content, time = "") {
       emptyState?.remove();
       const message = document.createElement("article");
       message.className = `message message-${role}`;
 
       const label = document.createElement("div");
       label.className = "message-role";
-      label.textContent = role === "user" ? "YOU" : "WORKMATE";
+
+      const roleSpan = document.createElement("span");
+      roleSpan.textContent = role === "user" ? "YOU" : "WORKMATE";
+      label.appendChild(roleSpan);
+
+      if (!time) {
+        const now = new Date();
+        const ymd = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, '0') + "-" + String(now.getDate()).padStart(2, '0');
+        const hms = now.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        time = `${ymd} ${hms}`;
+      }
+
+      if (time) {
+        const timeSpan = document.createElement("span");
+        timeSpan.className = "message-timestamp";
+        timeSpan.textContent = time;
+        label.appendChild(timeSpan);
+      }
 
       const body = document.createElement("div");
       body.className = "message-content";
@@ -1201,11 +1445,7 @@
     }
 
     function appendRestoredMessage(role, content, time) {
-      const target = appendMessage(role, content || "");
-      if (time) {
-        const roleLabel = target.message.querySelector(".message-role");
-        roleLabel.textContent = `${role === "user" ? "YOU" : "WORKMATE"} · ${time}`;
-      }
+      appendMessage(role, content || "", time);
     }
 
     function restoreTranscript(records = []) {
@@ -1247,6 +1487,163 @@
         `blocked ${counts.blocked || 0}`,
         `done ${counts.done || 0}`
       ].join(" / ");
+      
+      // Render the Todo List!
+      renderTodoList(taskView);
+    }
+
+    function escapeHtml(str) {
+      if (!str) return "";
+      return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function formatTodoTime(isoStr) {
+      if (!isoStr) return "";
+      try {
+        const parts = isoStr.split("T");
+        if (parts.length < 2) return isoStr;
+        const dateParts = parts[0].split("-");
+        const timeParts = parts[1].split(":");
+        const monthDay = `${dateParts[1]}-${dateParts[2]}`;
+        const hourMinute = `${timeParts[0]}:${timeParts[1]}`;
+        return `${monthDay} ${hourMinute}`;
+      } catch (e) {
+        return isoStr;
+      }
+    }
+
+    function renderTodoList(taskView = {}) {
+      const activeTasks = taskView.active || [];
+      const completedTasks = taskView.recent_completed || [];
+      
+      if (!todoListContainer) return;
+      todoListContainer.innerHTML = "";
+      
+      const activeCount = activeTasks.length;
+      if (todoCount) {
+        todoCount.textContent = `${activeCount} active`;
+      }
+      
+      const allTasks = [
+        ...activeTasks,
+        ...completedTasks
+      ];
+      
+      if (allTasks.length === 0) {
+        todoListContainer.innerHTML = '<div class="task-value" style="color: var(--muted); font-style: italic; padding: 4px 8px;">暂无待办任务</div>';
+        return;
+      }
+      
+      allTasks.forEach(task => {
+        const item = document.createElement("div");
+        const isDone = task.status === "done";
+        const isAbandoned = task.status === "abandoned";
+        const isCompleted = isDone || isAbandoned;
+        
+        item.className = `todo-item ${isCompleted ? 'completed' : ''}`;
+        item.dataset.id = task.id;
+        item.dataset.status = task.status;
+        
+        let tagClass = "todo-status-inbox";
+        if (task.status === "active") tagClass = "todo-status-active";
+        else if (task.status === "blocked") tagClass = "todo-status-blocked";
+        else if (task.status === "planned") tagClass = "todo-status-planned";
+        
+        item.innerHTML = `
+          <div class="todo-checkbox"></div>
+          <div class="todo-content">
+            <div class="todo-title">${escapeHtml(task.title)}</div>
+            <div class="todo-meta">
+              <span class="todo-status-tag ${tagClass}">${task.status}</span>
+              ${task.updated_at ? `<span>${formatTodoTime(task.updated_at)}</span>` : ''}
+              ${task.subtasks && task.subtasks.length ? `<span>(子任务: ${task.subtasks.filter(s => s.status === 'done').length}/${task.subtasks.length})</span>` : ''}
+            </div>
+          </div>
+        `;
+        
+        item.addEventListener("click", (e) => {
+          e.preventDefault();
+          const nextStatus = isCompleted ? "active" : "done";
+          toggleTaskStatus(task.id, nextStatus);
+        });
+        
+        todoListContainer.appendChild(item);
+      });
+    }
+
+    async function toggleTaskStatus(taskId, status) {
+      try {
+        lastEvent.textContent = `Syncing task status...`;
+        const response = await fetch("/api/task/update-status", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json; charset=utf-8"
+          },
+          body: JSON.stringify({ id: taskId, status: status })
+        });
+        if (!response.ok) {
+          throw new Error(`Failed to update status: ${response.statusText}`);
+        }
+        const data = await response.json();
+        if (data.memory) {
+          renderMemory(data.memory);
+        } else if (data.task_view) {
+          renderTaskState(data.task_state || {}, data.task_view);
+        }
+        lastEvent.textContent = `Task updated successfully`;
+
+        // Trigger agent real-time dialogue reaction
+        const details = data.task_details || {};
+        if (details && (status === "done" || status === "abandoned" || status === "active")) {
+          let durationText = "未知";
+          if (details.elapsed_seconds) {
+            const mins = Math.floor(details.elapsed_seconds / 60);
+            const hrs = Math.floor(mins / 60);
+            if (hrs > 0) {
+              const remainingMins = mins % 60;
+              durationText = `${hrs} 小时 ${remainingMins} 分钟`;
+            } else {
+              durationText = mins > 0 ? `${mins} 分钟` : `${details.elapsed_seconds} 秒`;
+            }
+          }
+          
+          let displayPrompt = "";
+          let apiPrompt = "";
+          
+          if (status === "done") {
+            displayPrompt = `[待办列表] 我完成了任务：“${details.title}” ${details.elapsed_seconds ? `(耗时：${durationText})` : ""}`;
+            apiPrompt = `[系统事件] 我在界面上勾选完成了任务 “${details.title}”。\n` +
+                        `- 开始时间: ${details.started_at || details.created_at || '未知'}\n` +
+                        `- 完成时间: ${details.completed_at || '无'}\n` +
+                        `- 耗时: ${durationText}\n` +
+                        `请你作为工作搭子，根据上述完成时间和耗时评估我的效率（是高效专注还是经历了长线推进），多总结并提供一些统计与分析信息，给予温暖、亲和、具有成长性思维的反馈，并顺势引导下一步计划。`;
+          } else if (status === "abandoned") {
+            displayPrompt = `[待办列表] 我放下了任务：“${details.title}” ${details.elapsed_seconds ? `(推进耗时：${durationText})` : ""}`;
+            apiPrompt = `[系统事件] 我在界面上放弃了任务 “${details.title}”。\n` +
+                        `- 开始时间: ${details.started_at || details.created_at || '未知'}\n` +
+                        `- 放弃时间: ${details.abandoned_at || '无'}\n` +
+                        `- 推进耗时: ${durationText}\n` +
+                        `请你作为工作搭子，根据这些时间信息，温和客观地询问我放弃或推迟此项任务的原因（是否有困难或阻塞），给予理解与支持，并帮助我理清接下来的安排。`;
+          } else if (status === "active") {
+            displayPrompt = `[待办列表] 我重新激活了任务：“${details.title}”`;
+            apiPrompt = `[系统事件] 我在界面上重新激活/推进了任务 “${details.title}”。\n` +
+                        `- 重新激活时间: ${details.updated_at || '无'}\n` +
+                        `请你作为工作搭子，用温暖轻量的话语对我的重新激活行为表示支持，鼓励我稳步推进，并轻量引导下一步行动。`;
+          }
+          
+          sendPrompt(displayPrompt, apiPrompt).catch(err => {
+            console.error("Failed to send prompt to agent:", err);
+          });
+        }
+      } catch (err) {
+        console.error(err);
+        lastEvent.textContent = `Error: ${err.message}`;
+      }
     }
 
     function renderContext(context = {}) {
@@ -1515,7 +1912,7 @@
       lastEvent.textContent = action === "start" ? "focus started" : "focus updated";
     }
 
-    async function sendPrompt(prompt) {
+    async function sendPrompt(prompt, apiPrompt = "") {
       setStatus("thinking", true);
       appendMessage("user", prompt);
       const agentMessage = appendMessage("agent", "");
@@ -1525,7 +1922,7 @@
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt })
+        body: JSON.stringify({ prompt: apiPrompt || prompt })
       });
 
       if (!response.ok) {
@@ -1750,6 +2147,26 @@
           testNotifyResult.textContent = "";
         }, 5000);
       }
+    });
+
+    // Tabs switching logic
+    const tabBtnExecution = document.querySelector("#tabBtnExecution");
+    const tabBtnMemory = document.querySelector("#tabBtnMemory");
+    const tabContentExecution = document.querySelector("#tabContentExecution");
+    const tabContentMemory = document.querySelector("#tabContentMemory");
+
+    tabBtnExecution.addEventListener("click", () => {
+      tabBtnExecution.classList.add("active");
+      tabBtnMemory.classList.remove("active");
+      tabContentExecution.classList.add("active");
+      tabContentMemory.classList.remove("active");
+    });
+
+    tabBtnMemory.addEventListener("click", () => {
+      tabBtnMemory.classList.add("active");
+      tabBtnExecution.classList.remove("active");
+      tabContentMemory.classList.add("active");
+      tabContentExecution.classList.remove("active");
     });
 
     updateClock();

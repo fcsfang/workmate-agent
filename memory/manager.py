@@ -286,6 +286,9 @@ class MemoryManager:
     ) -> Dict[str, Any]:
         return self.task_state.update(extracted, user_input, assistant_output)
 
+    def update_task_status(self, task_id: str, status: str) -> Dict[str, Any]:
+        return self.task_state.update_task_status(task_id, status)
+
     def get_task_state(self) -> Dict[str, Any]:
         return self.task_state.current_state()
 

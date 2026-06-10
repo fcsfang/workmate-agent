@@ -1,3 +1,31 @@
+## V0.9.2
+### 目标
+- 优化任务提取阶段的匹配算法，解决因语序颠倒、多余助词或修饰语引起的 TODO LIST 重复任务提取问题。
+
+### 已实现
+#### 任务匹配去重升级
+- **Jaccard 相似度算法匹配**：在 `TaskManager` (`memory/task_manager.py`) 中升级了 `_same_task`。除了精确匹配和子串匹配外，新增了基于 Jaccard 相似度匹配逻辑，以大于等于 `0.5` 相似度判定为同一任务并执行更新去重。
+- **语义 Token 切词器**：新增 `_get_semantic_tokens` 辅助方法，使用正则提取所有英文单词/数字，并将中文拆分为汉字级别 Token，同时剔除常用的中文虚词、助词及代词（如：`的, 了, 和, 与, 在, 于, 是`），生成特征集合。
+- **广泛的去重测试覆盖**：成功解决 `"LLM wiki的实现"` 与 `"实现LLM wiki"` 等倒装中英文混排情况，以及 `"学习了解现有Agent框架"` 与 `"了解现有Agent框架"` 等同义修饰情况下的任务重复合并。
+
+## V0.9.0
+### 目标
+- 在左侧栏的 `🎯 EXECUTION` 面板中新增可视化待办列表（Todo List），实现“用户说出计划安排 -> 模型自动提炼任务并同步展示在列表中 -> 用户点击复选框标记完成/重新激活 -> 数据实时双向同步”的完整任务闭环。
+
+### 已实现
+#### 任务管理器与状态一致性同步
+- **核心逻辑改造**：在 `TaskManager` (`memory/task_manager.py`) 中新增 `update_task_status(task_id, status)` 方法，实现对单项任务状态的持久化更新，自动设置 `completed_at`/`abandoned_at` 时间戳，并在父任务标记为 `done`/`abandoned` 时，自动将其下所有未完成的子任务标记为对应的状态。
+- **状态一致性保证**：在 `TaskState` (`memory/task_state.py`) 中联动 `TaskStateManager`，当被修改的任务是当前的活跃任务（Active Task）时，自动同步将 `task_state.json` 中的状态、当前进度和更新时间戳置为一致，同时向 `task_events.json` 写入 `status_changed` 状态流转事件（标注 `via: "web_ui"`）。
+
+#### Web API 支持
+- **同步更新接口**：在 `src/web.py` 中新增 POST `/api/task/update-status` 接口，接收任务 ID 和新状态，调用底层同步修改后，返回最新的 `task_view`、`memory` 和 `context` 状态字典。
+
+#### 前端 GUI 待办列表可视化
+- **任务待办面板 HTML/CSS**：在左侧栏 `🎯 EXECUTION` 选项卡中新增 `TODO LIST` 卡片面板。为其编写了完美融入“复古手账/记账本”风格的 Vanilla CSS（包含复古卡片阴影、圆角、苔绿色打勾复选框、已完成任务的朱砂红删除线样式）。
+- **动态渲染与交互逻辑**：
+  - 合并展示 `taskView.active` 与 `taskView.recent_completed` 的所有待办事项，按状态（`active`, `blocked`, `planned`, `inbox`）渲染对应的半透明高对比度色彩徽章，同时友好格式化展示其最近更新时间（`MM-DD HH:MM`）以及其子任务完成进度（如 `子任务: 2/3`）。
+  - 实现点击复选框或条目的 toggle 动作：自动请求后端 `/api/task/update-status` 修改状态并驱动整个 Web 页面数据流的重新加载，达成瞬间同步。
+
 ## V0.8.6
 ### 目标
 - 专注于系统交互与体验层面优化，全面美化 Web 调试界面（支持 Markdown 表格、代码高亮、一键复制），并新增推送通道连接状态自检与测试面板，提升可用性与调试效率。
