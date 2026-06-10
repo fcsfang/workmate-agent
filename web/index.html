@@ -367,6 +367,102 @@
       border: 1px solid var(--line);
     }
 
+    .supervision-event-list {
+      display: grid;
+      gap: 8px;
+      max-height: 240px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .supervision-event {
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--brass);
+      border-radius: 4px;
+      background: rgba(255, 252, 242, 0.54);
+    }
+
+    .supervision-event.medium {
+      border-left-color: var(--cinnabar);
+    }
+
+    .supervision-event-title {
+      font-size: 13px;
+      line-height: 1.35;
+      color: var(--ink);
+    }
+
+    .supervision-event-message {
+      margin-top: 5px;
+      font-size: 11px;
+      line-height: 1.45;
+      color: var(--muted);
+    }
+
+    .supervision-event-meta,
+    .supervision-event-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 7px;
+      font-family: var(--mono);
+      font-size: 9px;
+      color: var(--muted);
+    }
+
+    .supervision-action {
+      min-height: 24px;
+      padding: 0 7px;
+      border: 1px solid var(--line);
+      border-radius: 3px;
+      background: rgba(255, 252, 242, 0.78);
+      color: var(--ink);
+      cursor: pointer;
+      font-family: var(--mono);
+      font-size: 9px;
+    }
+
+    .supervision-action:hover {
+      border-color: var(--cinnabar);
+    }
+
+    .supervision-preferences {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid var(--line);
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .supervision-pref-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .supervision-pref-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .supervision-pref-item input[type="number"],
+    .supervision-pref-item input[type="time"],
+    .supervision-pref-item select {
+      width: 100%;
+      min-width: 0;
+      padding: 5px 6px;
+      border: 1px solid var(--line);
+      border-radius: 3px;
+      background: rgba(255, 252, 242, 0.72);
+      color: var(--ink);
+      font-size: 11px;
+    }
+
     .task-grid {
       display: grid;
       gap: 8px;
@@ -1064,6 +1160,48 @@
 
       <!-- Tab Content: Execution -->
       <div class="tab-content active" id="tabContentExecution">
+        <section class="task-panel" aria-label="Self discipline dashboard">
+          <div class="section-title">
+            <span>TODAY DASHBOARD</span>
+            <span id="dashboardDate">--</span>
+          </div>
+          <div class="task-grid">
+            <div class="task-field">
+              <span class="task-label">today focus</span>
+              <span class="task-value" id="dashboardTodayFocus">0 / 0 min</span>
+            </div>
+            <div class="task-field">
+              <span class="task-label">today done</span>
+              <span class="task-value" id="dashboardTodayDone">0 tasks</span>
+            </div>
+            <div class="task-field">
+              <span class="task-label">open loops</span>
+              <span class="task-value" id="dashboardOpenLoops">0 open</span>
+            </div>
+            <div class="task-field">
+              <span class="task-label">mainline</span>
+              <span class="task-value" id="dashboardMainline">暂无主线</span>
+            </div>
+            <div class="task-field">
+              <span class="task-label">week rhythm</span>
+              <span class="task-value" id="dashboardWeek">0m / 0 tasks / 0d</span>
+            </div>
+            <div class="task-field">
+              <span class="task-label">load</span>
+              <span class="task-value" id="dashboardLoad">low</span>
+            </div>
+            <div class="task-field">
+              <span class="task-label">gentle cue</span>
+              <span class="task-value" id="dashboardSuggestion">暂无建议</span>
+            </div>
+            <div class="focus-actions">
+              <button class="focus-button" id="dashboardStartFocus" type="button">FOCUS</button>
+              <button class="focus-button" id="dashboardCompleteTask" type="button">DONE</button>
+              <button class="focus-button" id="dashboardReviewReminders" type="button">REMINDERS</button>
+            </div>
+          </div>
+        </section>
+
         <section class="task-panel" aria-label="Task state">
           <div class="section-title">
             <span>CURRENT TASK</span>
@@ -1132,6 +1270,65 @@
             </div>
           </div>
         </section>
+
+        <section class="task-panel" aria-label="Supervision events">
+          <div class="section-title">
+            <span>SUPERVISION EVENTS</span>
+            <span id="supervisionEventCount">0 active</span>
+          </div>
+          <div class="task-value" id="supervisionFeedbackStats">暂无反馈统计</div>
+          <div class="supervision-event-list" id="supervisionEventList">
+            <div class="task-value">暂无监督事件</div>
+          </div>
+          <div class="supervision-preferences" aria-label="Supervision preferences">
+            <div class="section-title">
+              <span>PREFERENCES</span>
+              <button class="supervision-action" id="saveSupervisionPrefs" type="button">SAVE</button>
+            </div>
+            <div class="supervision-pref-row">
+              <label class="supervision-pref-item">
+                <input id="prefEnabled" type="checkbox">
+                <span>enabled</span>
+              </label>
+              <label class="supervision-pref-item">
+                <span>snooze</span>
+                <input id="prefSnooze" type="number" min="5" max="1440" value="60">
+              </label>
+            </div>
+            <label class="supervision-pref-item">
+              <span>push min</span>
+              <select id="prefPushMinSeverity">
+                <option value="low">low</option>
+                <option value="medium">medium</option>
+                <option value="high">high</option>
+              </select>
+            </label>
+            <div class="supervision-pref-row">
+              <label class="supervision-pref-item">
+                <span>quiet from</span>
+                <input id="prefQuietStart" type="time" value="23:00">
+              </label>
+              <label class="supervision-pref-item">
+                <span>to</span>
+                <input id="prefQuietEnd" type="time" value="07:00">
+              </label>
+            </div>
+            <div class="supervision-pref-row">
+              <label class="supervision-pref-item">
+                <input id="prefFocus" type="checkbox">
+                <span>focus</span>
+              </label>
+              <label class="supervision-pref-item">
+                <input id="prefCommitments" type="checkbox">
+                <span>commitments</span>
+              </label>
+            </div>
+            <label class="supervision-pref-item">
+              <input id="prefTasks" type="checkbox">
+              <span>task stale reminders</span>
+            </label>
+          </div>
+        </section>
       </div>
 
       <!-- Tab Content: Memory -->
@@ -1182,6 +1379,10 @@
             <div class="task-field">
               <span class="task-label">insights</span>
               <span class="task-value" id="highLevelInsights">暂无高阶洞察</span>
+            </div>
+            <div class="task-field">
+              <span class="task-label">patterns</span>
+              <span class="task-value" id="behaviorPatterns">暂无行为模式</span>
             </div>
             <div class="task-field">
               <span class="task-label">semantic</span>
@@ -1299,6 +1500,17 @@
     const taskSubtasks = document.querySelector("#taskSubtasks");
     const taskNextAction = document.querySelector("#taskNextAction");
     const taskLifecycle = document.querySelector("#taskLifecycle");
+    const dashboardDate = document.querySelector("#dashboardDate");
+    const dashboardTodayFocus = document.querySelector("#dashboardTodayFocus");
+    const dashboardTodayDone = document.querySelector("#dashboardTodayDone");
+    const dashboardOpenLoops = document.querySelector("#dashboardOpenLoops");
+    const dashboardMainline = document.querySelector("#dashboardMainline");
+    const dashboardWeek = document.querySelector("#dashboardWeek");
+    const dashboardLoad = document.querySelector("#dashboardLoad");
+    const dashboardSuggestion = document.querySelector("#dashboardSuggestion");
+    const dashboardStartFocus = document.querySelector("#dashboardStartFocus");
+    const dashboardCompleteTask = document.querySelector("#dashboardCompleteTask");
+    const dashboardReviewReminders = document.querySelector("#dashboardReviewReminders");
     const todoListContainer = document.querySelector("#todoListContainer");
     const todoCount = document.querySelector("#todoCount");
     const summaryRange = document.querySelector("#summaryRange");
@@ -1311,8 +1523,21 @@
     const memoryItems = document.querySelector("#memoryItems");
     const memoryCategories = document.querySelector("#memoryCategories");
     const highLevelInsights = document.querySelector("#highLevelInsights");
+    const behaviorPatterns = document.querySelector("#behaviorPatterns");
     const semanticDialogues = document.querySelector("#semanticDialogues");
     const supervisionSignals = document.querySelector("#supervisionSignals");
+    const supervisionEventCount = document.querySelector("#supervisionEventCount");
+    const supervisionFeedbackStats = document.querySelector("#supervisionFeedbackStats");
+    const supervisionEventList = document.querySelector("#supervisionEventList");
+    const saveSupervisionPrefs = document.querySelector("#saveSupervisionPrefs");
+    const prefEnabled = document.querySelector("#prefEnabled");
+    const prefSnooze = document.querySelector("#prefSnooze");
+    const prefPushMinSeverity = document.querySelector("#prefPushMinSeverity");
+    const prefQuietStart = document.querySelector("#prefQuietStart");
+    const prefQuietEnd = document.querySelector("#prefQuietEnd");
+    const prefFocus = document.querySelector("#prefFocus");
+    const prefCommitments = document.querySelector("#prefCommitments");
+    const prefTasks = document.querySelector("#prefTasks");
     const supportKnowledge = document.querySelector("#supportKnowledge");
     const toolCalls = document.querySelector("#toolCalls");
     const focusStatus = document.querySelector("#focusStatus");
@@ -1327,6 +1552,7 @@
 
     let localTurns = 0;
     let transcriptRestored = false;
+    let currentDashboard = {};
 
     function setStatus(text, busy = false) {
       statusText.textContent = text;
@@ -1470,6 +1696,46 @@
     function compact(text, length = 88) {
       const value = String(text || "").replace(/\s+/g, " ").trim();
       return value.length > length ? `${value.slice(0, length)}...` : value;
+    }
+
+    function renderDashboard(dashboard = {}) {
+      currentDashboard = dashboard || {};
+      const today = dashboard.today || {};
+      const week = dashboard.week || {};
+      const mainline = dashboard.mainline || {};
+      const load = dashboard.load || {};
+      const suggestion = dashboard.suggestion || {};
+
+      if (dashboardDate) dashboardDate.textContent = today.date || "--";
+      if (dashboardTodayFocus) {
+        dashboardTodayFocus.textContent = `${today.focus_completed || 0} / ${today.focus_minutes || 0} min`;
+      }
+      if (dashboardTodayDone) {
+        dashboardTodayDone.textContent = `${today.tasks_completed || 0} tasks · ${today.commitments_closed || 0} loops`;
+      }
+      if (dashboardOpenLoops) {
+        dashboardOpenLoops.textContent = `${today.open_commitments || 0} open · ${today.due_or_overdue_commitments || 0} due`;
+      }
+      if (dashboardMainline) {
+        dashboardMainline.textContent = mainline.title
+          ? `${mainline.title} (${mainline.status || "active"})`
+          : "暂无主线";
+      }
+      if (dashboardWeek) {
+        dashboardWeek.textContent = `${week.focus_minutes || 0}m · ${week.tasks_completed || 0} tasks · ${week.active_days || 0}d`;
+      }
+      if (dashboardLoad) {
+        dashboardLoad.textContent = `${load.task_dispersion || "low"} · ${load.open_tasks || 0} open · ${load.active_patterns || 0} patterns`;
+      }
+      if (dashboardSuggestion) {
+        dashboardSuggestion.textContent = suggestion.message || "暂无建议";
+      }
+
+      const hasMainline = Boolean(mainline.task_id);
+      const hasEvents = (today.active_supervision_events || 0) > 0;
+      if (dashboardStartFocus) dashboardStartFocus.disabled = !hasMainline;
+      if (dashboardCompleteTask) dashboardCompleteTask.disabled = !hasMainline || ["done", "abandoned"].includes(mainline.status);
+      if (dashboardReviewReminders) dashboardReviewReminders.disabled = !hasEvents;
     }
 
     function renderTaskState(state = {}, taskView = {}) {
@@ -1705,6 +1971,17 @@
         : "暂无高阶洞察";
     }
 
+    function renderBehaviorPatterns(state = {}) {
+      const patterns = state.active || [];
+      if (!behaviorPatterns) return;
+      behaviorPatterns.textContent = patterns.length
+        ? patterns.slice(0, 3).map((item) => {
+            const tone = item.tone === "positive" ? "steady" : (item.severity || "low");
+            return `[${tone}] ${item.title || item.summary || ""}`;
+          }).filter(Boolean).join("；")
+        : "暂无行为模式";
+    }
+
     function renderSemanticDialogues(dialogues = []) {
       semanticDialogues.textContent = dialogues.length
         ? dialogues.slice(0, 3).map((item) => item.semantic_summary || item.user_intent || "").filter(Boolean).join("；")
@@ -1716,6 +1993,76 @@
       supervisionSignals.textContent = signals.length
         ? signals.slice(0, 3).map((item) => item.message).filter(Boolean).join("；")
         : "暂无主动监督信号";
+    }
+
+    function renderSupervisionEvents(state = {}) {
+      const activeEvents = state.active || [];
+      renderSupervisionPreferences(state.preferences || {});
+      renderSupervisionFeedbackStats(state.feedback_stats || {});
+      if (!supervisionEventList) return;
+      supervisionEventCount.textContent = `${activeEvents.length} active`;
+      supervisionEventList.innerHTML = "";
+
+      if (!activeEvents.length) {
+        const empty = document.createElement("div");
+        empty.className = "task-value";
+        empty.textContent = "暂无监督事件";
+        supervisionEventList.append(empty);
+        return;
+      }
+
+      activeEvents.slice(0, 6).forEach((event) => {
+        const item = document.createElement("article");
+        item.className = `supervision-event ${event.severity || "low"}`;
+        item.innerHTML = `
+          <div class="supervision-event-title">${escapeHtml(event.title || "提醒事件")}</div>
+          <div class="supervision-event-message">${escapeHtml(event.message || "")}</div>
+          <div class="supervision-event-meta">
+            <span>${escapeHtml(event.status || "detected")}</span>
+            <span>${escapeHtml(event.type || "event")}</span>
+            ${event.updated_at ? `<span>${formatTodoTime(event.updated_at)}</span>` : ""}
+          </div>
+          <div class="supervision-event-actions">
+            <button class="supervision-action" data-action="snooze" type="button">SNOOZE</button>
+            <button class="supervision-action" data-action="acknowledge" type="button">ACK</button>
+            <button class="supervision-action" data-action="mute" type="button">MUTE</button>
+            <button class="supervision-action" data-action="resolve" type="button">DONE</button>
+          </div>
+        `;
+        item.querySelectorAll(".supervision-action").forEach((button) => {
+          button.addEventListener("click", async (clickEvent) => {
+            clickEvent.stopPropagation();
+            await updateSupervisionEvent(event.id, button.dataset.action);
+          });
+        });
+        supervisionEventList.append(item);
+      });
+    }
+
+    function renderSupervisionPreferences(preferences = {}) {
+      if (!prefEnabled) return;
+      prefEnabled.checked = preferences.enabled !== false;
+      prefSnooze.value = preferences.default_snooze_minutes || 60;
+      prefPushMinSeverity.value = preferences.push_min_severity || "medium";
+      prefQuietStart.value = preferences.quiet_hours_start || "23:00";
+      prefQuietEnd.value = preferences.quiet_hours_end || "07:00";
+      prefFocus.checked = preferences.notify_focus !== false;
+      prefCommitments.checked = preferences.notify_commitments !== false;
+      prefTasks.checked = preferences.notify_tasks !== false;
+    }
+
+    function renderSupervisionFeedbackStats(stats = {}) {
+      if (!supervisionFeedbackStats) return;
+      const byAction = stats.by_action || {};
+      const total = stats.total || 0;
+      if (!total) {
+        supervisionFeedbackStats.textContent = "暂无反馈统计";
+        return;
+      }
+      const parts = Object.entries(byAction)
+        .slice(0, 4)
+        .map(([action, count]) => `${action}:${count}`);
+      supervisionFeedbackStats.textContent = `feedback ${total} · ${parts.join(" / ")}`;
     }
 
     function renderFocusSession(focus = {}) {
@@ -1778,14 +2125,17 @@
         memory.summary || "暂无历史记录。"
       ].join("\n");
       renderTaskState(memory.task_state || {}, memory.task_view || {});
+      renderDashboard(memory.dashboard || {});
       renderRecentSummary(memory.recent_summary || {});
       renderCommitments(memory.open_commitments || []);
       renderUserProfile(memory.user_profile || {});
       renderMemoryItems(memory.memory_items || []);
       renderMemoryCategories(memory.memory_categories || []);
       renderHighLevelInsights(memory.high_level_insights || []);
+      renderBehaviorPatterns(memory.behavior_patterns || {});
       renderSemanticDialogues(memory.semantic_dialogues || []);
       renderSupervision(memory.supervision || {});
+      renderSupervisionEvents(memory.supervision_events || {});
       renderFocusSession(memory.focus_session || {});
       renderSupportKnowledge(memory.support_knowledge || {});
       renderToolCalls(memory.tool_calls || []);
@@ -1817,7 +2167,7 @@
         item.append(time, text);
         recordList.append(item);
       });
-      checkAndNotify(memory.focus_session || {}, memory.open_commitments || []);
+      checkAndNotify(memory.supervision_events || {});
     }
 
     function initNotifications() {
@@ -1828,49 +2178,61 @@
       }
     }
 
-    function checkAndNotify(focusSession = {}, openCommitments = []) {
+    function checkAndNotify(supervisionEvents = {}) {
       if (!("Notification" in window) || Notification.permission !== "granted") {
         return;
       }
 
-      const todayStr = new Date().toISOString().slice(0, 10);
-
-      // 1. 专注会话超时通知
-      const current = focusSession.current || {};
-      if (current.status === "expired" && current.id) {
-        const notifiedFocusKey = `notified_focus_${current.id}`;
-        if (!localStorage.getItem(notifiedFocusKey)) {
-          new Notification("专注超时提醒 ⏳", {
-            body: `专注会话【${current.goal}】已超出计划时长（计划 ${current.duration_minutes} 分钟），建议回来跟 Agent 记录进度哦！`
-          });
-          localStorage.setItem(notifiedFocusKey, "true");
-        }
+      const preferences = supervisionEvents.preferences || {};
+      if (preferences.enabled === false || isQuietHour(preferences)) {
+        return;
       }
-
-      // 2. 承诺到期提醒 (逾期或今天到期)
-      const now = new Date();
-      openCommitments.forEach((item) => {
-        if (!item.id || !item.deadline) return;
-        try {
-          const deadlineDt = new Date(item.deadline);
-          const isOverdue = deadlineDt < now;
-          const isDueToday = deadlineDt.toISOString().slice(0, 10) === todayStr;
-
-          if (isOverdue || isDueToday) {
-            const notifiedCommitmentKey = `notified_commit_${item.id}_${todayStr}`;
-            if (!localStorage.getItem(notifiedCommitmentKey)) {
-              const title = isOverdue ? "承诺逾期提醒 ⚠" : "承诺今日到期提醒 ⏰";
-              const desc = isOverdue ? "已超出承诺截止时间" : "截止今天完成";
-              new Notification(title, {
-                body: `承诺：【${item.commitment}】${desc}，记得及时处理哦！`
-              });
-              localStorage.setItem(notifiedCommitmentKey, "true");
-            }
-          }
-        } catch (e) {
-          console.error("解析承诺日期失败:", e);
-        }
+      const activeEvents = supervisionEvents.active || [];
+      activeEvents.forEach((event) => {
+        if (!event.id || event.status !== "detected") return;
+        if (!browserShouldNotifyEvent(event, preferences)) return;
+        const notifiedKey = `notified_supervision_${event.id}`;
+        if (localStorage.getItem(notifiedKey)) return;
+        new Notification(event.title || "Workmate Agent 提醒", {
+          body: event.message || "有一个事项需要稍后处理。"
+        });
+        localStorage.setItem(notifiedKey, "true");
+        updateSupervisionEvent(event.id, "mark_notified").catch(() => {});
       });
+    }
+
+    function isQuietHour(preferences = {}) {
+      if (!preferences.quiet_hours_enabled) return false;
+      const start = clockToMinutes(preferences.quiet_hours_start || "23:00");
+      const end = clockToMinutes(preferences.quiet_hours_end || "07:00");
+      if (start === null || end === null) return false;
+      const now = new Date();
+      const current = now.getHours() * 60 + now.getMinutes();
+      return start <= end ? current >= start && current < end : current >= start || current < end;
+    }
+
+    function clockToMinutes(value) {
+      const parts = String(value || "").split(":");
+      if (parts.length !== 2) return null;
+      const hour = Number(parts[0]);
+      const minute = Number(parts[1]);
+      if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+      return Math.max(0, Math.min(23, hour)) * 60 + Math.max(0, Math.min(59, minute));
+    }
+
+    function browserShouldNotifyEvent(event, preferences = {}) {
+      const pushMinSeverity = preferences.push_min_severity || preferences.min_severity || "low";
+      if (severityRank(event.severity || "low") < severityRank(pushMinSeverity)) return false;
+      if (event.type === "focus_expired") return preferences.notify_focus !== false;
+      if (event.type === "commitment_due_today" || event.type === "commitment_overdue") {
+        return preferences.notify_commitments !== false;
+      }
+      if (event.type === "task_stale") return preferences.notify_tasks !== false;
+      return true;
+    }
+
+    function severityRank(severity) {
+      return { low: 1, medium: 2, high: 3 }[String(severity || "low")] || 1;
     }
 
     async function loadMemory(options = {}) {
@@ -1883,7 +2245,56 @@
       const response = await fetch("/api/context");
       const context = await response.json();
       renderContext(context);
+      renderDashboard(context.dashboard || {});
       renderFocusSession(context.focus_session || {});
+      renderSupervisionEvents(context.supervision_events || {});
+    }
+
+    async function updateSupervisionEvent(eventId, action) {
+      if (!eventId || !action) return;
+      const payload = { id: eventId, action, hours: 24 };
+      if (action === "snooze") {
+        payload.minutes = Number(prefSnooze?.value || 60);
+      }
+      const response = await fetch("/api/supervision/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Supervision event update failed");
+      }
+      renderSupervisionEvents(data.supervision_events || {});
+      if (data.memory) renderMemory(data.memory);
+      if (data.context) renderContext(data.context);
+      lastEvent.textContent = `supervision ${action}`;
+    }
+
+    async function saveSupervisionPreferences() {
+      const payload = {
+        enabled: Boolean(prefEnabled?.checked),
+        default_snooze_minutes: Number(prefSnooze?.value || 60),
+        push_min_severity: prefPushMinSeverity?.value || "medium",
+        quiet_hours_enabled: true,
+        quiet_hours_start: prefQuietStart?.value || "23:00",
+        quiet_hours_end: prefQuietEnd?.value || "07:00",
+        notify_focus: Boolean(prefFocus?.checked),
+        notify_commitments: Boolean(prefCommitments?.checked),
+        notify_tasks: Boolean(prefTasks?.checked)
+      };
+      const response = await fetch("/api/supervision/preferences", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Preference update failed");
+      }
+      renderSupervisionPreferences(data.preferences || {});
+      if (data.supervision_events) renderSupervisionEvents(data.supervision_events);
+      lastEvent.textContent = "supervision preferences saved";
     }
 
     async function updateFocus(action) {
@@ -1910,6 +2321,27 @@
       if (data.context) renderContext(data.context);
       if (action === "start") focusGoalInput.value = "";
       lastEvent.textContent = action === "start" ? "focus started" : "focus updated";
+    }
+
+    async function handleDashboardAction(action) {
+      const mainline = currentDashboard.mainline || {};
+      if (action === "start_focus") {
+        if (!mainline.task_id) return;
+        focusGoalInput.value = mainline.title || "专注任务";
+        await updateFocus("start");
+        return;
+      }
+      if (action === "complete_task") {
+        if (!mainline.task_id) return;
+        await toggleTaskStatus(mainline.task_id, "done");
+        return;
+      }
+      if (action === "review_reminders") {
+        if (supervisionEventList) {
+          supervisionEventList.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+        lastEvent.textContent = "review supervision events";
+      }
     }
 
     async function sendPrompt(prompt, apiPrompt = "") {
@@ -2063,6 +2495,50 @@
       setStatus("focus", true);
       try {
         await updateFocus("abandon");
+      } catch (error) {
+        lastEvent.textContent = error.message;
+      } finally {
+        setStatus("ready", false);
+      }
+    });
+
+    dashboardStartFocus.addEventListener("click", async () => {
+      setStatus("dashboard", true);
+      try {
+        await handleDashboardAction("start_focus");
+      } catch (error) {
+        lastEvent.textContent = error.message;
+      } finally {
+        setStatus("ready", false);
+      }
+    });
+
+    dashboardCompleteTask.addEventListener("click", async () => {
+      setStatus("dashboard", true);
+      try {
+        await handleDashboardAction("complete_task");
+      } catch (error) {
+        lastEvent.textContent = error.message;
+      } finally {
+        setStatus("ready", false);
+      }
+    });
+
+    dashboardReviewReminders.addEventListener("click", async () => {
+      setStatus("dashboard", true);
+      try {
+        await handleDashboardAction("review_reminders");
+      } catch (error) {
+        lastEvent.textContent = error.message;
+      } finally {
+        setStatus("ready", false);
+      }
+    });
+
+    saveSupervisionPrefs.addEventListener("click", async () => {
+      setStatus("prefs", true);
+      try {
+        await saveSupervisionPreferences();
       } catch (error) {
         lastEvent.textContent = error.message;
       } finally {

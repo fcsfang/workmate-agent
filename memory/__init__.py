@@ -1,7 +1,9 @@
+from .behavior_patterns import BehaviorPatternManager
 from .commitment import CommitmentManager
 from .context_compressor import ContextCompressor
 from .context_engine import ContextEngine
 from .context_planner import ContextPlanner
+from .dashboard import DashboardManager
 from .focus_session import FocusSessionManager
 from .governance import MemoryGovernanceManager
 from .interpreter import InsightManager, IntentManager, MemoryExtractor, SemanticDialogueManager, SummaryManager
@@ -12,6 +14,7 @@ from .store import MemoryCategoryManager, MemoryItemManager, MemoryResourceManag
 from .reflection import ReflectionManager
 from .search import SearchManager
 from .supervision import SupervisionManager
+from .supervision_events import SupervisionEventManager
 from .support_knowledge import SupportKnowledgeManager
 from .task_manager import TaskManager
 from .task_state import TaskState
@@ -21,10 +24,12 @@ from .notifier import Notifier
 
 __all__ = [
     "BehaviorStatsManager",
+    "BehaviorPatternManager",
     "CommitmentManager",
     "ContextCompressor",
     "ContextEngine",
     "ContextPlanner",
+    "DashboardManager",
     "FocusSessionManager",
     "InsightManager",
     "IntentManager",
@@ -40,6 +45,7 @@ __all__ = [
     "SearchManager",
     "SemanticDialogueManager",
     "SupervisionManager",
+    "SupervisionEventManager",
     "SupportKnowledgeManager",
     "SummaryManager",
     "TaskManager",

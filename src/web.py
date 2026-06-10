@@ -28,8 +28,6 @@ class WorkmateWebApp:
         self.agent = None
         
         self.notifier = Notifier()
-        self.notified_focus_ids = set()
-        self.notified_commitment_keys = set()
 
         threading.Thread(target=self.start_scheduler, daemon=True).start()
 
@@ -60,6 +58,9 @@ class WorkmateWebApp:
     def memory_state(self, current_prompt=""):
         records = self.memory_manager.load_records()
         recent_records = records[-30:]
+        self.memory_manager.refresh_supervision_events()
+        behavior_patterns = self.memory_manager.get_behavior_patterns()
+        dashboard = self.memory_manager.get_dashboard_state()
         context_debug = self.memory_manager.build_context_debug()
         return {
             "count": len(records),
@@ -77,9 +78,12 @@ class WorkmateWebApp:
             "memory_resources": self.memory_manager.get_memory_resources(limit=12),
             "semantic_dialogues": self.memory_manager.get_semantic_dialogues(limit=12),
             "high_level_insights": self.memory_manager.get_high_level_insights(limit=12),
+            "behavior_patterns": behavior_patterns,
+            "dashboard": dashboard,
             "memory_conflicts": self.memory_manager.get_memory_conflicts(),
             "reflections": self.memory_manager.get_reflections(),
             "supervision": self.memory_manager.get_supervision_state(),
+            "supervision_events": self.memory_manager.get_supervision_event_state(),
             "focus_session": self.memory_manager.get_focus_session_state(),
             "support_knowledge": self.memory_manager.get_support_knowledge_state(current_prompt),
             "tool_calls": self.tool_state(),
@@ -106,9 +110,12 @@ class WorkmateWebApp:
             "memory_resources": self.memory_manager.get_memory_resources(limit=10),
             "semantic_dialogues": self.memory_manager.get_semantic_dialogues(limit=10),
             "high_level_insights": self.memory_manager.get_high_level_insights(limit=10),
+            "behavior_patterns": self.memory_manager.get_behavior_patterns(),
+            "dashboard": self.memory_manager.get_dashboard_state(),
             "memory_conflicts": self.memory_manager.get_memory_conflicts(),
             "reflections": self.memory_manager.get_reflections(),
             "supervision": self.memory_manager.get_supervision_state(),
+            "supervision_events": self.memory_manager.get_supervision_event_state(),
             "focus_session": self.memory_manager.get_focus_session_state(),
             "support_knowledge": self.memory_manager.get_support_knowledge_state(""),
             "tool_calls": self.tool_state(),
@@ -142,6 +149,10 @@ class WorkmateWebApp:
             return []
         return self.agent.get_last_tool_calls()
 
+    def dashboard_state(self):
+        self.memory_manager.refresh_supervision_events()
+        return self.memory_manager.get_dashboard_state()
+
     def update_task_status(self, payload):
         task_id = payload.get("id")
         status = payload.get("status")
@@ -153,6 +164,35 @@ class WorkmateWebApp:
             "task_details": res.get("updated_task"),
             "memory": self.memory_state(),
             "context": self.context_state(),
+        }
+
+    def supervision_events(self):
+        self.memory_manager.refresh_supervision_events()
+        return self.memory_manager.get_supervision_event_state()
+
+    def update_supervision_event(self, payload):
+        event_id = str(payload.get("id", "")).strip()
+        action = str(payload.get("action", "")).strip()
+        hours = int(payload.get("hours", 24) or 24)
+        minutes = int(payload.get("minutes", 0) or 0)
+        if not event_id or not action:
+            raise ValueError("id and action are required")
+        event = self.memory_manager.update_supervision_event(event_id, action, hours=hours, minutes=minutes)
+        return {
+            "event": event,
+            "supervision_events": self.memory_manager.get_supervision_event_state(),
+            "memory": self.memory_state(),
+            "context": self.context_state(),
+        }
+
+    def supervision_preferences(self):
+        return self.memory_manager.get_supervision_preferences()
+
+    def update_supervision_preferences(self, payload):
+        preferences = self.memory_manager.update_supervision_preferences(payload)
+        return {
+            "preferences": preferences,
+            "supervision_events": self.memory_manager.get_supervision_event_state(),
         }
 
     def start_scheduler(self):
@@ -168,44 +208,14 @@ class WorkmateWebApp:
             time.sleep(60) # 每分钟扫描一次
 
     def run_background_checks(self):
-        from datetime import datetime, date
-        today_str = date.today().isoformat()
-        
-        # 1. 专注会话超时监控
-        focus_state = self.memory_manager.get_focus_session_state()
-        current_session = focus_state.get("current") or {}
-        if current_session.get("status") == "expired" and current_session.get("id"):
-            sess_id = current_session["id"]
-            if sess_id not in self.notified_focus_ids:
-                title = "专注超时提醒 ⏳"
-                body = f"专注会话【{current_session.get('goal')}】已超时，建议回来跟 Agent 记录进度哦！"
-                self.notifier.send_notification(title, body)
-                self.notified_focus_ids.add(sess_id)
-
-        # 2. 承诺到期监控
-        open_commitments = self.memory_manager.get_open_commitments()
-        now = datetime.now()
-        for c in open_commitments:
-            c_id = c.get("id")
-            deadline_str = c.get("deadline")
-            if not c_id or not deadline_str:
+        events = self.memory_manager.refresh_supervision_events()
+        for event in events:
+            if not self.memory_manager.supervision_event_manager.should_notify(event):
                 continue
-            try:
-                deadline_dt = datetime.fromisoformat(deadline_str)
-                is_overdue = deadline_dt < now
-                is_due_today = deadline_dt.date() == now.date()
-                
-                if is_overdue or is_due_today:
-                    notify_key = f"{c_id}_{today_str}"
-                    if notify_key not in self.notified_commitment_keys:
-                        title = "承诺逾期提醒 ⚠" if is_overdue else "承诺今日到期提醒 ⏰"
-                        desc = "已超出承诺截止时间" if is_overdue else "截止今天完成"
-                        body = f"你有一个承诺【{c.get('commitment')}】{desc}，请记得及时处理。"
-                        
-                        self.notifier.send_notification(title, body)
-                        self.notified_commitment_keys.add(notify_key)
-            except Exception as e:
-                pass
+            title = event.get("title") or "Workmate Agent 提醒"
+            body = event.get("message") or "有一个事项需要你稍后回来处理。"
+            self.notifier.send_notification(title, body)
+            self.memory_manager.update_supervision_event(event.get("id", ""), "mark_notified")
 
 
 APP = WorkmateWebApp()
@@ -225,6 +235,17 @@ class WorkmateRequestHandler(BaseHTTPRequestHandler):
         if path == "/api/context":
             self._send_json(APP.context_state())
             return
+        if path == "/api/dashboard":
+            self._send_json(APP.dashboard_state())
+            return
+
+        if path == "/api/supervision/events":
+            self._send_json(APP.supervision_events())
+            return
+
+        if path == "/api/supervision/preferences":
+            self._send_json(APP.supervision_preferences())
+            return
 
         if path == "/api/notify/status":
             import os
@@ -232,8 +253,8 @@ class WorkmateRequestHandler(BaseHTTPRequestHandler):
             status = {
                 "enabled_channels": channels,
                 "local_configured": True,  # macOS native is always supported
-                "bark_configured": bool(os.getenv("BARK_URL")),
-                "lark_configured": bool(os.getenv("LARK_WEBHOOK")),
+                "bark_configured": bool(os.getenv("BARK_KEY")),
+                "lark_configured": bool(os.getenv("LARK_WEBHOOK_URL")),
             }
             self._send_json(status)
             return
@@ -271,6 +292,14 @@ class WorkmateRequestHandler(BaseHTTPRequestHandler):
 
             if path == "/api/task/update-status":
                 self._send_json(APP.update_task_status(payload))
+                return
+
+            if path == "/api/supervision/events":
+                self._send_json(APP.update_supervision_event(payload))
+                return
+
+            if path == "/api/supervision/preferences":
+                self._send_json(APP.update_supervision_preferences(payload))
                 return
 
             if path != "/api/chat":

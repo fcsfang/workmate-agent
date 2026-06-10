@@ -4,10 +4,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .behavior_patterns import BehaviorPatternManager
 from .commitment import CommitmentManager
 from .context_compressor import ContextCompressor
 from .context_engine import ContextEngine
 from .context_planner import ContextPlanner
+from .dashboard import DashboardManager
 from .focus_session import FocusSessionManager
 from .governance import MemoryGovernanceManager
 from .interpreter import InsightManager, IntentManager, MemoryExtractor, SemanticDialogueManager, SummaryManager
@@ -17,6 +19,7 @@ from .reflection import ReflectionManager
 from .search import SearchManager
 from .stats import BehaviorStatsManager
 from .supervision import SupervisionManager
+from .supervision_events import SupervisionEventManager
 from .support_knowledge import SupportKnowledgeManager
 from .task_manager import TaskManager
 from .task_state import TaskState
@@ -35,6 +38,7 @@ class MemoryManager:
         context_compressor: Optional[ContextCompressor] = None,
         context_engine: Optional[ContextEngine] = None,
         context_planner: Optional[ContextPlanner] = None,
+        dashboard_manager: Optional[DashboardManager] = None,
         extractor: Optional[MemoryExtractor] = None,
         focus_session_manager: Optional[FocusSessionManager] = None,
         insight_manager: Optional[InsightManager] = None,
@@ -48,9 +52,11 @@ class MemoryManager:
         search_manager: Optional[SearchManager] = None,
         semantic_dialogue_manager: Optional[SemanticDialogueManager] = None,
         stats_manager: Optional[BehaviorStatsManager] = None,
+        supervision_event_manager: Optional[SupervisionEventManager] = None,
         supervision_manager: Optional[SupervisionManager] = None,
         support_knowledge_manager: Optional[SupportKnowledgeManager] = None,
         summary_manager: Optional[SummaryManager] = None,
+        behavior_pattern_manager: Optional[BehaviorPatternManager] = None,
         task_state: Optional[TaskState] = None,
         task_manager: Optional[TaskManager] = None,
         task_state_manager: Optional[TaskStateManager] = None,
@@ -67,6 +73,7 @@ class MemoryManager:
         )
         self.context_compressor = self.context_engine.context_compressor
         self.context_planner = self.context_engine.context_planner
+        self.dashboard_manager = dashboard_manager or DashboardManager()
         self.extractor = extractor or MemoryExtractor()
         self.focus_session_manager = focus_session_manager or FocusSessionManager()
         self.insight_manager = insight_manager or InsightManager()
@@ -80,6 +87,8 @@ class MemoryManager:
         self.search_manager = self.context_engine.search_manager
         self.semantic_dialogue_manager = semantic_dialogue_manager or SemanticDialogueManager()
         self.stats_manager = stats_manager or BehaviorStatsManager()
+        self.behavior_pattern_manager = behavior_pattern_manager or BehaviorPatternManager()
+        self.supervision_event_manager = supervision_event_manager or SupervisionEventManager()
         self.supervision_manager = supervision_manager or SupervisionManager()
         self.support_knowledge_manager = support_knowledge_manager or SupportKnowledgeManager()
         self.summary_manager = summary_manager or SummaryManager()
@@ -225,6 +234,7 @@ class MemoryManager:
             semantic_dialogues=self.semantic_dialogue_manager.load_dialogues(),
             insights=self.insight_manager.load_insights(),
         )
+        behavior_patterns = self.refresh_behavior_patterns()
         return {
             "resource": resource,
             "semantic_dialogue": semantic_dialogue,
@@ -232,6 +242,7 @@ class MemoryManager:
             "memory_categories": memory_categories,
             "reflection": reflection,
             "retrieval_index": retrieval_index,
+            "behavior_patterns": behavior_patterns,
             "commitments": commitments,
             "user_profile": user_profile,
             "recent_summary": recent_summary,
@@ -330,11 +341,160 @@ class MemoryManager:
             user_profile=self.get_user_profile(),
         )
 
+    def refresh_supervision_events(self) -> List[Dict[str, Any]]:
+        return self.supervision_event_manager.detect_events(
+            focus_state=self.get_focus_session_state(),
+            commitments=self.task_state.all_commitments(),
+            task_view=self.get_task_view(),
+        )
+
+    def get_supervision_event_state(self) -> Dict[str, Any]:
+        return self.supervision_event_manager.build_state()
+
+    def update_supervision_event(
+        self,
+        event_id: str,
+        action: str,
+        hours: int = 24,
+        minutes: int = 0,
+    ) -> Dict[str, Any]:
+        action = str(action or "").strip().lower()
+        if action == "acknowledge":
+            return self.supervision_event_manager.acknowledge(event_id)
+        if action == "resolve":
+            event = self.supervision_event_manager.get_event(event_id)
+            linked_updates = self._resolve_supervision_subject(event)
+            return self.supervision_event_manager.resolve(event_id, linked_updates=linked_updates)
+        if action == "mute":
+            return self.supervision_event_manager.mute(event_id, hours=hours)
+        if action == "snooze":
+            snooze_minutes = minutes or self.get_supervision_preferences().get("default_snooze_minutes", 60)
+            return self.supervision_event_manager.snooze(event_id, minutes=snooze_minutes)
+        if action == "mark_notified":
+            return self.supervision_event_manager.mark_notified(event_id)
+        raise ValueError(f"unknown supervision event action: {action}")
+
+    def get_supervision_preferences(self) -> Dict[str, Any]:
+        return self.supervision_event_manager.load_preferences()
+
+    def update_supervision_preferences(self, updates: Dict[str, Any]) -> Dict[str, Any]:
+        return self.supervision_event_manager.update_preferences(updates)
+
+    def _resolve_supervision_subject(self, event: Dict[str, Any]) -> List[Dict[str, Any]]:
+        event_type = event.get("type", "")
+        subject_type = event.get("subject_type", "")
+        subject_id = event.get("subject_id", "")
+        if not subject_id:
+            return []
+        if event_type == "focus_expired" and subject_type == "focus_session":
+            return [self._complete_linked_focus_session(subject_id)]
+        if event_type in {"commitment_due_today", "commitment_overdue"} and subject_type == "commitment":
+            return [self._close_linked_commitment(subject_id, event)]
+        if event_type == "task_stale" and subject_type == "task":
+            return [self._close_linked_task(subject_id)]
+        return []
+
+    def _complete_linked_focus_session(self, session_id: str) -> Dict[str, Any]:
+        current = self.get_focus_session_state().get("current") or {}
+        if current.get("id") != session_id:
+            return {
+                "subject_type": "focus_session",
+                "subject_id": session_id,
+                "action": "complete",
+                "status": "skipped",
+                "reason": "focus session is no longer current",
+            }
+        try:
+            session = self.complete_focus_session(outcome="用户通过监督事件标记已收束。")
+            return {
+                "subject_type": "focus_session",
+                "subject_id": session_id,
+                "action": "complete",
+                "status": "applied",
+                "result": session,
+            }
+        except ValueError as exc:
+            return {
+                "subject_type": "focus_session",
+                "subject_id": session_id,
+                "action": "complete",
+                "status": "skipped",
+                "reason": str(exc),
+            }
+
+    def _close_linked_commitment(self, commitment_id: str, event: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            commitment = self.commitment_manager.close_commitment(
+                commitment_id,
+                reason=f"通过监督事件关闭：{event.get('title', '')}",
+            )
+            return {
+                "subject_type": "commitment",
+                "subject_id": commitment_id,
+                "action": "close",
+                "status": "applied",
+                "result": commitment,
+            }
+        except ValueError as exc:
+            return {
+                "subject_type": "commitment",
+                "subject_id": commitment_id,
+                "action": "close",
+                "status": "skipped",
+                "reason": str(exc),
+            }
+
+    def _close_linked_task(self, task_id: str) -> Dict[str, Any]:
+        result = self.update_task_status(task_id, "done")
+        task = result.get("updated_task")
+        if not task:
+            return {
+                "subject_type": "task",
+                "subject_id": task_id,
+                "action": "complete",
+                "status": "skipped",
+                "reason": "task not found",
+            }
+        return {
+            "subject_type": "task",
+            "subject_id": task_id,
+            "action": "complete",
+            "status": "applied",
+            "result": task,
+        }
+
     def get_focus_session_state(self) -> Dict[str, Any]:
         return self.focus_session_manager.build_state()
 
     def get_behavior_stats(self) -> Dict[str, Any]:
         return self.stats_manager.get_behavior_stats()
+
+    def refresh_behavior_patterns(self) -> List[Dict[str, Any]]:
+        return self.behavior_pattern_manager.analyze(
+            tasks=self.task_manager.load_tasks(),
+            focus_sessions=self.focus_session_manager.load_sessions(),
+            commitments=self.task_state.all_commitments(),
+            supervision_events=self.supervision_event_manager.load_events(),
+            stats=self.get_behavior_stats(),
+        )
+
+    def get_behavior_patterns(self) -> Dict[str, Any]:
+        patterns = self.refresh_behavior_patterns()
+        return self.behavior_pattern_manager.build_state(patterns)
+
+    def get_dashboard_state(self) -> Dict[str, Any]:
+        supervision_events = self.get_supervision_event_state()
+        behavior_patterns = self.get_behavior_patterns()
+        return self.dashboard_manager.build_state(
+            task_view=self.get_task_view(),
+            tasks=self.task_manager.load_tasks(),
+            focus_state=self.get_focus_session_state(),
+            focus_sessions=self.focus_session_manager.load_sessions(),
+            commitments=self.task_state.all_commitments(),
+            records=self.load_records(),
+            supervision_events=supervision_events,
+            behavior_patterns=behavior_patterns,
+        )
 
     def start_focus_session(self, goal: str, duration_minutes: int = 45) -> Dict[str, Any]:
         current = self.get_task_view().get("current") or {}
@@ -495,6 +655,8 @@ class MemoryManager:
             {"role": "system", "content": self.semantic_dialogue_manager.format_for_context()},
             {"role": "system", "content": self.memory_governance_manager.format_for_context()},
             {"role": "system", "content": self.reflection_manager.format_for_context()},
+            {"role": "system", "content": self.behavior_pattern_manager.format_for_context(self.get_behavior_patterns())},
+            {"role": "system", "content": self.dashboard_manager.format_for_context(self.get_dashboard_state())},
             {"role": "system", "content": self.get_structured_memory_summary()},
             {"role": "system", "content": self.get_recent_summary_context(days=7)},
             {"role": "system", "content": self.task_state.format_commitments()},
@@ -503,6 +665,7 @@ class MemoryManager:
             {"role": "system", "content": self.memory_category_manager.format_for_context()},
             {"role": "system", "content": self.memory_item_manager.format_for_context()},
             {"role": "system", "content": self.supervision_manager.format_for_context(self.get_supervision_state())},
+            {"role": "system", "content": self.supervision_event_manager.format_for_context(self.get_supervision_event_state())},
             {"role": "system", "content": self.support_knowledge_manager.format_for_context(self.get_support_knowledge_state(current_prompt))},
             *self.get_recent_messages(),
         ]
@@ -527,6 +690,7 @@ class MemoryManager:
             "memory_conflicts": self.get_memory_conflicts(),
             "reflections": self.get_reflections(),
             "supervision": self.get_supervision_state(),
+            "supervision_events": self.get_supervision_event_state(),
             "focus_session": self.get_focus_session_state(),
             "support_knowledge": self.get_support_knowledge_state(current_prompt),
         }

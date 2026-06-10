@@ -57,7 +57,10 @@ class ContextPlanner:
             keys.extend(["high_level_insights", "memory_governance"])
 
         if intent in {"task", "review", "supervision"} and period != "night":
+            keys.append("dashboard")
             keys.append("supervision")
+            keys.append("supervision_events")
+            keys.append("behavior_patterns")
 
         if self.needs_support_knowledge(current_prompt):
             keys.append("support_knowledge")
@@ -72,11 +75,11 @@ class ContextPlanner:
             keys.append("related_memories")
 
         if intent == "review":
-            keys.extend(["reflections", "memory_summary", "structured_summary", "behavior_stats"])
+            keys.extend(["reflections", "memory_summary", "structured_summary", "behavior_stats", "behavior_patterns", "dashboard"])
         elif intent == "task":
             keys.append("structured_summary")
         elif intent == "weekly_report":
-            keys.extend(["weekly_report_data", "high_level_insights", "behavior_stats", "commitments", "reflections"])
+            keys.extend(["weekly_report_data", "high_level_insights", "behavior_stats", "behavior_patterns", "dashboard", "commitments", "reflections", "supervision_events"])
         return self._unique(keys)
 
     def time_period(self) -> str:

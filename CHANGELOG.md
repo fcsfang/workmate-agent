@@ -1,3 +1,86 @@
+## V1.2
+### 目标
+- 让用户打开页面后，不需要翻聊天记录就能看到当前主线、今日进展和本周节奏
+- 把任务、专注、承诺、监督事件和行为模式聚合成一个低压力行动仪表盘
+
+### 已实现
+#### 个人自律仪表盘
+- 新增 `DashboardManager`
+- 新增 GET `/api/dashboard`
+- `/api/memory` 和 `/api/context` 暴露 `dashboard`
+- 仪表盘聚合今日专注次数/分钟数、今日完成任务、今日关闭承诺、未关闭承诺、到期承诺、活跃监督事件、当前主线、任务分散度、本周专注分钟、本周完成任务、本周活跃天数和承诺履行率
+- 仪表盘生成一条轻量 `gentle cue`，只用于帮助用户回到主线，不做评分或压力提示
+
+#### Web 交互
+- `EXECUTION` 面板顶部新增 `TODAY DASHBOARD`
+- 展示 `today focus`、`today done`、`open loops`、`mainline`、`week rhythm`、`load` 和 `gentle cue`
+- 新增快速操作按钮：`FOCUS` 使用当前主线开启专注，`DONE` 完成当前主线，`REMINDERS` 滚动到监督事件区域
+- `ContextPlanner` 在任务、监督、复盘和周报场景注入 dashboard 摘要，让模型回复更贴近用户当前行动状态
+
+## V1.1
+### 目标
+- 从“发生了什么提醒”推进到“用户经常怎样行动”
+- 让 Agent 能根据任务、专注、承诺和监督事件识别长期行为模式，但不做心理诊断或人格标签
+
+### 已实现
+#### 行为模式分析
+- 新增 `BehaviorPatternManager`
+- 新增运行时文件 `memory/data/behavior_patterns.json`
+- 基于本地 JSON 数据分析专注完成率、专注超时、承诺积压、承诺履行率、任务分散、任务停滞和提醒反馈摩擦
+- 每个行为模式包含 `title`、`summary`、`tone`、`severity`、`frequency`、`evidence` 和 `suggested_intervention`
+- 行为模式只作为观察线索进入上下文，提示 Agent 在相关时给一句轻量建议，不把单次行为当成长期结论
+
+#### 上下文与 Web
+- `MemoryManager` 每轮派生记忆后刷新行为模式
+- `ContextPlanner` 在任务、监督、复盘和周报场景注入 `behavior_patterns`
+- `/api/memory` 和 `/api/context` 暴露 `behavior_patterns`
+- Web 的 `MEMORY` 面板新增 `patterns` 字段，展示当前最相关的行为模式
+
+## V1.0
+### 目标
+- 启动主动监督闭环建设
+- 将专注超时、承诺到期、任务停滞等提醒从临时判断升级为可追踪的监督事件
+- 为后续“确认、静音、关闭、稍后提醒”等用户可控监督策略打基础
+
+### 已实现
+#### 统一监督事件模型
+- 新增 `SupervisionEventManager`
+- 新增运行时文件 `memory/data/supervision_events.json`
+- 支持事件状态：`detected / notified / acknowledged / snoozed / resolved / muted`
+- 支持 `snoozed` 稍后提醒状态，到期后自动重新变为 `detected`
+- 支持监督事件类型：专注会话超时、承诺今日到期、承诺逾期、当前任务久未更新
+- 同一事件使用 `dedupe_key` 去重，避免短时间重复生成和重复推送
+- 当对应问题不再存在时，活跃事件会自动转为 `resolved`
+- 监督事件记录 `feedback_history` 和 `linked_updates`，用于追踪用户如何处理提醒，以及 DONE 是否同步影响了关联对象
+
+#### 状态联动
+- 用户对专注超时事件执行 `DONE` 时，会尝试同步完成当前专注会话
+- 用户对承诺今日到期或逾期事件执行 `DONE` 时，会尝试同步关闭对应承诺
+- 用户对当前任务久未更新事件执行 `DONE` 时，会尝试同步将对应任务标记为完成
+- 关联对象已经不存在或不再是当前对象时，不会报错中断，而是把跳过原因写入事件的 `linked_updates`
+
+#### 提醒偏好
+- 新增运行时文件 `memory/data/supervision_preferences.json`
+- 支持总开关、默认稍后提醒分钟数、默认静音小时数、静默时段、最低提醒严重程度
+- 支持 `push_min_severity`，低严重度事件可以只进入页面，不触发桌面或后台推送
+- 支持按事件类型启停提醒：专注、承诺、任务停滞
+- 后台 scheduler 和浏览器桌面通知都会尊重提醒偏好；事件仍会记录，但不一定主动推送
+
+#### 后台调度与 API
+- `WorkmateWebApp` 的后台 scheduler 改为先刷新监督事件，再只对 `detected` 状态事件发送推送，并将其标记为 `notified`
+- `/api/memory`、`/api/context` 暴露 `supervision_events`
+- 新增 GET `/api/supervision/events` 刷新并读取监督事件
+- 新增 POST `/api/supervision/events`，支持 `acknowledge`、`snooze`、`mute`、`resolve`、`mark_notified`
+- 新增 GET/POST `/api/supervision/preferences`，用于读取和保存监督偏好
+- 修正推送自检读取的环境变量名：Bark 使用 `BARK_KEY`，飞书使用 `LARK_WEBHOOK_URL`
+
+#### Web 交互
+- `EXECUTION` 面板新增 `SUPERVISION EVENTS`
+- 用户可以在前端对监督事件执行 `SNOOZE`、`ACK`、`MUTE`、`DONE`
+- `SUPERVISION EVENTS` 面板新增提醒偏好设置：启用状态、默认稍后分钟数、推送最低等级、静默时间段、专注/承诺/任务提醒开关
+- `SUPERVISION EVENTS` 面板展示反馈统计，方便观察用户是更常确认、稍后提醒、静音还是关闭事件
+- 浏览器桌面通知改为基于统一监督事件触发，而不是分别读取 focus session 和 commitments 裸数据
+
 ## V0.9.2
 ### 目标
 - 优化任务提取阶段的匹配算法，解决因语序颠倒、多余助词或修饰语引起的 TODO LIST 重复任务提取问题。

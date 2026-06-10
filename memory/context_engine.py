@@ -84,6 +84,10 @@ class ContextEngine:
             available["focus_session"] = memory_manager.focus_session_manager.format_for_context()
         if "time_context" in key_set:
             available["time_context"] = memory_manager.stats_manager.format_time_context()
+        if "dashboard" in key_set:
+            available["dashboard"] = memory_manager.dashboard_manager.format_for_context(
+                memory_manager.get_dashboard_state()
+            )
         if "morning_briefing" in key_set:
             available["morning_briefing"] = memory_manager.stats_manager.format_morning_briefing(memory_manager)
         if "evening_review" in key_set:
@@ -94,6 +98,10 @@ class ContextEngine:
             available["gap_context"] = memory_manager.stats_manager.format_gap_context(memory_manager)
         if "behavior_stats" in key_set:
             available["behavior_stats"] = memory_manager.stats_manager.format_for_context()
+        if "behavior_patterns" in key_set:
+            available["behavior_patterns"] = memory_manager.behavior_pattern_manager.format_for_context(
+                memory_manager.get_behavior_patterns()
+            )
         if "high_level_insights" in key_set:
             available["high_level_insights"] = memory_manager.insight_manager.format_for_context()
         if "semantic_dialogues" in key_set:
@@ -120,6 +128,10 @@ class ContextEngine:
             available["memory_items"] = memory_manager.memory_item_manager.format_for_context(related_items)
         if "supervision" in key_set:
             available["supervision"] = memory_manager.supervision_manager.format_for_context(memory_manager.get_supervision_state())
+        if "supervision_events" in key_set:
+            available["supervision_events"] = memory_manager.supervision_event_manager.format_for_context(
+                memory_manager.get_supervision_event_state()
+            )
         if "support_knowledge" in key_set:
             support_state = memory_manager.get_support_knowledge_state(current_prompt)
             available["support_knowledge"] = memory_manager.support_knowledge_manager.format_for_context(support_state)

@@ -132,6 +132,21 @@ class CommitmentManager:
     def get_open_commitments(self) -> List[Dict[str, Any]]:
         return [item for item in self.load_commitments() if item.get("status") == "open"]
 
+    def close_commitment(self, commitment_id: str, reason: str = "") -> Dict[str, Any]:
+        commitments = self.load_commitments()
+        now = datetime.now().isoformat(timespec="seconds")
+        for item in commitments:
+            if item.get("id") != commitment_id:
+                continue
+            if item.get("status") == "open":
+                item["status"] = "closed"
+                item["closed_at"] = now
+                if reason:
+                    item["close_reason"] = self._compact(reason, 180)
+                self.save_commitments(commitments)
+            return item
+        raise ValueError(f"commitment not found: {commitment_id}")
+
     def format_for_context(self) -> str:
         open_items = self.get_open_commitments()
         if not open_items:
