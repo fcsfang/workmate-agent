@@ -1,3 +1,25 @@
+## V2.0
+### 目标
+- 新增浏览器端语音提醒能力，让监督事件可以通过轻量语音播报触达用户，降低只看页面文字的感知摩擦
+
+### 已实现
+#### Web Speech API 语音提醒
+- 前端 `SUPERVISION EVENTS` 偏好面板新增语音提醒开关、语音最低播报等级、音量、语速、陪伴事件播报开关和 `TEST VOICE` 测试按钮
+- 语音提醒基于浏览器原生 `SpeechSynthesis`，不引入服务端音频依赖、不增加 API 成本，也不影响 `run.sh` 一键启动
+- 语音只播报监督事件短文案，优先使用 `display_message`，不会朗读普通聊天回复或整段 Markdown 回复
+- 默认关闭语音提醒，避免用户打开页面时突然出声；用户需要主动打开并可用测试按钮确认浏览器支持
+- 与现有提醒偏好联动：尊重总开关、静默时段、事件类型开关、事件严重度和 `event_type_min_severity` 覆盖
+- 使用 `spoken_supervision_<event_id>` 写入 `localStorage`，同一监督事件在浏览器中只播报一次，避免重复打扰
+- 默认不播报 `screen_accompaniment` 低压力陪伴事件，除非用户显式开启陪伴播报
+
+#### 后端偏好持久化
+- `SupervisionEventManager` 新增 `voice_enabled`、`voice_min_severity`、`voice_volume`、`voice_rate` 和 `voice_include_accompaniment` 偏好字段
+- FastAPI `SupervisionPreferencesRequest` 补齐语音偏好 schema，`/docs` 和 `/openapi.json` 可直接看到语音配置字段
+- `event_type_min_severity` 支持新增 `voice` 渠道，方便未来对不同监督事件单独控制语音播报门槛
+
+#### 测试
+- 新增语音偏好归一化与持久化测试，覆盖音量、语速边界和 voice 渠道事件类型覆盖
+
 ## V1.10
 ### 目标
 - 将 Web 后端从手写 `http.server` 路由升级为 FastAPI，提升 API 工程化、可展示性和后续扩展能力
@@ -16,28 +38,6 @@
 - `README.md` 补充 FastAPI API 文档入口和可选 `uvicorn` 启动方式
 - `tests/test_web_api.py` 改为使用 FastAPI `TestClient`，并新增 `/openapi.json` smoke test
 - `pytest` 全量 26 项测试通过
-
-## V2.0 (规划中)
-### 目标
-- 新增主动语音唤醒与监督语音播报提醒功能，降低感知摩擦，强化“工位陪伴搭子”的实体临场感
-
-### 规划方案
-#### 1. 客户端 Web Speech API 方案 [推荐]
-- **实现原理**：在前端 Web 页面渲染到新的聊天记录或警报事件（如 `tone_suggestion`）时，通过 HTML5 原生的 `SpeechSynthesis`（语音合成）API 直接在浏览器端进行实时播报。
-- **优点**：零服务端性能消耗，无需在本地系统安装音频播放库，支持完全离线运行，可在前端设置面板直接配置语音开关和音量。
-- **缺点**：只有在浏览器控制台网页打开时才能发出声音。
-
-#### 2. 服务端 macOS `say` 命令行调用方案
-- **实现原理**：当后端 `refresh_supervision_events` 检测到新的监督事件时，在后台线程中通过 Python `subprocess` 直接调用 macOS 原生的 `/usr/bin/say` 命令行工具。
-- **优点**：即使用户关闭了网页，后台 Scheduler 守护线程在检测到偏航或状态切换时，依然能通过系统音响直接朗读发出声音警告。
-- **缺点**：强平台绑定（仅支持 macOS），在 Windows 等其他平台运行时需要额外的适配逻辑。
-
-#### 3. 云端高保真音频合成播放方案 (Microsoft Edge TTS / OpenAI TTS)
-- **实现原理**：后端生成文案后，调用微软 Edge 免费大声朗读接口或 OpenAI TTS API，生成高度逼真、自然且具备高度人情味人声音色的 MP3 文件，并在本地使用 Python 的第三方播放库进行音频硬件输出播放。
-- **优点**：发音极其自然逼真，拟真度极高，可以自由选择特定配音音色，陪伴感最强。
-- **缺点**：强依赖网络访问，且需要安装额外的 Python 音频库（如 `pygame` 等）来播放音频。
-
----
 
 ## V1.9
 ### 目标

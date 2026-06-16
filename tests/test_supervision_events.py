@@ -84,3 +84,28 @@ def test_reminder_preference_strategy_reduces_push_after_delays(tmp_path):
 
     assert strategy["mode"] == "reduce_push"
     assert strategy["preference_updates"]["browser_min_severity"] == "high"
+
+
+def test_voice_preferences_are_normalized_and_persisted(tmp_path):
+    manager = SupervisionEventManager(
+        events_path=str(tmp_path / "events.json"),
+        preferences_path=str(tmp_path / "preferences.json"),
+    )
+
+    preferences = manager.update_preferences({
+        "voice_enabled": True,
+        "voice_min_severity": "high",
+        "voice_volume": 1.5,
+        "voice_rate": 0.2,
+        "voice_include_accompaniment": True,
+        "event_type_min_severity": {
+            "screen_deviation": {"voice": "medium"},
+        },
+    })
+
+    assert preferences["voice_enabled"] is True
+    assert preferences["voice_min_severity"] == "high"
+    assert preferences["voice_volume"] == 1.0
+    assert preferences["voice_rate"] == 0.6
+    assert preferences["voice_include_accompaniment"] is True
+    assert preferences["event_type_min_severity"]["screen_deviation"]["voice"] == "medium"

@@ -1354,6 +1354,35 @@
             </div>
             <div class="supervision-pref-row">
               <label class="supervision-pref-item">
+                <input id="prefVoiceEnabled" type="checkbox">
+                <span>voice</span>
+              </label>
+              <label class="supervision-pref-item">
+                <span>voice min</span>
+                <select id="prefVoiceMinSeverity">
+                  <option value="low">low</option>
+                  <option value="medium">medium</option>
+                  <option value="high">high</option>
+                </select>
+              </label>
+              <label class="supervision-pref-item">
+                <input id="prefVoiceAccompaniment" type="checkbox">
+                <span>companions</span>
+              </label>
+            </div>
+            <div class="supervision-pref-row">
+              <label class="supervision-pref-item">
+                <span>volume</span>
+                <input id="prefVoiceVolume" type="range" min="0" max="1" step="0.05" value="0.7">
+              </label>
+              <label class="supervision-pref-item">
+                <span>rate</span>
+                <input id="prefVoiceRate" type="range" min="0.6" max="1.4" step="0.05" value="1">
+              </label>
+              <button class="supervision-action" id="testVoiceReminder" type="button">TEST VOICE</button>
+            </div>
+            <div class="supervision-pref-row">
+              <label class="supervision-pref-item">
                 <input id="prefFocus" type="checkbox">
                 <span>focus</span>
               </label>
@@ -1620,6 +1649,12 @@
     const prefBackgroundMinSeverity = document.querySelector("#prefBackgroundMinSeverity");
     const prefQuietStart = document.querySelector("#prefQuietStart");
     const prefQuietEnd = document.querySelector("#prefQuietEnd");
+    const prefVoiceEnabled = document.querySelector("#prefVoiceEnabled");
+    const prefVoiceMinSeverity = document.querySelector("#prefVoiceMinSeverity");
+    const prefVoiceAccompaniment = document.querySelector("#prefVoiceAccompaniment");
+    const prefVoiceVolume = document.querySelector("#prefVoiceVolume");
+    const prefVoiceRate = document.querySelector("#prefVoiceRate");
+    const testVoiceReminder = document.querySelector("#testVoiceReminder");
     const prefFocus = document.querySelector("#prefFocus");
     const prefCommitments = document.querySelector("#prefCommitments");
     const prefTasks = document.querySelector("#prefTasks");
@@ -2202,6 +2237,13 @@
       prefBackgroundMinSeverity.value = preferences.background_min_severity || "high";
       prefQuietStart.value = preferences.quiet_hours_start || "23:00";
       prefQuietEnd.value = preferences.quiet_hours_end || "07:00";
+      if (prefVoiceEnabled) prefVoiceEnabled.checked = preferences.voice_enabled === true;
+      if (prefVoiceMinSeverity) prefVoiceMinSeverity.value = preferences.voice_min_severity || "medium";
+      if (prefVoiceAccompaniment) {
+        prefVoiceAccompaniment.checked = preferences.voice_include_accompaniment === true;
+      }
+      if (prefVoiceVolume) prefVoiceVolume.value = preferences.voice_volume ?? 0.7;
+      if (prefVoiceRate) prefVoiceRate.value = preferences.voice_rate ?? 1;
       prefFocus.checked = preferences.notify_focus !== false;
       prefCommitments.checked = preferences.notify_commitments !== false;
       prefTasks.checked = preferences.notify_tasks !== false;
@@ -2445,15 +2487,16 @@
     }
 
     function checkAndNotify(supervisionEvents = {}) {
-      if (!("Notification" in window) || Notification.permission !== "granted") {
-        return;
-      }
-
       const preferences = supervisionEvents.preferences || {};
       if (preferences.enabled === false || isQuietHour(preferences)) {
         return;
       }
       const activeEvents = supervisionEvents.active || [];
+      checkAndSpeak(activeEvents, preferences);
+      if (!("Notification" in window) || Notification.permission !== "granted") {
+        return;
+      }
+
       activeEvents.forEach((event) => {
         if (!event.id || event.status !== "detected") return;
         if (!browserShouldNotifyEvent(event, preferences)) return;
@@ -2465,6 +2508,60 @@
         localStorage.setItem(notifiedKey, "true");
         updateSupervisionEvent(event.id, "mark_notified").catch(() => {});
       });
+    }
+
+    function checkAndSpeak(activeEvents = [], preferences = {}) {
+      if (!voiceCanSpeak(preferences)) return;
+      activeEvents.forEach((event) => {
+        if (!event.id || event.status !== "detected") return;
+        if (!voiceShouldSpeakEvent(event, preferences)) return;
+        const spokenKey = `spoken_supervision_${event.id}`;
+        if (localStorage.getItem(spokenKey)) return;
+        const text = voiceReminderText(event);
+        if (!text) return;
+        speakVoiceReminder(text, preferences);
+        localStorage.setItem(spokenKey, "true");
+      });
+    }
+
+    function voiceCanSpeak(preferences = {}) {
+      return preferences.voice_enabled === true && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
+    }
+
+    function voiceShouldSpeakEvent(event, preferences = {}) {
+      if (event.type === "screen_accompaniment" && preferences.voice_include_accompaniment !== true) {
+        return false;
+      }
+      const voiceMinSeverity = channelMinSeverity(preferences, "voice", event.type || "");
+      if (severityRank(event.severity || "low") < severityRank(voiceMinSeverity)) return false;
+      if (event.type === "focus_expired") return preferences.notify_focus !== false;
+      if (event.type === "commitment_due_today" || event.type === "commitment_overdue") {
+        return preferences.notify_commitments !== false;
+      }
+      if (event.type === "task_stale") return preferences.notify_tasks !== false;
+      return true;
+    }
+
+    function voiceReminderText(event = {}) {
+      const raw = String(event.display_message || event.message || event.title || "").replace(/\s+/g, " ").trim();
+      if (!raw) return "";
+      if (raw.length <= 90) return raw;
+      return raw.slice(0, 88).replace(/[，。；、,.!！?？：:]*$/, "") + "。";
+    }
+
+    function speakVoiceReminder(text, preferences = {}) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = "zh-CN";
+      utterance.volume = clampNumber(preferences.voice_volume ?? prefVoiceVolume?.value ?? 0.7, 0, 1);
+      utterance.rate = clampNumber(preferences.voice_rate ?? prefVoiceRate?.value ?? 1, 0.6, 1.4);
+      window.speechSynthesis.speak(utterance);
+    }
+
+    function clampNumber(value, min, max) {
+      const number = Number(value);
+      if (!Number.isFinite(number)) return min;
+      return Math.max(min, Math.min(max, number));
     }
 
     function isQuietHour(preferences = {}) {
@@ -2508,6 +2605,9 @@
       if (channel === "page") return preferences.page_min_severity || preferences.min_severity || "low";
       if (channel === "browser") {
         return preferences.browser_min_severity || preferences.push_min_severity || preferences.min_severity || "medium";
+      }
+      if (channel === "voice") {
+        return preferences.voice_min_severity || preferences.browser_min_severity || preferences.push_min_severity || "medium";
       }
       return preferences.background_min_severity || preferences.push_min_severity || "high";
     }
@@ -2557,6 +2657,11 @@
         page_min_severity: prefPageMinSeverity?.value || "low",
         browser_min_severity: prefBrowserMinSeverity?.value || "medium",
         background_min_severity: prefBackgroundMinSeverity?.value || "high",
+        voice_enabled: Boolean(prefVoiceEnabled?.checked),
+        voice_min_severity: prefVoiceMinSeverity?.value || "medium",
+        voice_volume: Number(prefVoiceVolume?.value || 0.7),
+        voice_rate: Number(prefVoiceRate?.value || 1),
+        voice_include_accompaniment: Boolean(prefVoiceAccompaniment?.checked),
         quiet_hours_enabled: true,
         quiet_hours_start: prefQuietStart?.value || "23:00",
         quiet_hours_end: prefQuietEnd?.value || "07:00",
@@ -2608,6 +2713,11 @@
         page_min_severity: prefPageMinSeverity?.value || "low",
         browser_min_severity: prefBrowserMinSeverity?.value || "medium",
         background_min_severity: prefBackgroundMinSeverity?.value || "high",
+        voice_enabled: Boolean(prefVoiceEnabled?.checked),
+        voice_min_severity: prefVoiceMinSeverity?.value || "medium",
+        voice_volume: Number(prefVoiceVolume?.value || 0.7),
+        voice_rate: Number(prefVoiceRate?.value || 1),
+        voice_include_accompaniment: Boolean(prefVoiceAccompaniment?.checked),
         quiet_hours_enabled: true,
         quiet_hours_start: prefQuietStart?.value || "23:00",
         quiet_hours_end: prefQuietEnd?.value || "07:00",
@@ -2912,6 +3022,22 @@
         setStatus("ready", false);
       }
     });
+
+    if (testVoiceReminder) {
+      testVoiceReminder.addEventListener("click", () => {
+        if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) {
+          lastEvent.textContent = "voice is not supported";
+          return;
+        }
+        const preferences = {
+          voice_enabled: true,
+          voice_volume: Number(prefVoiceVolume?.value || 0.7),
+          voice_rate: Number(prefVoiceRate?.value || 1)
+        };
+        speakVoiceReminder("语音提醒已开启。我会尽量轻一点，只在需要时提醒你。", preferences);
+        lastEvent.textContent = "voice test played";
+      });
+    }
 
     async function loadNotificationStatus() {
       const channelLocalDot = document.querySelector("#channelLocal .channel-dot");

@@ -100,6 +100,11 @@ class SupervisionEventManager:
             "page_min_severity": "low",
             "browser_min_severity": "medium",
             "background_min_severity": "high",
+            "voice_enabled": False,
+            "voice_min_severity": "medium",
+            "voice_volume": 0.7,
+            "voice_rate": 1.0,
+            "voice_include_accompaniment": False,
             "event_type_min_severity": {},
             "default_snooze_minutes": 60,
             "default_mute_hours": 24,
@@ -1594,6 +1599,9 @@ class SupervisionEventManager:
         background_min_severity = str(preferences.get("background_min_severity", defaults["background_min_severity"])).lower()
         if background_min_severity not in {"low", "medium", "high"}:
             background_min_severity = defaults["background_min_severity"]
+        voice_min_severity = str(preferences.get("voice_min_severity", defaults["voice_min_severity"])).lower()
+        if voice_min_severity not in {"low", "medium", "high"}:
+            voice_min_severity = defaults["voice_min_severity"]
         event_type_min_severity = self._normalize_event_type_min_severity(
             preferences.get("event_type_min_severity", defaults["event_type_min_severity"])
         )
@@ -1619,6 +1627,11 @@ class SupervisionEventManager:
             "page_min_severity": page_min_severity,
             "browser_min_severity": browser_min_severity,
             "background_min_severity": background_min_severity,
+            "voice_enabled": bool(preferences.get("voice_enabled", defaults["voice_enabled"])),
+            "voice_min_severity": voice_min_severity,
+            "voice_volume": self._bounded_float(preferences.get("voice_volume", defaults["voice_volume"]), 0.0, 1.0),
+            "voice_rate": self._bounded_float(preferences.get("voice_rate", defaults["voice_rate"]), 0.6, 1.4),
+            "voice_include_accompaniment": bool(preferences.get("voice_include_accompaniment", defaults["voice_include_accompaniment"])),
             "event_type_min_severity": event_type_min_severity,
             "default_snooze_minutes": self._bounded_int(preferences.get("default_snooze_minutes", 60), 5, 1440),
             "default_mute_hours": self._bounded_int(preferences.get("default_mute_hours", 24), 1, 168),
@@ -1647,7 +1660,7 @@ class SupervisionEventManager:
         if not isinstance(value, dict):
             return {}
         allowed_types = {"focus_expired", "commitment_due_today", "commitment_overdue", "task_stale", "screen_deviation"}
-        allowed_channels = {"page", "browser", "background"}
+        allowed_channels = {"page", "browser", "background", "voice"}
         result: Dict[str, Dict[str, str]] = {}
         for event_type, channels in value.items():
             event_type = str(event_type or "").strip()
@@ -1686,6 +1699,13 @@ class SupervisionEventManager:
     def _bounded_int(self, value: Any, minimum: int, maximum: int) -> int:
         try:
             number = int(value)
+        except (TypeError, ValueError):
+            number = minimum
+        return max(minimum, min(maximum, number))
+
+    def _bounded_float(self, value: Any, minimum: float, maximum: float) -> float:
+        try:
+            number = float(value)
         except (TypeError, ValueError):
             number = minimum
         return max(minimum, min(maximum, number))
