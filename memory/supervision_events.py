@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -101,6 +102,7 @@ class SupervisionEventManager:
             "browser_min_severity": "medium",
             "background_min_severity": "high",
             "voice_enabled": False,
+            "voice_provider": os.getenv("TTS_PROVIDER", "browser").strip().lower() or "browser",
             "voice_min_severity": "medium",
             "voice_volume": 0.7,
             "voice_rate": 1.0,
@@ -1602,6 +1604,9 @@ class SupervisionEventManager:
         voice_min_severity = str(preferences.get("voice_min_severity", defaults["voice_min_severity"])).lower()
         if voice_min_severity not in {"low", "medium", "high"}:
             voice_min_severity = defaults["voice_min_severity"]
+        voice_provider = str(preferences.get("voice_provider", defaults["voice_provider"])).strip().lower()
+        if voice_provider not in {"browser", "xfyun"}:
+            voice_provider = defaults["voice_provider"]
         event_type_min_severity = self._normalize_event_type_min_severity(
             preferences.get("event_type_min_severity", defaults["event_type_min_severity"])
         )
@@ -1628,6 +1633,7 @@ class SupervisionEventManager:
             "browser_min_severity": browser_min_severity,
             "background_min_severity": background_min_severity,
             "voice_enabled": bool(preferences.get("voice_enabled", defaults["voice_enabled"])),
+            "voice_provider": voice_provider,
             "voice_min_severity": voice_min_severity,
             "voice_volume": self._bounded_float(preferences.get("voice_volume", defaults["voice_volume"]), 0.0, 1.0),
             "voice_rate": self._bounded_float(preferences.get("voice_rate", defaults["voice_rate"]), 0.6, 1.4),

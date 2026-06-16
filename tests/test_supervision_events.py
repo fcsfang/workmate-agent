@@ -94,6 +94,7 @@ def test_voice_preferences_are_normalized_and_persisted(tmp_path):
 
     preferences = manager.update_preferences({
         "voice_enabled": True,
+        "voice_provider": "xfyun",
         "voice_min_severity": "high",
         "voice_volume": 1.5,
         "voice_rate": 0.2,
@@ -104,6 +105,7 @@ def test_voice_preferences_are_normalized_and_persisted(tmp_path):
     })
 
     assert preferences["voice_enabled"] is True
+    assert preferences["voice_provider"] == "xfyun"
     assert preferences["voice_min_severity"] == "high"
     assert preferences["voice_volume"] == 1.0
     assert preferences["voice_rate"] == 0.6

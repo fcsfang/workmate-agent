@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, Generator, Optional
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -18,6 +18,7 @@ except ImportError:
     from core import WorkmateAgent
 
 from memory import MemoryManager, Notifier
+from tts import synthesize_speech
 
 WEB_ROOT = PROJECT_ROOT / "web"
 
@@ -66,6 +67,7 @@ class SupervisionPreferencesRequest(BaseModel):
     background_min_severity: Optional[str] = None
     push_min_severity: Optional[str] = None
     voice_enabled: Optional[bool] = None
+    voice_provider: Optional[str] = None
     voice_min_severity: Optional[str] = None
     voice_volume: Optional[float] = None
     voice_rate: Optional[float] = None
@@ -73,6 +75,11 @@ class SupervisionPreferencesRequest(BaseModel):
     custom_blacklist_keywords: Optional[list[str]] = None
     custom_whitelist_keywords: Optional[list[str]] = None
     event_type_min_severity: Optional[Dict[str, str]] = None
+
+
+class TTSRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=500)
+    provider: str = "xfyun"
 
 
 class WorkmateWebApp:
@@ -379,6 +386,15 @@ async def post_notify_test():
         return {"success": True}
     except Exception as exc:
         return JSONResponse({"success": False, "error": str(exc)}, status_code=500)
+
+
+@app.post("/api/tts/speech", summary="Synthesize short reminder speech")
+async def post_tts_speech(payload: TTSRequest):
+    try:
+        audio, media_type = synthesize_speech(payload.text, provider=payload.provider)
+        return Response(content=audio, media_type=media_type)
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
 
 
 @app.post("/api/focus", summary="Start, complete, or abandon a focus session")

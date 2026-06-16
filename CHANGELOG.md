@@ -1,3 +1,25 @@
+## V2.1
+### 目标
+- 接入讯飞开放平台在线语音合成，让监督事件语音从浏览器系统朗读升级为可选云端 TTS，改善声音自然度
+
+### 已实现
+#### 讯飞 TTS Provider
+- 新增 `tts/` 模块，提供 `synthesize_speech()` 统一入口和 `XFYunTTSClient` WebSocket 客户端
+- 支持讯飞在线语音合成流式 WebAPI：通过 HMAC-SHA256 生成鉴权 URL，发送 base64 文本，拼接返回的 base64 mp3 音频片段
+- 新增 `/api/tts/speech` FastAPI 接口，前端可传入短提醒文案并接收 `audio/mpeg`
+- `.env.example` 新增 `TTS_PROVIDER`、`XFYUN_TTS_APP_ID`、`XFYUN_TTS_API_KEY`、`XFYUN_TTS_API_SECRET`、`XFYUN_TTS_VOICE` 等配置项
+- `requirements.txt` 新增 `websocket-client`
+
+#### 前端语音 Provider
+- `SUPERVISION EVENTS` 偏好面板新增 `provider` 选项，支持 `browser` 和 `xfyun`
+- 选择 `xfyun` 时，前端调用 `/api/tts/speech` 获取 mp3，并通过 `Audio` 播放
+- 讯飞请求失败时自动 fallback 到浏览器 Web Speech，保证提醒链路不中断
+- `voice_provider` 纳入监督偏好并自动保存；如果 `.env` 中 `TTS_PROVIDER=xfyun`，默认 provider 会跟随环境配置
+
+#### 测试与验证
+- 新增 TTS provider 单元测试，覆盖讯飞 payload 文本编码和 FastAPI TTS 音频响应
+- 已使用本地讯飞开放平台认证信息完成真实合成验证，成功生成 mp3 测试音频
+
 ## V2.0.2
 ### 修复
 - 修复用户只勾选 `voice` 后刷新页面又恢复关闭的问题：语音相关控件现在会自动保存到 `/api/supervision/preferences`

@@ -1358,6 +1358,13 @@
                 <span>voice</span>
               </label>
               <label class="supervision-pref-item">
+                <span>provider</span>
+                <select id="prefVoiceProvider">
+                  <option value="browser">browser</option>
+                  <option value="xfyun">xfyun</option>
+                </select>
+              </label>
+              <label class="supervision-pref-item">
                 <span>voice min</span>
                 <select id="prefVoiceMinSeverity">
                   <option value="low">low</option>
@@ -1651,6 +1658,7 @@
     const prefQuietStart = document.querySelector("#prefQuietStart");
     const prefQuietEnd = document.querySelector("#prefQuietEnd");
     const prefVoiceEnabled = document.querySelector("#prefVoiceEnabled");
+    const prefVoiceProvider = document.querySelector("#prefVoiceProvider");
     const prefVoiceMinSeverity = document.querySelector("#prefVoiceMinSeverity");
     const prefVoiceAccompaniment = document.querySelector("#prefVoiceAccompaniment");
     const prefVoiceVolume = document.querySelector("#prefVoiceVolume");
@@ -2240,6 +2248,7 @@
       prefQuietStart.value = preferences.quiet_hours_start || "23:00";
       prefQuietEnd.value = preferences.quiet_hours_end || "07:00";
       if (prefVoiceEnabled) prefVoiceEnabled.checked = preferences.voice_enabled === true;
+      if (prefVoiceProvider) prefVoiceProvider.value = preferences.voice_provider || "browser";
       if (prefVoiceMinSeverity) prefVoiceMinSeverity.value = preferences.voice_min_severity || "medium";
       if (prefVoiceAccompaniment) {
         prefVoiceAccompaniment.checked = preferences.voice_include_accompaniment === true;
@@ -2521,13 +2530,17 @@
         if (localStorage.getItem(spokenKey)) return;
         const text = voiceReminderText(event);
         if (!text) return;
-        speakVoiceReminder(text, preferences);
-        localStorage.setItem(spokenKey, "true");
+        speakVoiceReminder(text, preferences)
+          .then(() => localStorage.setItem(spokenKey, "true"))
+          .catch(() => {});
       });
     }
 
     function voiceCanSpeak(preferences = {}) {
-      return preferences.voice_enabled === true && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
+      if (preferences.voice_enabled !== true) return false;
+      const provider = preferences.voice_provider || prefVoiceProvider?.value || "browser";
+      if (provider === "xfyun") return "Audio" in window;
+      return "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
     }
 
     function voiceShouldSpeakEvent(event, preferences = {}) {
@@ -2551,7 +2564,38 @@
       return raw.slice(0, 88).replace(/[，。；、,.!！?？：:]*$/, "") + "。";
     }
 
-    function speakVoiceReminder(text, preferences = {}) {
+    async function speakVoiceReminder(text, preferences = {}) {
+      const provider = preferences.voice_provider || prefVoiceProvider?.value || "browser";
+      if (provider === "xfyun") {
+        try {
+          await playCloudSpeech(text, provider);
+          return;
+        } catch (error) {
+          lastEvent.textContent = `xfyun voice fallback: ${error.message}`;
+        }
+      }
+      browserSpeechFallback(text, preferences);
+    }
+
+    async function playCloudSpeech(text, provider) {
+      const response = await fetch("/api/tts/speech", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, provider })
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || "TTS request failed");
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.onended = () => URL.revokeObjectURL(url);
+      audio.onerror = () => URL.revokeObjectURL(url);
+      await audio.play();
+    }
+
+    function browserSpeechFallback(text, preferences = {}) {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = "zh-CN";
@@ -2660,6 +2704,7 @@
         browser_min_severity: prefBrowserMinSeverity?.value || "medium",
         background_min_severity: prefBackgroundMinSeverity?.value || "high",
         voice_enabled: Boolean(prefVoiceEnabled?.checked),
+        voice_provider: prefVoiceProvider?.value || "browser",
         voice_min_severity: prefVoiceMinSeverity?.value || "medium",
         voice_volume: Number(prefVoiceVolume?.value || 0.7),
         voice_rate: Number(prefVoiceRate?.value || 1),
@@ -2728,6 +2773,7 @@
         browser_min_severity: prefBrowserMinSeverity?.value || "medium",
         background_min_severity: prefBackgroundMinSeverity?.value || "high",
         voice_enabled: Boolean(prefVoiceEnabled?.checked),
+        voice_provider: prefVoiceProvider?.value || "browser",
         voice_min_severity: prefVoiceMinSeverity?.value || "medium",
         voice_volume: Number(prefVoiceVolume?.value || 0.7),
         voice_rate: Number(prefVoiceRate?.value || 1),
@@ -3039,28 +3085,35 @@
 
     if (testVoiceReminder) {
       testVoiceReminder.addEventListener("click", async () => {
-        if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) {
+        const provider = prefVoiceProvider?.value || "browser";
+        if (provider === "browser" && (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window))) {
           lastEvent.textContent = "voice is not supported";
+          return;
+        }
+        if (provider === "xfyun" && !("Audio" in window)) {
+          lastEvent.textContent = "audio playback is not supported";
           return;
         }
         if (prefVoiceEnabled) prefVoiceEnabled.checked = true;
         const preferences = {
           voice_enabled: true,
+          voice_provider: provider,
           voice_volume: Number(prefVoiceVolume?.value || 0.7),
           voice_rate: Number(prefVoiceRate?.value || 1)
         };
-        speakVoiceReminder("语音提醒已开启。我会尽量轻一点，只在需要时提醒你。", preferences);
         try {
+          await speakVoiceReminder("语音提醒已开启。我会尽量轻一点，只在需要时提醒你。", preferences);
           await saveSupervisionPreferences();
           lastEvent.textContent = "voice test played and saved";
         } catch (error) {
-          lastEvent.textContent = `voice played, save failed: ${error.message}`;
+          lastEvent.textContent = `voice test failed: ${error.message}`;
         }
       });
     }
 
     [
       prefVoiceEnabled,
+      prefVoiceProvider,
       prefVoiceMinSeverity,
       prefVoiceAccompaniment,
       prefVoiceVolume,
