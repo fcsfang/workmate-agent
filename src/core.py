@@ -40,6 +40,9 @@ class WorkmateAgent:
     def get_last_turn_trace(self):
         return self.runtime.get_last_turn_trace()
 
+    def get_tool_schemas(self):
+        return self.tool_registry.export_schemas()
+
 
 def run_chat():
     agent = None

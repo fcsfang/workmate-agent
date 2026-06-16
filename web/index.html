@@ -1967,6 +1967,7 @@
     function renderContext(context = {}) {
       const messages = context.messages || [];
       const retrieval = context.retrieval_plan || {};
+      const toolTrace = ((context.turn_trace || {}).tool_calls || context.tool_calls || []);
       const retrievalLines = [];
       if (retrieval && Object.keys(retrieval).length) {
         retrievalLines.push("## RAG RETRIEVAL PLAN");
@@ -1984,10 +1985,28 @@
           );
         });
       }
+      const toolLines = [];
+      if (toolTrace.length) {
+        toolLines.push("## TOOL TRACE");
+        toolTrace.slice(0, 8).forEach((item, index) => {
+          const mode = item.read_only === false ? "write" : "read";
+          toolLines.push(
+            `${index + 1}. ${item.tool || "tool"} status=${item.status || "unknown"} mode=${mode} duration=${item.duration_ms || 0}ms reason=${item.reason || ""}`
+          );
+          if ((item.side_effects || []).length) {
+            toolLines.push(`   side_effects: ${(item.side_effects || []).join("; ")}`);
+          }
+          if (item.error) {
+            toolLines.push(`   error: ${item.error}`);
+          }
+        });
+      }
       if (!messages.length) {
         contextPreview.textContent = [
           ...retrievalLines,
-          retrievalLines.length ? "\n---\n" : "",
+          retrievalLines.length && toolLines.length ? "" : "",
+          ...toolLines,
+          retrievalLines.length || toolLines.length ? "\n---\n" : "",
           "暂无上下文。发送第一条消息后，这里会显示实际传给模型的 messages。"
         ].filter(Boolean).join("\n");
         return;
@@ -1998,7 +2017,9 @@
       }).join("\n\n---\n\n");
       contextPreview.textContent = [
         ...retrievalLines,
-        retrievalLines.length ? "\n---\n" : "",
+        retrievalLines.length && toolLines.length ? "" : "",
+        ...toolLines,
+        retrievalLines.length || toolLines.length ? "\n---\n" : "",
         messageLines
       ].filter(Boolean).join("\n");
     }
@@ -2255,7 +2276,13 @@
       }
       toolCalls.textContent = calls
         .slice(0, 3)
-        .map((item) => `${item.tool || "tool"}:${item.status || "unknown"}`)
+        .map((item) => {
+          const mode = item.read_only === false ? "write" : "read";
+          const duration = Number.isFinite(Number(item.duration_ms)) ? `${item.duration_ms}ms` : "--";
+          const effects = (item.side_effects || []).length ? ` -> ${(item.side_effects || []).slice(0, 1).join(",")}` : "";
+          const error = item.error ? ` error=${item.error}` : "";
+          return `${item.tool || "tool"}:${item.status || "unknown"}:${mode}:${duration}${effects}${error}`;
+        })
         .join("；");
     }
 

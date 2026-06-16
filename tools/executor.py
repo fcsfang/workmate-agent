@@ -1,4 +1,6 @@
 import json
+import time
+import uuid
 from datetime import datetime
 from typing import Any, Dict, List
 
@@ -21,8 +23,8 @@ class ToolExecutor:
 
         try:
             raw_plan = self._request_plan(llm_client, messages, user_input)
-        except Exception:
-            return []
+        except Exception as exc:
+            return [self._planning_error(exc)]
         calls = self._parse_tool_calls(raw_plan)
         results = []
         for call in calls[:self.max_calls]:
@@ -30,6 +32,7 @@ class ToolExecutor:
         return results
 
     def execute(self, call: Dict[str, Any]) -> Dict[str, Any]:
+        started_perf = time.perf_counter()
         started_at = datetime.now().isoformat(timespec="seconds")
         name = str(call.get("tool", "")).strip()
         arguments = call.get("arguments", {})
@@ -37,15 +40,26 @@ class ToolExecutor:
             arguments = {}
 
         result = {
+            "call_id": str(uuid.uuid4()),
             "tool": name,
             "arguments": arguments,
+            "reason": str(call.get("reason", ""))[:180],
             "started_at": started_at,
             "status": "error",
             "observation": {},
             "error": "",
+            "duration_ms": 0,
+            "read_only": True,
+            "side_effects": [],
+            "input_schema": {},
+            "output_schema": {},
         }
         try:
             tool = self.registry.get(name)
+            result["read_only"] = tool.read_only
+            result["side_effects"] = tool.side_effects
+            result["input_schema"] = tool.schema
+            result["output_schema"] = tool.output_schema
             observation = tool.handler(arguments)
             if not isinstance(observation, dict):
                 raise TypeError("tool handler must return dict")
@@ -54,6 +68,7 @@ class ToolExecutor:
         except Exception as exc:
             result["error"] = str(exc)
         result["completed_at"] = datetime.now().isoformat(timespec="seconds")
+        result["duration_ms"] = int((time.perf_counter() - started_perf) * 1000)
         return result
 
     def format_observations(self, results: List[Dict[str, Any]]) -> str:
@@ -63,6 +78,10 @@ class ToolExecutor:
             {
                 "tool": result.get("tool", ""),
                 "status": result.get("status", ""),
+                "read_only": result.get("read_only", True),
+                "side_effects": result.get("side_effects", []),
+                "duration_ms": result.get("duration_ms", 0),
+                "reason": result.get("reason", ""),
                 "arguments": result.get("arguments", {}),
                 "observation": result.get("observation", {}),
                 "error": result.get("error", ""),
@@ -155,3 +174,22 @@ class ToolExecutor:
         except json.JSONDecodeError:
             return {"tool_calls": []}
         return parsed if isinstance(parsed, dict) else {"tool_calls": []}
+
+    def _planning_error(self, exc: Exception) -> Dict[str, Any]:
+        now = datetime.now().isoformat(timespec="seconds")
+        return {
+            "call_id": str(uuid.uuid4()),
+            "tool": "__tool_planning__",
+            "arguments": {},
+            "reason": "tool planning failed",
+            "started_at": now,
+            "completed_at": now,
+            "status": "error",
+            "observation": {},
+            "error": str(exc),
+            "duration_ms": 0,
+            "read_only": True,
+            "side_effects": [],
+            "input_schema": {},
+            "output_schema": {},
+        }

@@ -43,6 +43,7 @@ class WorkmateWebApp:
             "memory": self.memory_state(prompt),
             "context": self.context_state(prompt),
             "tool_calls": self.tool_state(),
+            "tool_schemas": self.tool_schema_state(),
             "turn_trace": self.turn_trace_state(),
         }
 
@@ -54,6 +55,7 @@ class WorkmateWebApp:
             "memory": self.memory_state(prompt),
             "context": self.context_state(prompt),
             "tool_calls": self.tool_state(),
+            "tool_schemas": self.tool_schema_state(),
             "turn_trace": self.turn_trace_state(),
         }
 
@@ -89,6 +91,7 @@ class WorkmateWebApp:
             "focus_session": self.memory_manager.get_focus_session_state(),
             "support_knowledge": self.memory_manager.get_support_knowledge_state(current_prompt),
             "tool_calls": self.tool_state(),
+            "tool_schemas": self.tool_schema_state(),
             "turn_trace": self.turn_trace_state(),
             "last_reminder_control": self.memory_manager.last_reminder_control,
             "memory_pipeline": context_debug.get("memory_pipeline", {}),
@@ -125,6 +128,7 @@ class WorkmateWebApp:
             "focus_session": self.memory_manager.get_focus_session_state(),
             "support_knowledge": self.memory_manager.get_support_knowledge_state(""),
             "tool_calls": self.tool_state(),
+            "tool_schemas": self.tool_schema_state(),
             "turn_trace": self.turn_trace_state(),
             "last_reminder_control": self.memory_manager.last_reminder_control,
             "last_pipeline_result": self.memory_manager.last_pipeline_result,
@@ -156,6 +160,9 @@ class WorkmateWebApp:
         if not self.agent:
             return []
         return self.agent.get_last_tool_calls()
+
+    def tool_schema_state(self):
+        return self.get_agent().get_tool_schemas()
 
     def turn_trace_state(self):
         if not self.agent:

@@ -16,6 +16,13 @@ def build_workmate_tool_registry(memory_manager: Any) -> ToolRegistry:
         "读取当前最相关的任务。只读，不修改状态。",
         {"type": "object", "properties": {}, "required": []},
         lambda args: {"current_task": memory_manager.get_task_view().get("current", {})},
+        output_schema={
+            "type": "object",
+            "properties": {"current_task": {"type": "object"}},
+            "required": ["current_task"],
+        },
+        side_effects=[],
+        read_only=True,
     )
 
     registry.register(
@@ -29,6 +36,16 @@ def build_workmate_tool_registry(memory_manager: Any) -> ToolRegistry:
             "required": [],
         },
         lambda args: _list_open_tasks(memory_manager, args),
+        output_schema={
+            "type": "object",
+            "properties": {
+                "open_tasks": {"type": "array", "items": {"type": "object"}},
+                "counts": {"type": "object"},
+            },
+            "required": ["open_tasks", "counts"],
+        },
+        side_effects=[],
+        read_only=True,
     )
 
     registry.register(
@@ -44,6 +61,19 @@ def build_workmate_tool_registry(memory_manager: Any) -> ToolRegistry:
             "required": ["task_id", "status", "reason"],
         },
         lambda args: _update_task_status(memory_manager, args),
+        output_schema={
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string"},
+                "title": {"type": "string"},
+                "previous_status": {"type": "string"},
+                "status": {"type": "string"},
+                "reason": {"type": "string"},
+            },
+            "required": ["task_id", "previous_status", "status"],
+        },
+        side_effects=["updates tasks.json", "appends task_events.json", "may update task_state.json"],
+        read_only=False,
     )
 
     registry.register(
@@ -51,6 +81,13 @@ def build_workmate_tool_registry(memory_manager: Any) -> ToolRegistry:
         "列出未关闭承诺。只读，不修改状态。",
         {"type": "object", "properties": {}, "required": []},
         lambda args: {"open_commitments": memory_manager.get_open_commitments()},
+        output_schema={
+            "type": "object",
+            "properties": {"open_commitments": {"type": "array", "items": {"type": "object"}}},
+            "required": ["open_commitments"],
+        },
+        side_effects=[],
+        read_only=True,
     )
 
     registry.register(
@@ -65,6 +102,16 @@ def build_workmate_tool_registry(memory_manager: Any) -> ToolRegistry:
             "required": ["query"],
         },
         lambda args: _search_memory(memory_manager, args),
+        output_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "results": {"type": "array", "items": {"type": "object"}},
+            },
+            "required": ["query", "results"],
+        },
+        side_effects=[],
+        read_only=True,
     )
 
     registry.register(
@@ -80,6 +127,16 @@ def build_workmate_tool_registry(memory_manager: Any) -> ToolRegistry:
             "required": ["content"],
         },
         lambda args: _add_memory_note(memory_manager, args),
+        output_schema={
+            "type": "object",
+            "properties": {
+                "created": {"type": "boolean"},
+                "note": {"type": "object"},
+            },
+            "required": ["created", "note"],
+        },
+        side_effects=["updates memory_items.json", "updates memory_categories.json", "refreshes retrieval_index.json"],
+        read_only=False,
     )
 
     registry.register(
@@ -98,6 +155,19 @@ def build_workmate_tool_registry(memory_manager: Any) -> ToolRegistry:
             "required": ["goal"],
         },
         lambda args: _start_focus_session(memory_manager, args),
+        output_schema={
+            "type": "object",
+            "properties": {
+                "started": {"type": "boolean"},
+                "goal": {"type": "string"},
+                "duration_minutes": {"type": "integer"},
+                "started_at": {"type": "string"},
+                "expected_end_at": {"type": "string"},
+            },
+            "required": ["started", "goal"],
+        },
+        side_effects=["updates focus_sessions.json"],
+        read_only=False,
     )
 
     registry.register(
@@ -115,6 +185,19 @@ def build_workmate_tool_registry(memory_manager: Any) -> ToolRegistry:
             "required": [],
         },
         lambda args: _complete_focus_session(memory_manager, args),
+        output_schema={
+            "type": "object",
+            "properties": {
+                "completed": {"type": "boolean"},
+                "goal": {"type": "string"},
+                "elapsed_minutes": {"type": "integer"},
+                "outcome": {"type": "string"},
+                "reason": {"type": "string"},
+            },
+            "required": ["completed"],
+        },
+        side_effects=["updates focus_sessions.json"],
+        read_only=False,
     )
 
     registry.register(
@@ -132,6 +215,19 @@ def build_workmate_tool_registry(memory_manager: Any) -> ToolRegistry:
             "required": [],
         },
         lambda args: _abandon_focus_session(memory_manager, args),
+        output_schema={
+            "type": "object",
+            "properties": {
+                "abandoned": {"type": "boolean"},
+                "goal": {"type": "string"},
+                "elapsed_minutes": {"type": "integer"},
+                "outcome": {"type": "string"},
+                "reason": {"type": "string"},
+            },
+            "required": ["abandoned"],
+        },
+        side_effects=["updates focus_sessions.json"],
+        read_only=False,
     )
 
     return registry
@@ -325,4 +421,3 @@ def _compact(text: Any, max_length: int = 160) -> str:
     if len(text) <= max_length:
         return text
     return text[:max_length].rstrip() + "..."
-

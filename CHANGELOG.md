@@ -1,3 +1,31 @@
+## V1.6
+### 目标
+- 将内部状态工具调用升级为可观察、可测试、可审计的 Agent tool-use 模块
+- 明确每个工具的输入输出 schema、只读/写状态边界和副作用
+
+### 已实现
+#### Schema-driven Tools
+- `ToolSpec` 新增 `output_schema`、`side_effects`、`read_only`
+- `ToolRegistry.register()` 保持兼容原有参数，同时支持补充工具输出和副作用信息
+- 新增 `ToolRegistry.export_schemas()`，可独立导出所有工具 schema
+- Workmate 内部工具补齐输出 schema 和读写边界，包括任务、承诺、记忆检索、记忆备注和专注会话工具
+
+#### Tool Trace
+- `ToolExecutor.execute()` 统一记录 `call_id`、`reason`、`duration_ms`、`read_only`、`side_effects`、`input_schema`、`output_schema`
+- 工具规划失败会返回 `__tool_planning__` error trace，而不是静默吞掉错误
+- 工具 handler 异常继续被隔离在单条工具结果中，不中断整轮对话
+- 每轮最大工具调用次数继续由 `max_calls` 控制
+
+#### Web/API 可观察性
+- `WorkmateAgent.get_tool_schemas()` 暴露工具 schema
+- `/api/chat`、流式 done 事件、`/api/memory` 和 `/api/context` 返回 `tool_schemas`
+- Web 左侧工具摘要展示读写模式、耗时和副作用
+- `MODEL CONTEXT` 顶部新增 `TOOL TRACE` 区块，展示工具调用状态、耗时、原因、错误和副作用
+
+#### 测试
+- 新增 `tests/test_tool_executor.py`
+- 覆盖工具 schema 导出、任务状态写工具、承诺只读工具、记忆检索工具、专注会话工具、规划失败隔离和最大调用次数限制
+
 ## V1.5
 ### 目标
 - 将长期记忆检索升级为可解释的 Hybrid Memory RAG

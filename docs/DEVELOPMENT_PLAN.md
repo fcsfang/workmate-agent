@@ -139,6 +139,8 @@ combining keyword recall, recency weighting, memory type weighting, and traceabl
 
 ### V1.6 Tool Calling 与 Trace 工程化
 
+状态：已实现。
+
 目标：让内部工具调用从“能用”升级为“可观察、可测试、可解释”的 Agent tool-use 模块。
 
 要做：
@@ -167,6 +169,16 @@ combining keyword recall, recency weighting, memory type weighting, and traceabl
 - 工具调用 trace 可在 API 中读取
 - 至少覆盖任务、承诺、专注会话、记忆检索相关工具测试
 - 工具 schema 可被独立打印或导出
+
+实现记录：
+
+- `ToolSpec` 新增 `output_schema`、`side_effects`、`read_only`
+- `ToolRegistry.export_schemas()` 支持独立导出工具 schema
+- `ToolExecutor` 记录 `call_id`、调用原因、耗时、读写模式、副作用、输入输出 schema 和错误
+- 工具规划失败会生成 `__tool_planning__` error trace，避免静默失败
+- Workmate 内部工具补齐任务、承诺、记忆、专注会话相关 schema 和副作用说明
+- Web/API 暴露 `tool_schemas`，`MODEL CONTEXT` 展示 `TOOL TRACE`
+- 新增 `tests/test_tool_executor.py`，覆盖工具 schema、trace、失败隔离和 max_calls
 
 简历亮点：
 
