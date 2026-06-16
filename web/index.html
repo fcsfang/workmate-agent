@@ -1381,7 +1381,7 @@
               </label>
               <button class="supervision-action" id="testVoiceReminder" type="button">TEST VOICE</button>
             </div>
-            <div class="task-value">TEST VOICE 会自动打开并保存语音提醒；其他修改请点击 SAVE。</div>
+            <div class="task-value">语音设置会自动保存；其他提醒配置请点击 SAVE。</div>
             <div class="supervision-pref-row">
               <label class="supervision-pref-item">
                 <input id="prefFocus" type="checkbox">
@@ -1686,6 +1686,7 @@
     let transcriptRestored = false;
     let currentDashboard = {};
     let currentReminderStrategy = {};
+    let voicePreferenceSaveTimer = null;
 
     function setStatus(text, busy = false) {
       statusText.textContent = text;
@@ -2696,6 +2697,18 @@
       lastEvent.textContent = "supervision preferences saved";
     }
 
+    function scheduleVoicePreferenceSave() {
+      window.clearTimeout(voicePreferenceSaveTimer);
+      voicePreferenceSaveTimer = window.setTimeout(async () => {
+        try {
+          await saveSupervisionPreferences();
+          lastEvent.textContent = "voice preferences saved";
+        } catch (error) {
+          lastEvent.textContent = `voice save failed: ${error.message}`;
+        }
+      }, 350);
+    }
+
     async function applyAdaptiveReminderStrategy() {
       const updates = {
         ...mergePreferenceUpdates(
@@ -3045,6 +3058,20 @@
         }
       });
     }
+
+    [
+      prefVoiceEnabled,
+      prefVoiceMinSeverity,
+      prefVoiceAccompaniment,
+      prefVoiceVolume,
+      prefVoiceRate
+    ].filter(Boolean).forEach((control) => {
+      control.addEventListener("change", scheduleVoicePreferenceSave);
+    });
+
+    [prefVoiceVolume, prefVoiceRate].filter(Boolean).forEach((control) => {
+      control.addEventListener("input", scheduleVoicePreferenceSave);
+    });
 
     async function loadNotificationStatus() {
       const channelLocalDot = document.querySelector("#channelLocal .channel-dot");
