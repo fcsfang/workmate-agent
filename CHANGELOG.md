@@ -1,3 +1,31 @@
+## V1.5
+### 目标
+- 将长期记忆检索升级为可解释的 Hybrid Memory RAG
+- 让记忆召回覆盖更多内部状态，并在 Web 调试台展示召回原因
+
+### 已实现
+#### MemoryRetriever
+- 新增 `memory/retriever.py`
+- 引入 `MemoryRetriever`，统一计算 keyword、recency、salience、type weight 和可选 vector score
+- 每条检索结果返回 `source_type`、`source_id`、`score`、`reason` 和 `score_breakdown`
+- 向量检索通过 `WORKMATE_VECTOR_RETRIEVAL` 可选启用；未配置 embedding client 时自动降级为非向量 hybrid scoring
+
+#### 检索来源扩展
+- `SearchManager` 保持原有调用方式，但内部委托 `MemoryRetriever` 评分
+- 检索索引新增覆盖 `tasks` 和 `behavior_patterns`
+- 原有 conversation records、memory_items、memory_categories、commitments、high_level_insights、semantic_dialogues 等来源继续保留
+- `MemoryManager.refresh_search_index()` 会把任务生命周期和行为模式同步纳入索引
+
+#### Retrieval Plan 可观察性
+- `retrieval_plan` 新增 `mode`、`vector_status`、`top_results` 和每条结果的评分拆解
+- `MODEL CONTEXT` 顶部展示 RAG 检索计划、召回结果、分数与原因，方便判断本轮上下文为什么注入某些记忆
+- `/api/chat` 流式完成后的 `context` 会携带本轮 prompt 对应的 `retrieval_plan`
+
+#### 测试
+- 新增 `tests/test_memory_retriever.py`
+- 覆盖相关任务记忆排序、向量未启用时的降级状态、任务和行为模式索引构建
+- 测试使用临时目录，不写入真实 `memory/data`
+
 ## V1.4
 ### 目标
 - 将现有“上下文规划、内部工具调用、模型回复、记忆写回”流程显性化为可观察的 Agent Runtime

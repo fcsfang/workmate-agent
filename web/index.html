@@ -1966,14 +1966,41 @@
 
     function renderContext(context = {}) {
       const messages = context.messages || [];
+      const retrieval = context.retrieval_plan || {};
+      const retrievalLines = [];
+      if (retrieval && Object.keys(retrieval).length) {
+        retrievalLines.push("## RAG RETRIEVAL PLAN");
+        retrievalLines.push(`needs_retrieval: ${retrieval.needs_retrieval}`);
+        retrievalLines.push(`mode: ${retrieval.mode || "keyword"}`);
+        retrievalLines.push(`vector_status: ${retrieval.vector_status || "disabled"}`);
+        retrievalLines.push(`sufficiency: ${retrieval.sufficiency || "unknown"}`);
+        retrievalLines.push(`reason: ${retrieval.reason || ""}`);
+        (retrieval.top_results || []).slice(0, 5).forEach((item, index) => {
+          const breakdown = item.score_breakdown || {};
+          retrievalLines.push(
+            `${index + 1}. [${item.source_type || "memory"}] ${item.source_id || ""} score=${item.score || 0} ` +
+            `keyword=${breakdown.keyword ?? 0} recency=${breakdown.recency ?? 0} salience=${breakdown.salience ?? 0} ` +
+            `reason=${item.reason || ""}\n   ${item.text || ""}`
+          );
+        });
+      }
       if (!messages.length) {
-        contextPreview.textContent = "暂无上下文。发送第一条消息后，这里会显示实际传给模型的 messages。";
+        contextPreview.textContent = [
+          ...retrievalLines,
+          retrievalLines.length ? "\n---\n" : "",
+          "暂无上下文。发送第一条消息后，这里会显示实际传给模型的 messages。"
+        ].filter(Boolean).join("\n");
         return;
       }
 
-      contextPreview.textContent = messages.map((message, index) => {
+      const messageLines = messages.map((message, index) => {
         return `#${index + 1} ${message.role}\n${message.content}`;
       }).join("\n\n---\n\n");
+      contextPreview.textContent = [
+        ...retrievalLines,
+        retrievalLines.length ? "\n---\n" : "",
+        messageLines
+      ].filter(Boolean).join("\n");
     }
 
     function joinSummaryItems(items, fallback) {

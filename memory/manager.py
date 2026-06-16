@@ -554,6 +554,8 @@ class MemoryManager:
             memory_resources=memory_resources,
             semantic_dialogues=semantic_dialogues,
             insights=insights,
+            tasks=self.task_manager.load_tasks(),
+            behavior_patterns=self.behavior_pattern_manager.load_patterns(),
         )
 
     def search_related_memories(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:

@@ -41,7 +41,7 @@ class WorkmateWebApp:
         return {
             "response": response,
             "memory": self.memory_state(prompt),
-            "context": self.context_state(),
+            "context": self.context_state(prompt),
             "tool_calls": self.tool_state(),
             "turn_trace": self.turn_trace_state(),
         }
@@ -52,7 +52,7 @@ class WorkmateWebApp:
         yield {
             "type": "done",
             "memory": self.memory_state(prompt),
-            "context": self.context_state(),
+            "context": self.context_state(prompt),
             "tool_calls": self.tool_state(),
             "turn_trace": self.turn_trace_state(),
         }
@@ -97,15 +97,17 @@ class WorkmateWebApp:
             "retrieval_plan": context_debug.get("retrieval_plan", {}),
         }
 
-    def context_state(self):
+    def context_state(self, current_prompt=""):
         if self.agent and self.agent.get_last_context():
             messages = self.agent.get_last_context()
         else:
             messages = self.memory_manager.build_context_debug().get("messages", [])
+        context_debug = self.memory_manager.build_context_debug(current_prompt) if current_prompt else {}
         return {
             "messages": messages,
             "message_count": len(messages),
             "context_stats": self.memory_manager.context_compressor.estimate_context(messages),
+            "retrieval_plan": context_debug.get("retrieval_plan", {}),
             "open_commitments": self.memory_manager.get_open_commitments(),
             "task_view": self.memory_manager.get_task_view(),
             "user_profile": self.memory_manager.get_user_profile(),

@@ -87,6 +87,8 @@ tool execution, response generation, memory writeback, and proactive supervision
 
 ### V1.5 Hybrid Memory RAG
 
+状态：已实现。
+
 目标：把当前关键词检索升级为更标准的 Memory RAG，使长期记忆检索成为项目的核心 Agent 特征。
 
 要做：
@@ -116,6 +118,17 @@ tool execution, response generation, memory writeback, and proactive supervision
 - 没有 embedding 配置时项目仍可运行
 - `retrieval_plan` 能展示是否检索、检索来源和 top results
 - 有最小单元测试覆盖 hybrid scoring
+
+实现记录：
+
+- 新增 `memory/retriever.py`，实现 `MemoryRetriever`
+- `SearchManager` 继续保留兼容 API，内部委托 Hybrid Retriever 计算评分
+- 检索评分拆解为 `keyword`、`recency`、`salience`、`type_weight`、可选 `vector`
+- 检索结果统一返回 `source_type`、`source_id`、`score`、`reason` 和 `score_breakdown`
+- 检索来源扩展到 `tasks` 和 `behavior_patterns`
+- `retrieval_plan` 新增 `mode`、`vector_status`、`top_results`
+- Web `MODEL CONTEXT` 顶部展示本轮 RAG 召回结果和评分原因
+- 新增 `tests/test_memory_retriever.py`，覆盖 hybrid scoring 与索引构建
 
 简历亮点：
 

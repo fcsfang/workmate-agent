@@ -12,6 +12,7 @@ from .pipeline import MemoryPipeline
 from .stats import BehaviorStatsManager
 from .store import MemoryCategoryManager, MemoryItemManager, MemoryResourceManager
 from .reflection import ReflectionManager
+from .retriever import MemoryRetriever
 from .search import SearchManager
 from .supervision import SupervisionManager
 from .supervision_events import SupervisionEventManager
@@ -42,6 +43,7 @@ __all__ = [
     "MemoryResourceManager",
     "Notifier",
     "ReflectionManager",
+    "MemoryRetriever",
     "SearchManager",
     "SemanticDialogueManager",
     "SupervisionManager",

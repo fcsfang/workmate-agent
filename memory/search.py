@@ -3,12 +3,14 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .paths import memory_data_path
+from .retriever import MemoryRetriever
 
 
 class SearchManager:
-    def __init__(self, index_path: Optional[str] = None):
+    def __init__(self, index_path: Optional[str] = None, retriever: Optional[MemoryRetriever] = None):
         self.index_path = Path(index_path) if index_path else memory_data_path("retrieval_index.json")
         self.index_path.parent.mkdir(parents=True, exist_ok=True)
+        self.retriever = retriever or MemoryRetriever()
 
     def build_index(
         self,
@@ -21,6 +23,8 @@ class SearchManager:
         memory_resources: Optional[List[Dict[str, Any]]] = None,
         semantic_dialogues: Optional[List[Dict[str, Any]]] = None,
         insights: Optional[List[Dict[str, Any]]] = None,
+        tasks: Optional[List[Dict[str, Any]]] = None,
+        behavior_patterns: Optional[List[Dict[str, Any]]] = None,
     ) -> List[Dict[str, Any]]:
         #把所有类型的记忆（对话记录、日摘、用户画像、承诺、知识点…）全部转换成统一格式：
         #python
@@ -52,6 +56,17 @@ class SearchManager:
         for commitment in commitments or []:
             text = self._sanitize_text(json.dumps(commitment, ensure_ascii=False))
             items.append(self._item("commitment", commitment.get("id", ""), text, commitment))
+
+        for task in tasks or []:
+            text = self._sanitize_text(" ".join([
+                task.get("title", ""),
+                task.get("status", ""),
+                task.get("progress", ""),
+                json.dumps(task.get("blockers", []), ensure_ascii=False),
+                json.dumps(task.get("next_actions", []), ensure_ascii=False),
+                json.dumps(task.get("subtasks", []), ensure_ascii=False),
+            ]))
+            items.append(self._item("task", task.get("id", ""), text, task))
 
         for memory_item in memory_items or []:
             if memory_item.get("status") == "archived":
@@ -107,6 +122,19 @@ class SearchManager:
             ]))
             items.append(self._item("high_level_insight", insight.get("id", ""), text, insight))
 
+        for pattern in behavior_patterns or []:
+            if pattern.get("status") not in {"active", ""}:
+                continue
+            text = self._sanitize_text(" ".join([
+                pattern.get("title", ""),
+                pattern.get("summary", ""),
+                pattern.get("suggested_intervention", ""),
+                pattern.get("tone", ""),
+                pattern.get("severity", ""),
+                json.dumps(pattern.get("evidence", []), ensure_ascii=False),
+            ]))
+            items.append(self._item("behavior_pattern", pattern.get("id", ""), text, pattern))
+
         self.save_index(items)
         return items
 
@@ -122,6 +150,8 @@ class SearchManager:
         memory_resources: Optional[List[Dict[str, Any]]] = None,
         semantic_dialogues: Optional[List[Dict[str, Any]]] = None,
         insights: Optional[List[Dict[str, Any]]] = None,
+        tasks: Optional[List[Dict[str, Any]]] = None,
+        behavior_patterns: Optional[List[Dict[str, Any]]] = None,
         limit: int = 5,
     ) -> List[Dict[str, Any]]:
         if not self.needs_retrieval(query):
@@ -138,6 +168,8 @@ class SearchManager:
             memory_resources,
             semantic_dialogues,
             insights,
+            tasks,
+            behavior_patterns,
         ):
             items = self.build_index(
                 records or [],
@@ -149,31 +181,10 @@ class SearchManager:
                 memory_resources,
                 semantic_dialogues,
                 insights,
+                tasks,
+                behavior_patterns,
             )
-        query_terms = self._terms(query)
-        if not query_terms:
-            return []
-
-        preferred_types = self._preferred_types(query)
-        scored = []
-        for item in items:
-            score = sum(item["terms"].count(term) for term in query_terms)
-            if item["type"] in preferred_types:
-                score += 1
-            if item["type"] == "memory_item":
-                score += float(item.get("salience", 0))
-                if item.get("status") == "stale":
-                    score -= 0.8
-            if item["type"] == "memory_category":
-                score += float(item.get("salience", 0))
-            if item["type"] == "high_level_insight":
-                score += 1 + float(item.get("confidence", 0))
-            if item["type"] == "semantic_dialogue":
-                score += 0.5
-            if score:
-                scored.append({**item, "score": score})
-        scored.sort(key=lambda item: (item["score"], item.get("id", "")), reverse=True)
-        return scored[:limit]
+        return self.retriever.search(query, items, limit=limit)
 
     def needs_retrieval(self, query: str) -> bool:
         query = str(query or "")
@@ -184,22 +195,7 @@ class SearchManager:
     def build_retrieval_plan(self, query: str, results: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
         results = results or []
         needs = self.needs_retrieval(query)
-        preferred = self._preferred_types(query)
-        top_score = max([float(item.get("score", 0)) for item in results] or [0])
-        hit_types = sorted({item.get("type", "") for item in results if item.get("type")})
-        sufficiency = "enough" if results and top_score >= 2 else "more"
-        if not needs:
-            sufficiency = "no_retrieve"
-        return {
-            "needs_retrieval": needs,
-            "preferred_types": preferred,
-            "query_terms": self._terms(query)[:12],
-            "hit_count": len(results),
-            "hit_types": hit_types,
-            "top_score": top_score,
-            "sufficiency": sufficiency,
-            "reason": self._retrieval_reason(query, needs, results),
-        }
+        return self.retriever.build_plan(query, results, needs_retrieval=needs)
 
     def format_retrieval_plan(self, plan: Dict[str, Any]) -> str:
         if not plan:
@@ -207,10 +203,20 @@ class SearchManager:
         return "\n".join([
             "以下是记忆检索计划。它用于解释本轮为什么注入或不注入历史。",
             f"needs_retrieval: {plan.get('needs_retrieval')}",
+            f"mode: {plan.get('mode', 'keyword')}",
+            f"vector_status: {plan.get('vector_status', 'disabled')}",
             f"preferred_types: {', '.join(plan.get('preferred_types', [])) or 'none'}",
             f"hit_count: {plan.get('hit_count', 0)}",
             f"sufficiency: {plan.get('sufficiency', 'unknown')}",
             f"reason: {plan.get('reason', '')}",
+            "top_results:",
+            *[
+                (
+                    f"- [{item.get('source_type', '')}] {item.get('source_id', '')} "
+                    f"score={item.get('score', 0)} reason={item.get('reason', '')}"
+                )
+                for item in plan.get("top_results", [])[:5]
+            ],
         ])
 
     def format_for_context(self, results: List[Dict[str, Any]]) -> str:
@@ -221,7 +227,10 @@ class SearchManager:
         for index, item in enumerate(results, start=1):
             score = item.get("score", "")
             score_text = f" score={score}" if score != "" else ""
-            lines.append(f"{index}. [{item['type']}{score_text}] {self._compact(item['text'], 220)}")
+            reason = item.get("reason", "")
+            reason_text = f" reason={reason}" if reason else ""
+            item_type = item.get("source_type") or item.get("type", "")
+            lines.append(f"{index}. [{item_type}{score_text}{reason_text}] {self._compact(item['text'], 220)}")
         return "\n".join(lines)
 
     def save_index(self, items: List[Dict[str, Any]]) -> None:
@@ -249,6 +258,7 @@ class SearchManager:
             "terms": self._terms(text),
             "salience": float(payload.get("salience", 0)) if isinstance(payload, dict) else 0,
             "confidence": float(payload.get("confidence", 0)) if isinstance(payload, dict) else 0,
+            "importance": float(payload.get("importance", 0)) if isinstance(payload, dict) else 0,
             "status": payload.get("status", "") if isinstance(payload, dict) else "",
             "updated_at": payload.get("updated_at", "") if isinstance(payload, dict) else "",
             "payload": payload,
@@ -270,6 +280,7 @@ class SearchManager:
             "terms": [str(term) for term in terms],
             "salience": float(item.get("salience", 0)),
             "confidence": float(item.get("confidence", 0)),
+            "importance": float(item.get("importance", 0)),
             "status": item.get("status", ""),
             "updated_at": item.get("updated_at", ""),
         }

@@ -151,6 +151,8 @@ class ContextEngine:
         memory_resources: List[Dict[str, Any]],
         semantic_dialogues: List[Dict[str, Any]],
         insights: List[Dict[str, Any]],
+        tasks: Optional[List[Dict[str, Any]]] = None,
+        behavior_patterns: Optional[List[Dict[str, Any]]] = None,
     ) -> List[Dict[str, Any]]:
         return self.search_manager.build_index(
             records,
@@ -162,6 +164,8 @@ class ContextEngine:
             memory_resources=memory_resources,
             semantic_dialogues=semantic_dialogues,
             insights=insights,
+            tasks=tasks,
+            behavior_patterns=behavior_patterns,
         )
 
     def search_related_memories(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
