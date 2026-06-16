@@ -440,20 +440,29 @@ class LLMClient:
         )
         return response.choices[0].message.content.strip()
 
-    def invoke_vision(self, prompt: str, image_base64: str) -> str:
-        """调用视觉/多模态模型分析 Base64 编码的图片"""
+    def invoke_vision(self, prompt: str, image_base64) -> str:
+        """调用视觉/多模态模型分析 Base64 编码的图片（支持单张或多张）"""
+        content = [{"type": "text", "text": prompt}]
+        if isinstance(image_base64, list):
+            for img in image_base64:
+                content.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{img}"
+                    }
+                })
+        else:
+            content.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/jpeg;base64,{image_base64}"
+                }
+            })
+            
         messages = [
             {
                 "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{image_base64}"
-                        }
-                    }
-                ]
+                "content": content
             }
         ]
         response = self.vision_client.chat.completions.create(

@@ -33,3 +33,4 @@ memory/data/daily_summaries/*
 !memory/data/daily_summaries/.gitkeep
 memory/archive/
 memory/*.local.json
+memory/data/screenshots

@@ -400,45 +400,56 @@ class SupervisionEventManager:
             screenshots_dir = self.events_path.parent / "screenshots"
             screenshots_dir.mkdir(parents=True, exist_ok=True)
             screenshot_path = screenshots_dir / f"screen-{now.strftime('%Y%m%d-%H%M%S')}.jpg"
+            screenshot_path_2 = screenshots_dir / f"screen-{now.strftime('%Y%m%d-%H%M%S')}_2.jpg"
+            screenshot_path_3 = screenshots_dir / f"screen-{now.strftime('%Y%m%d-%H%M%S')}_3.jpg"
+            screenshot_path_4 = screenshots_dir / f"screen-{now.strftime('%Y%m%d-%H%M%S')}_4.jpg"
+            screenshot_paths = [screenshot_path, screenshot_path_2, screenshot_path_3, screenshot_path_4]
             
             try:
-                cmd = ["/usr/sbin/screencapture", "-x", "-t", "jpeg", str(screenshot_path)]
+                cmd = ["/usr/sbin/screencapture", "-x", "-t", "jpeg"] + [str(p) for p in screenshot_paths]
                 if os.path.exists("/usr/sbin/screencapture"):
                     res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    if res.returncode == 0 and screenshot_path.exists():
-                        with open(screenshot_path, "rb") as img_file:
-                            img_data = img_file.read()
-                            image_base64 = base64.b64encode(img_data).decode("utf-8")
+                    if res.returncode == 0:
+                        image_base64_list = []
+                        for p in screenshot_paths:
+                            if p.exists():
+                                with open(p, "rb") as img_file:
+                                    img_data = img_file.read()
+                                    image_base64_list.append(base64.b64encode(img_data).decode("utf-8"))
                         
-                        current_task = (task_view or {}).get("current") or {}
-                        task_title = current_task.get("title", "") or "个人自律"
-                        
-                        # 增强 Prompt，将本地规则匹配结果也作为上下文提供给大模型参考
-                        local_rule_context = ""
-                        if app_name:
-                            local_rule_context = f"\n（本地检测到前台 App 为：{app_name}，窗口标题为：{window_title}）"
+                        if image_base64_list:
+                            current_task = (task_view or {}).get("current") or {}
+                            task_title = current_task.get("title", "") or "个人自律"
                             
-                        prompt = (
-                            "你是一个工位搭子的屏幕观察助手。用户当前设定的专注目标是：'{goal}'，主线任务是：'{task_title}'。{local_context}\n"
-                            "请查看这张用户电脑屏幕的截图，分析用户目前正在做什么，以及用户的当前行为是否偏离了设定的目标和主线任务。\n"
-                            "如果用户当前正在编写代码、阅读相关技术文档、查找学习资料、查看工作任务或进行与上述目标直接相关的活动，则视为【没有偏航】。\n"
-                            "如果用户当前正在刷社交媒体（如微博、微信、B站娱乐视频）、看小说、玩游戏或浏览完全不相关的网页，则视为【偏航】。\n"
-                            "请严格只输出一个合法的 JSON 对象，不要包含 Markdown 格式标记，不要包含其他前后解释。JSON 结构必须恰好如下：\n"
-                            "{\n"
-                            "  \"is_deviated\": true 或 false,\n"
-                            "  \"activity_summary\": \"简短描述用户正在做什么（例如：在 VS Code 中写 Python 代码，或者在看 Bilibili 视频）\",\n"
-                            "  \"deviation_reason\": \"如果是偏航，简述偏航原因；如果没有偏航，留空\",\n"
-                            "  \"tone_suggestion\": \"一句话提醒或鼓励：符合你'70%温柔师姐/20%并肩奋斗同事/10%朋友'性格的、极低压力、柔和的话语。如果是偏航，给出一句温柔的偏航提醒（例如：'师弟/师妹，当前咱们的目标是{goal}，不过屏幕上好像在忙别的事哦。先把这个分支收一收，回来看一眼咱们的任务。'）；如果没有偏航（在正常工作），给出一句温暖的鼓励或陪伴跟进的话（例如：'师弟加油！看到你正在专注写代码，目前的进展还顺利吗？累了的话记得起来喝口水哦。'）\"\n"
-                            "}"
-                        ).replace("{goal}", goal).replace("{task_title}", task_title).replace("{local_context}", local_rule_context)
-                        
-                        raw_response = self.llm_client.invoke_vision(prompt, image_base64)
-                        analysis = self._parse_json_response(raw_response)
-                        if "is_deviated" in analysis:
-                            vision_success = True
+                            # 增强 Prompt，将本地规则匹配结果也作为上下文提供给大模型参考
+                            local_rule_context = ""
+                            if app_name:
+                                local_rule_context = f"\n（本地检测到前台 App 为：{app_name}，窗口标题为：{window_title}）"
+                                
+                            prompt = (
+                                "你是一个工位搭子的屏幕观察助手。用户当前设定的专注目标是：'{goal}'，主线任务是：'{task_title}'。{local_context}\n"
+                                "请查看这张或这几张用户电脑屏幕的截图（支持多屏幕），分析用户目前正在做什么，以及用户的当前行为是否偏离了设定的目标 and 主线任务。\n"
+                                "如果用户当前正在编写代码、阅读相关技术文档、查找学习资料、查看工作任务或进行与上述目标直接相关的活动，则视为【没有偏航】。\n"
+                                "如果用户当前正在刷社交媒体（如微博、微信、B站娱乐视频）、看小说、玩游戏或浏览完全不相关的网页，则视为【偏航】。\n"
+                                "请严格只输出一个合法的 JSON 对象，不要包含 Markdown 格式标记，不要包含其他前后解释。JSON 结构必须恰好如下：\n"
+                                "{\n"
+                                "  \"is_deviated\": true 或 false,\n"
+                                "  \"activity_summary\": \"简短描述用户正在做什么（例如：在 VS Code 中写 Python 代码，或者在看 Bilibili 视频）\",\n"
+                                "  \"deviation_reason\": \"如果是偏航，简述偏航原因；如果没有偏航，留空\",\n"
+                                "  \"tone_suggestion\": \"一句话提醒或鼓励：符合你'70%温柔师姐/20%并肩奋斗同事/10%朋友'性格的、极低压力、柔和的话语。如果是偏航，给出一句温柔的偏航提醒（例如：'师弟/师妹，当前咱们的目标是{goal}，不过屏幕上好像在忙别的事哦。先把这个分支收一收，回来看一眼咱们的任务。'）；如果没有偏航（在正常工作），给出一句温暖的鼓励或陪伴跟进的话（例如：'师弟加油！看到你正在专注写代码，目前的进展还顺利吗？累了的话记得起来喝口水哦。'）\"\n"
+                                "}"
+                            ).replace("{goal}", goal).replace("{task_title}", task_title).replace("{local_context}", local_rule_context)
                             
-                if screenshot_path.exists():
-                    screenshot_path.unlink()
+                            # 传递图片列表或单张图片给 Vision 接口
+                            img_arg = image_base64_list if len(image_base64_list) > 1 else image_base64_list[0]
+                            raw_response = self.llm_client.invoke_vision(prompt, img_arg)
+                            analysis = self._parse_json_response(raw_response)
+                            if "is_deviated" in analysis:
+                                vision_success = True
+                                
+                for p in screenshot_paths:
+                    if p.exists():
+                        p.unlink()
             except Exception as e:
                 print(f"[DEBUG] Vision check failed, falling back to rule check. Error: {e}")
 
