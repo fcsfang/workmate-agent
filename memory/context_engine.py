@@ -130,7 +130,7 @@ class ContextEngine:
             available["supervision"] = memory_manager.supervision_manager.format_for_context(memory_manager.get_supervision_state())
         if "supervision_events" in key_set:
             available["supervision_events"] = memory_manager.supervision_event_manager.format_for_context(
-                memory_manager.get_supervision_event_state()
+                memory_manager.get_supervision_event_state(current_prompt)
             )
         if "support_knowledge" in key_set:
             support_state = memory_manager.get_support_knowledge_state(current_prompt)

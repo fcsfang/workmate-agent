@@ -463,6 +463,20 @@
       font-size: 11px;
     }
 
+    .supervision-strategy {
+      display: grid;
+      gap: 6px;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: rgba(255, 252, 242, 0.44);
+    }
+
+    .supervision-strategy strong {
+      color: var(--ink);
+      font-weight: 600;
+    }
+
     .task-grid {
       display: grid;
       gap: 8px;
@@ -1295,14 +1309,32 @@
                 <input id="prefSnooze" type="number" min="5" max="1440" value="60">
               </label>
             </div>
-            <label class="supervision-pref-item">
-              <span>push min</span>
-              <select id="prefPushMinSeverity">
-                <option value="low">low</option>
-                <option value="medium">medium</option>
-                <option value="high">high</option>
-              </select>
-            </label>
+            <div class="supervision-pref-row">
+              <label class="supervision-pref-item">
+                <span>page min</span>
+                <select id="prefPageMinSeverity">
+                  <option value="low">low</option>
+                  <option value="medium">medium</option>
+                  <option value="high">high</option>
+                </select>
+              </label>
+              <label class="supervision-pref-item">
+                <span>browser</span>
+                <select id="prefBrowserMinSeverity">
+                  <option value="low">low</option>
+                  <option value="medium">medium</option>
+                  <option value="high">high</option>
+                </select>
+              </label>
+              <label class="supervision-pref-item">
+                <span>background</span>
+                <select id="prefBackgroundMinSeverity">
+                  <option value="low">low</option>
+                  <option value="medium">medium</option>
+                  <option value="high">high</option>
+                </select>
+              </label>
+            </div>
             <div class="supervision-pref-row">
               <label class="supervision-pref-item">
                 <span>quiet from</span>
@@ -1327,6 +1359,14 @@
               <input id="prefTasks" type="checkbox">
               <span>task stale reminders</span>
             </label>
+            <div class="supervision-strategy" aria-label="Adaptive reminder strategy">
+              <div>
+                <strong id="reminderStrategyMode">steady</strong>
+                <span id="reminderStrategySummary">当前提醒策略保持稳定即可。</span>
+              </div>
+              <div class="task-value" id="reminderStrategyDetails">暂无策略建议</div>
+              <button class="supervision-action" id="applyReminderStrategy" type="button">APPLY STRATEGY</button>
+            </div>
           </div>
         </section>
       </div>
@@ -1399,6 +1439,10 @@
             <div class="task-field">
               <span class="task-label">tools</span>
               <span class="task-value" id="toolCalls">暂无工具调用</span>
+            </div>
+            <div class="task-field">
+              <span class="task-label">runtime</span>
+              <span class="task-value" id="turnTrace">暂无运行轨迹</span>
             </div>
           </div>
         </section>
@@ -1532,14 +1576,21 @@
     const saveSupervisionPrefs = document.querySelector("#saveSupervisionPrefs");
     const prefEnabled = document.querySelector("#prefEnabled");
     const prefSnooze = document.querySelector("#prefSnooze");
-    const prefPushMinSeverity = document.querySelector("#prefPushMinSeverity");
+    const prefPageMinSeverity = document.querySelector("#prefPageMinSeverity");
+    const prefBrowserMinSeverity = document.querySelector("#prefBrowserMinSeverity");
+    const prefBackgroundMinSeverity = document.querySelector("#prefBackgroundMinSeverity");
     const prefQuietStart = document.querySelector("#prefQuietStart");
     const prefQuietEnd = document.querySelector("#prefQuietEnd");
     const prefFocus = document.querySelector("#prefFocus");
     const prefCommitments = document.querySelector("#prefCommitments");
     const prefTasks = document.querySelector("#prefTasks");
+    const reminderStrategyMode = document.querySelector("#reminderStrategyMode");
+    const reminderStrategySummary = document.querySelector("#reminderStrategySummary");
+    const reminderStrategyDetails = document.querySelector("#reminderStrategyDetails");
+    const applyReminderStrategy = document.querySelector("#applyReminderStrategy");
     const supportKnowledge = document.querySelector("#supportKnowledge");
     const toolCalls = document.querySelector("#toolCalls");
+    const turnTrace = document.querySelector("#turnTrace");
     const focusStatus = document.querySelector("#focusStatus");
     const focusGoal = document.querySelector("#focusGoal");
     const focusTime = document.querySelector("#focusTime");
@@ -1553,6 +1604,7 @@
     let localTurns = 0;
     let transcriptRestored = false;
     let currentDashboard = {};
+    let currentReminderStrategy = {};
 
     function setStatus(text, busy = false) {
       statusText.textContent = text;
@@ -1997,26 +2049,32 @@
 
     function renderSupervisionEvents(state = {}) {
       const activeEvents = state.active || [];
+      const preferences = state.preferences || {};
+      const visibleEvents = activeEvents.filter((event) => {
+        const pageMinSeverity = channelMinSeverity(preferences, "page", event.type || "");
+        return severityRank(event.severity || "low") >= severityRank(pageMinSeverity);
+      });
       renderSupervisionPreferences(state.preferences || {});
       renderSupervisionFeedbackStats(state.feedback_stats || {});
+      renderReminderStrategy(state.strategy || {});
       if (!supervisionEventList) return;
-      supervisionEventCount.textContent = `${activeEvents.length} active`;
+      supervisionEventCount.textContent = `${visibleEvents.length}/${activeEvents.length} active`;
       supervisionEventList.innerHTML = "";
 
-      if (!activeEvents.length) {
+      if (!visibleEvents.length) {
         const empty = document.createElement("div");
         empty.className = "task-value";
-        empty.textContent = "暂无监督事件";
+        empty.textContent = activeEvents.length ? "暂无达到页面显示门槛的监督事件" : "暂无监督事件";
         supervisionEventList.append(empty);
         return;
       }
 
-      activeEvents.slice(0, 6).forEach((event) => {
+      visibleEvents.slice(0, 6).forEach((event) => {
         const item = document.createElement("article");
         item.className = `supervision-event ${event.severity || "low"}`;
         item.innerHTML = `
           <div class="supervision-event-title">${escapeHtml(event.title || "提醒事件")}</div>
-          <div class="supervision-event-message">${escapeHtml(event.message || "")}</div>
+          <div class="supervision-event-message">${escapeHtml(event.display_message || event.message || "")}</div>
           <div class="supervision-event-meta">
             <span>${escapeHtml(event.status || "detected")}</span>
             <span>${escapeHtml(event.type || "event")}</span>
@@ -2043,7 +2101,9 @@
       if (!prefEnabled) return;
       prefEnabled.checked = preferences.enabled !== false;
       prefSnooze.value = preferences.default_snooze_minutes || 60;
-      prefPushMinSeverity.value = preferences.push_min_severity || "medium";
+      prefPageMinSeverity.value = preferences.page_min_severity || "low";
+      prefBrowserMinSeverity.value = preferences.browser_min_severity || preferences.push_min_severity || "medium";
+      prefBackgroundMinSeverity.value = preferences.background_min_severity || "high";
       prefQuietStart.value = preferences.quiet_hours_start || "23:00";
       prefQuietEnd.value = preferences.quiet_hours_end || "07:00";
       prefFocus.checked = preferences.notify_focus !== false;
@@ -2063,6 +2123,63 @@
         .slice(0, 4)
         .map(([action, count]) => `${action}:${count}`);
       supervisionFeedbackStats.textContent = `feedback ${total} · ${parts.join(" / ")}`;
+    }
+
+    function renderReminderStrategy(strategy = {}) {
+      currentReminderStrategy = strategy || {};
+      const recommendations = strategy.recommendations || [];
+      const typeFriction = strategy.type_friction || [];
+      const typePreferenceSignals = strategy.type_preference_signals || [];
+      const manualControl = strategy.manual_control || {};
+      const tonePolicy = strategy.tone_policy || {};
+      const copyPolicy = strategy.copy_policy || {};
+      const toneUpdates = tonePolicy.preference_updates || {};
+      const strategyUpdates = strategy.preference_updates || {};
+      const mergedUpdates = mergePreferenceUpdates(strategyUpdates, toneUpdates);
+      if (reminderStrategyMode) {
+        reminderStrategyMode.textContent = tonePolicy.mode && tonePolicy.mode !== "normal"
+          ? `${strategy.mode || "steady"} / ${tonePolicy.mode}`
+          : strategy.mode || "steady";
+      }
+      if (reminderStrategySummary) {
+        reminderStrategySummary.textContent = manualControl.summary || tonePolicy.summary || strategy.summary || "当前提醒策略保持稳定即可。";
+      }
+      if (reminderStrategyDetails) {
+        const parts = [
+          manualControl.quiet_until ? `quiet until ${formatTodoTime(manualControl.quiet_until)}` : "",
+          tonePolicy.reply_guidance ? `tone: ${tonePolicy.reply_guidance}` : "",
+          copyPolicy.summary ? `copy: ${copyPolicy.summary}` : "",
+          ...recommendations.map((item) => `${item.field}: ${item.current} -> ${item.recommended}`),
+          ...typeFriction.map((item) => `${item.type}: ${item.suggestion}`),
+          ...typePreferenceSignals.map((item) => `${item.type}: ${item.summary}`),
+          ...Object.entries(toneUpdates).map(([field, value]) => `${field}: ${value}`)
+        ].filter(Boolean);
+        reminderStrategyDetails.textContent = parts.length ? parts.slice(0, 3).join("；") : "暂无策略建议";
+      }
+      if (applyReminderStrategy) {
+        applyReminderStrategy.disabled = !Object.keys(mergedUpdates).length;
+      }
+    }
+
+    function mergePreferenceUpdates(...updatesList) {
+      const merged = {};
+      updatesList.forEach((updates) => {
+        Object.entries(updates || {}).forEach(([key, value]) => {
+          if (key === "event_type_min_severity" && value && typeof value === "object") {
+            const current = merged.event_type_min_severity || {};
+            Object.entries(value).forEach(([eventType, channelValues]) => {
+              current[eventType] = {
+                ...(current[eventType] || {}),
+                ...(channelValues || {})
+              };
+            });
+            merged.event_type_min_severity = current;
+          } else {
+            merged[key] = value;
+          }
+        });
+      });
+      return merged;
     }
 
     function renderFocusSession(focus = {}) {
@@ -2115,6 +2232,22 @@
         .join("；");
     }
 
+    function renderTurnTrace(trace = {}) {
+      if (!turnTrace) return;
+      if (!trace.turn_id) {
+        turnTrace.textContent = "暂无运行轨迹";
+        return;
+      }
+      const stages = (trace.stages || [])
+        .slice(0, 5)
+        .map((stage) => `${stage.name || "stage"}:${stage.status || "unknown"}`)
+        .join(" / ");
+      const shortId = String(trace.turn_id).slice(0, 8);
+      const duration = Number.isFinite(Number(trace.duration_ms)) ? `${trace.duration_ms}ms` : "--";
+      const messageCount = trace.message_count_after_tools || trace.message_count_before_tools || 0;
+      turnTrace.textContent = `${shortId} · ${trace.status || "unknown"} · ${duration} · ${messageCount} messages${stages ? " · " + stages : ""}`;
+    }
+
     function renderMemory(memory, options = {}) {
       const records = memory.recent || [];
       memoryCount.textContent = memory.count || 0;
@@ -2139,6 +2272,7 @@
       renderFocusSession(memory.focus_session || {});
       renderSupportKnowledge(memory.support_knowledge || {});
       renderToolCalls(memory.tool_calls || []);
+      renderTurnTrace(memory.turn_trace || {});
       if (options.restoreTranscript || (!transcriptRestored && records.length)) {
         restoreTranscript(records);
       }
@@ -2194,7 +2328,7 @@
         const notifiedKey = `notified_supervision_${event.id}`;
         if (localStorage.getItem(notifiedKey)) return;
         new Notification(event.title || "Workmate Agent 提醒", {
-          body: event.message || "有一个事项需要稍后处理。"
+          body: event.display_message || event.message || "有一个事项需要稍后处理。"
         });
         localStorage.setItem(notifiedKey, "true");
         updateSupervisionEvent(event.id, "mark_notified").catch(() => {});
@@ -2221,8 +2355,8 @@
     }
 
     function browserShouldNotifyEvent(event, preferences = {}) {
-      const pushMinSeverity = preferences.push_min_severity || preferences.min_severity || "low";
-      if (severityRank(event.severity || "low") < severityRank(pushMinSeverity)) return false;
+      const browserMinSeverity = channelMinSeverity(preferences, "browser", event.type || "");
+      if (severityRank(event.severity || "low") < severityRank(browserMinSeverity)) return false;
       if (event.type === "focus_expired") return preferences.notify_focus !== false;
       if (event.type === "commitment_due_today" || event.type === "commitment_overdue") {
         return preferences.notify_commitments !== false;
@@ -2233,6 +2367,17 @@
 
     function severityRank(severity) {
       return { low: 1, medium: 2, high: 3 }[String(severity || "low")] || 1;
+    }
+
+    function channelMinSeverity(preferences = {}, channel = "browser", eventType = "") {
+      const overrides = preferences.event_type_min_severity || {};
+      const eventOverride = overrides[eventType] || {};
+      if (eventOverride[channel]) return eventOverride[channel];
+      if (channel === "page") return preferences.page_min_severity || preferences.min_severity || "low";
+      if (channel === "browser") {
+        return preferences.browser_min_severity || preferences.push_min_severity || preferences.min_severity || "medium";
+      }
+      return preferences.background_min_severity || preferences.push_min_severity || "high";
     }
 
     async function loadMemory(options = {}) {
@@ -2248,6 +2393,7 @@
       renderDashboard(context.dashboard || {});
       renderFocusSession(context.focus_session || {});
       renderSupervisionEvents(context.supervision_events || {});
+      renderTurnTrace(context.turn_trace || {});
     }
 
     async function updateSupervisionEvent(eventId, action) {
@@ -2275,7 +2421,10 @@
       const payload = {
         enabled: Boolean(prefEnabled?.checked),
         default_snooze_minutes: Number(prefSnooze?.value || 60),
-        push_min_severity: prefPushMinSeverity?.value || "medium",
+        push_min_severity: prefBrowserMinSeverity?.value || "medium",
+        page_min_severity: prefPageMinSeverity?.value || "low",
+        browser_min_severity: prefBrowserMinSeverity?.value || "medium",
+        background_min_severity: prefBackgroundMinSeverity?.value || "high",
         quiet_hours_enabled: true,
         quiet_hours_start: prefQuietStart?.value || "23:00",
         quiet_hours_end: prefQuietEnd?.value || "07:00",
@@ -2295,6 +2444,46 @@
       renderSupervisionPreferences(data.preferences || {});
       if (data.supervision_events) renderSupervisionEvents(data.supervision_events);
       lastEvent.textContent = "supervision preferences saved";
+    }
+
+    async function applyAdaptiveReminderStrategy() {
+      const updates = {
+        ...mergePreferenceUpdates(
+          currentReminderStrategy.preference_updates || {},
+          (currentReminderStrategy.tone_policy || {}).preference_updates || {}
+        )
+      };
+      if (!Object.keys(updates).length) {
+        lastEvent.textContent = "no strategy updates";
+        return;
+      }
+      const payload = {
+        enabled: Boolean(prefEnabled?.checked),
+        default_snooze_minutes: Number(prefSnooze?.value || 60),
+        push_min_severity: prefBrowserMinSeverity?.value || "medium",
+        page_min_severity: prefPageMinSeverity?.value || "low",
+        browser_min_severity: prefBrowserMinSeverity?.value || "medium",
+        background_min_severity: prefBackgroundMinSeverity?.value || "high",
+        quiet_hours_enabled: true,
+        quiet_hours_start: prefQuietStart?.value || "23:00",
+        quiet_hours_end: prefQuietEnd?.value || "07:00",
+        notify_focus: Boolean(prefFocus?.checked),
+        notify_commitments: Boolean(prefCommitments?.checked),
+        notify_tasks: Boolean(prefTasks?.checked),
+        ...updates
+      };
+      const response = await fetch("/api/supervision/preferences", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Strategy update failed");
+      }
+      renderSupervisionPreferences(data.preferences || {});
+      if (data.supervision_events) renderSupervisionEvents(data.supervision_events);
+      lastEvent.textContent = "reminder strategy applied";
     }
 
     async function updateFocus(action) {
@@ -2392,6 +2581,7 @@
           renderMemory(payload.memory);
           renderContext(payload.context);
           renderToolCalls(payload.tool_calls || payload.memory?.tool_calls || []);
+          renderTurnTrace(payload.turn_trace || payload.memory?.turn_trace || {});
           localTurns = payload.memory?.count || localTurns + 1;
           turnCount.textContent = localTurns;
           lastEvent.textContent = "memory saved";
@@ -2539,6 +2729,17 @@
       setStatus("prefs", true);
       try {
         await saveSupervisionPreferences();
+      } catch (error) {
+        lastEvent.textContent = error.message;
+      } finally {
+        setStatus("ready", false);
+      }
+    });
+
+    applyReminderStrategy.addEventListener("click", async () => {
+      setStatus("strategy", true);
+      try {
+        await applyAdaptiveReminderStrategy();
       } catch (error) {
         lastEvent.textContent = error.message;
       } finally {

@@ -11,6 +11,7 @@ except ImportError:
     from LLMClient import LLMClient
 
 from memory import MemoryManager
+from agent import AgentRuntime
 from tools import ToolExecutor, build_workmate_tool_registry
 
 
@@ -21,46 +22,23 @@ class WorkmateAgent:
         self.memory_manager.set_llm_client(self.llmclient)
         self.tool_registry = build_workmate_tool_registry(self.memory_manager)
         self.tool_executor = tool_executor or ToolExecutor(self.tool_registry)
-        self.last_context_messages = []
-        self.last_tool_calls = []
+        self.runtime = AgentRuntime(self.llmclient, self.memory_manager, self.tool_executor)
 
     def invoke(self, prompt):
-        messages = self.memory_manager.build_context_messages(prompt)
-        messages = self._apply_internal_tools(prompt, messages)
-        response = self.llmclient.invoke(messages=messages)
-        self._save_memory(prompt, response)
-        return response
+        return self.runtime.run(prompt)
 
     def invoke_stream(self, prompt):
-        messages = self.memory_manager.build_context_messages(prompt)
-        messages = self._apply_internal_tools(prompt, messages)
-        chunks = []
-        for chunk in self.llmclient.invoke_stream(messages=messages):
-            chunks.append(chunk)
+        for chunk in self.runtime.stream(prompt):
             yield chunk
-        response = "".join(chunks).strip()
-        self._save_memory(prompt, response)
-
-    def _save_memory(self, prompt, response):
-        self.memory_manager.process_turn(prompt, response)
-
-    def _apply_internal_tools(self, prompt, messages):
-        self.last_tool_calls = self.tool_executor.plan_and_execute(
-            self.llmclient,
-            messages,
-            prompt,
-        )
-        observation = self.tool_executor.format_observations(self.last_tool_calls)
-        if observation:
-            messages = [*messages, {"role": "system", "content": observation}]
-        self.last_context_messages = messages
-        return messages
 
     def get_last_context(self):
-        return self.last_context_messages
+        return self.runtime.get_last_context()
 
     def get_last_tool_calls(self):
-        return self.last_tool_calls
+        return self.runtime.get_last_tool_calls()
+
+    def get_last_turn_trace(self):
+        return self.runtime.get_last_turn_trace()
 
 
 def run_chat():

@@ -54,8 +54,38 @@ class SupervisionEventManager:
 
     def update_preferences(self, updates: Dict[str, Any]) -> Dict[str, Any]:
         preferences = self.load_preferences()
-        preferences.update({key: value for key, value in (updates or {}).items() if key in preferences})
+        for key, value in (updates or {}).items():
+            if key not in preferences:
+                continue
+            if key == "event_type_min_severity" and isinstance(value, dict):
+                merged = preferences.get("event_type_min_severity", {})
+                if not isinstance(merged, dict):
+                    merged = {}
+                for event_type, channel_values in value.items():
+                    if not isinstance(channel_values, dict):
+                        continue
+                    current = merged.get(event_type, {})
+                    if not isinstance(current, dict):
+                        current = {}
+                    current.update(channel_values)
+                    merged[event_type] = current
+                preferences[key] = merged
+            else:
+                preferences[key] = value
         return self.save_preferences(preferences)
+
+    def apply_natural_language_control(self, text: str, llm_client: Any = None) -> Dict[str, Any]:
+        updates = self._llm_natural_language_updates(text, llm_client) or self._natural_language_updates(text)
+        if not updates:
+            return {"applied": False, "reason": "no_explicit_reminder_control"}
+        preferences = self.update_preferences(updates["preferences"])
+        return {
+            "applied": True,
+            "intent": updates["intent"],
+            "summary": updates["summary"],
+            "source": updates.get("source", "rule"),
+            "preferences": preferences,
+        }
 
     def default_preferences(self) -> Dict[str, Any]:
         return {
@@ -63,11 +93,16 @@ class SupervisionEventManager:
             "reminder_strength": "gentle",
             "min_severity": "low",
             "push_min_severity": "medium",
+            "page_min_severity": "low",
+            "browser_min_severity": "medium",
+            "background_min_severity": "high",
+            "event_type_min_severity": {},
             "default_snooze_minutes": 60,
             "default_mute_hours": 24,
             "quiet_hours_enabled": True,
             "quiet_hours_start": "23:00",
             "quiet_hours_end": "07:00",
+            "quiet_until": "",
             "notify_focus": True,
             "notify_commitments": True,
             "notify_tasks": True,
@@ -88,6 +123,7 @@ class SupervisionEventManager:
         focus_state: Dict[str, Any],
         commitments: List[Dict[str, Any]],
         task_view: Dict[str, Any],
+        user_profile: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         events = self.load_events()
         now = datetime.now()
@@ -101,16 +137,28 @@ class SupervisionEventManager:
         if stale_candidate:
             candidates.append(stale_candidate)
 
+        copy_policy = self._copy_policy(user_profile or {})
+        candidates = [self._apply_copy_policy(candidate, copy_policy) for candidate in candidates]
+
         for candidate in candidates:
             events = self._upsert_candidate(events, candidate, now)
 
         self._auto_resolve_missing_events(events, candidates, now)
         self.save_events(events)
-        return self.build_state(events=events)["active"]
+        return self.build_state(events=events, user_profile=user_profile)["active"]
 
-    def build_state(self, events: Optional[List[Dict[str, Any]]] = None, limit: int = 12) -> Dict[str, Any]:
+    def build_state(
+        self,
+        events: Optional[List[Dict[str, Any]]] = None,
+        limit: int = 12,
+        support_state: Optional[Dict[str, Any]] = None,
+        user_profile: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         events = events if events is not None else self.load_events()
         self._reactivate_paused_events(events, datetime.now())
+        preferences = self.load_preferences()
+        feedback_stats = self._feedback_stats(events)
+        copy_policy = self._copy_policy(user_profile or {})
         active = [
             event for event in events
             if event.get("status") in self.ACTIVE_STATUSES
@@ -124,8 +172,14 @@ class SupervisionEventManager:
             "snoozed": sorted(snoozed, key=lambda item: item.get("updated_at", ""), reverse=True)[:limit],
             "muted": sorted(muted, key=lambda item: item.get("updated_at", ""), reverse=True)[:limit],
             "recent": recent,
-            "preferences": self.load_preferences(),
-            "feedback_stats": self._feedback_stats(events),
+            "preferences": preferences,
+            "feedback_stats": feedback_stats,
+            "strategy": self._build_strategy(
+                preferences,
+                feedback_stats,
+                support_state=support_state,
+                copy_policy=copy_policy,
+            ),
             "counts": {
                 "active": len(active),
                 "snoozed": len(snoozed),
@@ -171,15 +225,22 @@ class SupervisionEventManager:
             },
         )
 
-    def should_notify(self, event: Dict[str, Any], now: Optional[datetime] = None) -> bool:
+    def should_notify(
+        self,
+        event: Dict[str, Any],
+        now: Optional[datetime] = None,
+        channel: str = "background",
+    ) -> bool:
         now = now or datetime.now()
         preferences = self.load_preferences()
         if not preferences.get("enabled", True):
             return False
         if event.get("status") != "detected":
             return False
-        push_min_severity = preferences.get("push_min_severity") or preferences.get("min_severity", "low")
-        if self._severity_rank(event) < self._severity_rank({"severity": push_min_severity}):
+        if self._is_quiet_until(now, preferences):
+            return False
+        min_severity = self._channel_min_severity(preferences, channel, event.get("type", ""))
+        if self._severity_rank(event) < self._severity_rank({"severity": min_severity}):
             return False
         if preferences.get("quiet_hours_enabled") and self._in_quiet_hours(now, preferences):
             return False
@@ -200,10 +261,17 @@ class SupervisionEventManager:
         lines = [
             "以下是可追踪的监督事件。请把它们当作低压力提醒，不要反复催促，不要要求证明。",
         ]
+        strategy = state.get("strategy") or {}
+        tone_policy = strategy.get("tone_policy") or {}
+        if tone_policy.get("mode") == "soften":
+            lines.append(f"当前提醒语气策略：{tone_policy.get('reply_guidance', '放轻提醒语气。')}")
+        copy_policy = strategy.get("copy_policy") or {}
+        if copy_policy.get("summary"):
+            lines.append(f"当前提醒文案策略：{copy_policy.get('summary')}")
         for index, event in enumerate(active[:5], start=1):
             lines.append(
                 f"{index}. [{event.get('severity', 'low')}] {event.get('title', '')}: "
-                f"{event.get('message', '')} status={event.get('status', '')}"
+                f"{event.get('display_message') or event.get('message', '')} status={event.get('status', '')}"
             )
         return "\n".join(lines)
 
@@ -310,6 +378,7 @@ class SupervisionEventManager:
                 "severity": candidate.get("severity", existing.get("severity", "low")),
                 "title": candidate.get("title", existing.get("title", "")),
                 "message": candidate.get("message", existing.get("message", "")),
+                "display_message": candidate.get("display_message", existing.get("display_message", "")),
                 "metadata": candidate.get("metadata", existing.get("metadata", {})),
                 "last_detected_at": now_text,
                 "updated_at": now_text,
@@ -326,6 +395,7 @@ class SupervisionEventManager:
             "severity": candidate.get("severity", "low"),
             "title": candidate.get("title", ""),
             "message": candidate.get("message", ""),
+            "display_message": candidate.get("display_message", ""),
             "status": "detected",
             "source": "scheduler",
             "metadata": candidate.get("metadata", {}),
@@ -397,6 +467,7 @@ class SupervisionEventManager:
             "severity": item.get("severity", "low"),
             "title": item.get("title", ""),
             "message": item.get("message", ""),
+            "display_message": item.get("display_message", ""),
             "status": status,
             "source": item.get("source", ""),
             "metadata": item.get("metadata", {}) if isinstance(item.get("metadata", {}), dict) else {},
@@ -456,6 +527,271 @@ class SupervisionEventManager:
             "last_feedback_at": last_feedback,
         }
 
+    def _build_strategy(
+        self,
+        preferences: Dict[str, Any],
+        feedback_stats: Dict[str, Any],
+        support_state: Optional[Dict[str, Any]] = None,
+        copy_policy: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        by_action = feedback_stats.get("by_action", {}) if isinstance(feedback_stats, dict) else {}
+        by_type = feedback_stats.get("by_type", {}) if isinstance(feedback_stats, dict) else {}
+        quiet_until = self._parse_time(preferences.get("quiet_until", ""))
+        tone_policy = self._tone_policy(preferences, support_state=support_state)
+        delayed = int(by_action.get("snoozed", 0) or 0) + int(by_action.get("muted", 0) or 0)
+        accepted = int(by_action.get("acknowledged", 0) or 0) + int(by_action.get("resolved", 0) or 0)
+        recommendations = []
+        updates: Dict[str, Any] = {}
+
+        if delayed >= 3 and delayed > accepted:
+            if preferences.get("browser_min_severity") != "high":
+                recommendations.append({
+                    "field": "browser_min_severity",
+                    "current": preferences.get("browser_min_severity", preferences.get("push_min_severity", "medium")),
+                    "recommended": "high",
+                    "reason": "用户对提醒更多选择稍后或静音，浏览器通知适合只推送高优先级事件。",
+                    "impact": "低/中等级事件仍保留在页面内，但不弹出浏览器通知。",
+                })
+                updates["browser_min_severity"] = "high"
+                updates["push_min_severity"] = "high"
+            if preferences.get("background_min_severity") != "high":
+                recommendations.append({
+                    "field": "background_min_severity",
+                    "current": preferences.get("background_min_severity", "high"),
+                    "recommended": "high",
+                    "reason": "后台推送比页面提醒更打扰，适合保持最高门槛。",
+                    "impact": "macOS/Bark/飞书等后台通知只处理高优先级事件。",
+                })
+                updates["background_min_severity"] = "high"
+            if int(preferences.get("default_snooze_minutes", 60) or 60) < 120:
+                recommendations.append({
+                    "field": "default_snooze_minutes",
+                    "current": preferences.get("default_snooze_minutes", 60),
+                    "recommended": 120,
+                    "reason": "稍后提醒次数偏多，默认稍后间隔可以放长一点。",
+                    "impact": "减少短时间内重复回来的提醒。",
+                })
+                updates["default_snooze_minutes"] = 120
+            mode = "reduce_push"
+            summary = "提醒反馈显示用户可能需要更安静一点。"
+        elif accepted >= 3 and accepted >= delayed * 2 and preferences.get("browser_min_severity") == "high":
+            recommendations.append({
+                "field": "browser_min_severity",
+                "current": preferences.get("browser_min_severity", "high"),
+                "recommended": "medium",
+                "reason": "用户近期更常确认或关闭提醒，可以允许中等级事件主动推送。",
+                "impact": "浏览器通知会稍微积极一点，但后台推送仍保持更高门槛。",
+            })
+            updates["browser_min_severity"] = "medium"
+            updates["push_min_severity"] = "medium"
+            mode = "allow_more_push"
+            summary = "用户近期能较好处理提醒，可以略微提高主动性。"
+        else:
+            mode = "steady"
+            summary = "当前提醒策略保持稳定即可。"
+
+        type_friction = []
+        type_preference_updates: Dict[str, Dict[str, str]] = {}
+        type_preference_signals = []
+        for event_type, actions in by_type.items():
+            if not isinstance(actions, dict):
+                continue
+            type_delayed = int(actions.get("snoozed", 0) or 0) + int(actions.get("muted", 0) or 0)
+            type_accepted = int(actions.get("acknowledged", 0) or 0) + int(actions.get("resolved", 0) or 0)
+            if type_delayed >= 2 and type_delayed > type_accepted:
+                suggested_channels = {"browser": "high", "background": "high"}
+                type_friction.append({
+                    "type": event_type,
+                    "delayed": type_delayed,
+                    "accepted": type_accepted,
+                    "suggestion": self._type_friction_suggestion(event_type),
+                    "recommended_channels": suggested_channels,
+                })
+                type_preference_updates[event_type] = suggested_channels
+                type_preference_signals.append({
+                    "type": event_type,
+                    "mode": "reduce_push_for_type",
+                    "summary": "这一类提醒更常被稍后或静音，适合只保留页面提醒或提高弹窗门槛。",
+                })
+            elif type_accepted >= 3 and type_accepted >= type_delayed * 2:
+                suggested_channels = {"browser": "medium"}
+                type_preference_updates[event_type] = suggested_channels
+                type_preference_signals.append({
+                    "type": event_type,
+                    "mode": "allow_browser_for_type",
+                    "summary": "这一类提醒更常被确认或关闭，可以允许中等级浏览器提醒。",
+                })
+
+        if type_preference_updates:
+            updates["event_type_min_severity"] = self._merge_event_type_updates(
+                updates.get("event_type_min_severity", {}),
+                type_preference_updates,
+            )
+
+        manual_control = {}
+        if quiet_until and quiet_until > datetime.now():
+            manual_control = {
+                "active": True,
+                "quiet_until": quiet_until.isoformat(timespec="seconds"),
+                "summary": f"提醒已安静到 {quiet_until.strftime('%m-%d %H:%M')}。",
+            }
+
+        return {
+            "mode": mode,
+            "summary": summary,
+            "recommendations": recommendations,
+            "preference_updates": updates,
+            "type_friction": type_friction[:5],
+            "type_preference_signals": type_preference_signals[:5],
+            "manual_control": manual_control,
+            "tone_policy": tone_policy,
+            "copy_policy": copy_policy or self._copy_policy({}),
+        }
+
+    def _copy_policy(self, user_profile: Dict[str, Any]) -> Dict[str, Any]:
+        preferences = user_profile.get("communication_preference") or []
+        interventions = user_profile.get("effective_interventions") or []
+        if isinstance(preferences, str):
+            preferences = [preferences]
+        if isinstance(interventions, str):
+            interventions = [interventions]
+        profile_text = "；".join(str(item) for item in [*preferences, *interventions])
+        low_pressure = any(keyword in profile_text for keyword in ["低压力", "无压力", "不要催促", "不施压", "别催"])
+        concise = any(keyword in profile_text for keyword in ["只给一个小建议", "简短", "一句", "低认知负荷"])
+        organize_first = any(keyword in profile_text for keyword in ["记住", "整理", "先帮用户"])
+        no_proof = any(keyword in profile_text for keyword in ["不要每次都强制要求证明", "不要要求证明", "不要求证明", "证据"])
+        return {
+            "source": "user_profile",
+            "low_pressure": low_pressure,
+            "concise": concise,
+            "organize_first": organize_first,
+            "no_proof": no_proof,
+            "summary": self._copy_policy_summary(low_pressure, concise, organize_first, no_proof),
+        }
+
+    def _copy_policy_summary(
+        self,
+        low_pressure: bool,
+        concise: bool,
+        organize_first: bool,
+        no_proof: bool,
+    ) -> str:
+        parts = []
+        if organize_first:
+            parts.append("先确认已记住")
+        if low_pressure:
+            parts.append("低压力提醒")
+        if concise:
+            parts.append("只给一个小提示")
+        if no_proof:
+            parts.append("不要求证明")
+        return "；".join(parts) if parts else "保持默认温和提醒"
+
+    def _apply_copy_policy(self, candidate: Dict[str, Any], copy_policy: Dict[str, Any]) -> Dict[str, Any]:
+        if not candidate:
+            return candidate
+        candidate = {**candidate}
+        subject = candidate.get("subject_title", "")
+        event_type = candidate.get("type", "")
+        if event_type == "focus_expired":
+            display = f"我先帮你记着：这段专注【{subject}】已经到点了，回来时简单收一下进展就好。"
+        elif event_type == "commitment_overdue":
+            display = f"我先帮你把承诺【{subject}】标出来：它已经过了截止时间，之后可以选择关闭、延期或放下。"
+        elif event_type == "commitment_due_today":
+            display = f"我先帮你记着：承诺【{subject}】今天到期，相关时轻轻处理一下就好。"
+        elif event_type == "task_stale":
+            display = f"我先帮你保留主线：当前任务【{subject}】有一阵子没更新了，回来时接上一个小动作就行。"
+        else:
+            display = candidate.get("message", "")
+
+        if copy_policy.get("concise"):
+            display = self._compact_sentence(display, limit=90)
+        if copy_policy.get("no_proof"):
+            display = display.replace("收一下进展", "说一句进展")
+        candidate["display_message"] = display
+        metadata = candidate.get("metadata", {})
+        if not isinstance(metadata, dict):
+            metadata = {}
+        candidate["metadata"] = {
+            **metadata,
+            "copy_policy": copy_policy.get("summary", ""),
+        }
+        return candidate
+
+    def _compact_sentence(self, text: str, limit: int = 90) -> str:
+        text = str(text or "").strip()
+        if len(text) <= limit:
+            return text
+        return text[: max(0, limit - 1)].rstrip("，。；、 ") + "。"
+
+    def _tone_policy(
+        self,
+        preferences: Dict[str, Any],
+        support_state: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        states = {
+            str(item).strip().lower()
+            for item in ((support_state or {}).get("states") or [])
+            if str(item).strip()
+        }
+        pressure_states = {"anxious", "tired", "avoidant", "stuck", "scattered", "overplanning"}
+        matched_states = sorted(states & pressure_states)
+        now = datetime.now()
+        rest_time = now.hour >= 22 or now.hour < 7
+
+        if matched_states or rest_time:
+            reasons = []
+            if matched_states:
+                reasons.append("检测到用户可能处在压力、疲惫、分散或卡住状态")
+            if rest_time:
+                reasons.append("当前处于休息时段")
+            updates: Dict[str, Any] = {}
+            if preferences.get("reminder_strength") != "soft":
+                updates["reminder_strength"] = "soft"
+            if preferences.get("browser_min_severity") != "high":
+                updates["browser_min_severity"] = "high"
+                updates["push_min_severity"] = "high"
+            if preferences.get("background_min_severity") != "high":
+                updates["background_min_severity"] = "high"
+            return {
+                "mode": "soften",
+                "summary": "；".join(reasons) + "，适合自动降低监督语气。",
+                "states": matched_states,
+                "rest_time": rest_time,
+                "reply_guidance": "只做状态确认和一个很小的提示，不追问、不催促、不展开长建议。",
+                "preference_updates": updates,
+            }
+
+        return {
+            "mode": "normal",
+            "summary": "当前没有明显压力或休息时段信号，保持温和提醒即可。",
+            "states": [],
+            "rest_time": False,
+            "reply_guidance": "保持低压力、短回复，只在相关时补一句轻量建议。",
+            "preference_updates": {},
+        }
+
+    def _type_friction_suggestion(self, event_type: str) -> str:
+        if event_type == "focus_expired":
+            return "专注超时提醒可以更多留在页面内，减少主动推送。"
+        if event_type in {"commitment_due_today", "commitment_overdue"}:
+            return "承诺提醒可以优先推送逾期项，今日到期项保持页面提醒。"
+        if event_type == "task_stale":
+            return "任务停滞提醒适合放轻，只在用户打开页面时露出。"
+        return "这一类提醒可以降低主动推送频率。"
+
+    def _merge_event_type_updates(
+        self,
+        first: Any,
+        second: Dict[str, Dict[str, str]],
+    ) -> Dict[str, Dict[str, str]]:
+        merged = self._normalize_event_type_min_severity(first)
+        for event_type, channels in self._normalize_event_type_min_severity(second).items():
+            current = merged.get(event_type, {})
+            current.update(channels)
+            merged[event_type] = current
+        return merged
+
     def _is_muted_now(self, event: Dict[str, Any]) -> bool:
         if event.get("status") != "muted":
             return False
@@ -485,6 +821,21 @@ class SupervisionEventManager:
     def _severity_rank(self, event: Dict[str, Any]) -> int:
         return {"high": 3, "medium": 2, "low": 1}.get(event.get("severity", "low"), 1)
 
+    def _channel_min_severity(self, preferences: Dict[str, Any], channel: str, event_type: str = "") -> str:
+        channel = str(channel or "background").strip().lower()
+        event_overrides = preferences.get("event_type_min_severity", {})
+        if isinstance(event_overrides, dict):
+            channel_overrides = event_overrides.get(str(event_type or ""))
+            if isinstance(channel_overrides, dict):
+                override = str(channel_overrides.get(channel, "")).strip().lower()
+                if override in {"low", "medium", "high"}:
+                    return override
+        if channel == "page":
+            return preferences.get("page_min_severity") or preferences.get("min_severity", "low")
+        if channel == "browser":
+            return preferences.get("browser_min_severity") or preferences.get("push_min_severity", "medium")
+        return preferences.get("background_min_severity") or preferences.get("push_min_severity", "medium")
+
     def _in_quiet_hours(self, now: datetime, preferences: Dict[str, Any]) -> bool:
         start = self._parse_clock(preferences.get("quiet_hours_start", "23:00"))
         end = self._parse_clock(preferences.get("quiet_hours_end", "07:00"))
@@ -494,6 +845,356 @@ class SupervisionEventManager:
         if start <= end:
             return start <= current < end
         return current >= start or current < end
+
+    def _is_quiet_until(self, now: datetime, preferences: Dict[str, Any]) -> bool:
+        quiet_until = self._parse_time(preferences.get("quiet_until", ""))
+        return bool(quiet_until and quiet_until > now)
+
+    def _llm_natural_language_updates(self, text: str, llm_client: Any = None) -> Dict[str, Any]:
+        if not llm_client or not self._looks_like_reminder_control(text):
+            return {}
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "你是 Workmate Agent 的提醒控制意图分类器。"
+                    "只判断用户是否在调整提醒/通知/监督边界。"
+                    "只输出合法 JSON，不要 Markdown，不要解释。"
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    "从用户输入中分类提醒控制意图。\n"
+                    "允许 intent: none, restore_reminders, pause_reminders, quiet_today, "
+                    "reduce_reminders, increase_reminders, commitments_only, focus_only, tasks_only, all_reminders。\n"
+                    "如果用户只是在普通聊天、汇报计划、表达情绪，不要误判，intent=none。\n"
+                    "可以输出 preferences 覆盖这些字段：enabled, page_min_severity, browser_min_severity, "
+                    "background_min_severity, event_type_min_severity, default_snooze_minutes, "
+                    "notify_focus, notify_commitments, notify_tasks。\n"
+                    "severity 只允许 low/medium/high。confidence 取 0 到 1。\n"
+                    "用户输入："
+                    f"{text}\n"
+                    "输出 JSON 示例："
+                    "{\"intent\":\"reduce_reminders\",\"confidence\":0.82,"
+                    "\"summary\":\"已降低主动提醒强度。\","
+                    "\"preferences\":{\"browser_min_severity\":\"high\",\"background_min_severity\":\"high\"}}"
+                ),
+            },
+        ]
+        try:
+            raw = llm_client.invoke_raw(messages) if hasattr(llm_client, "invoke_raw") else llm_client.invoke(messages=messages)
+            parsed = self._parse_json_object(raw)
+            return self._normalize_llm_control(parsed)
+        except Exception:
+            return {}
+
+    def _looks_like_reminder_control(self, text: str) -> bool:
+        compact = "".join(str(text or "").split()).lower()
+        if not compact:
+            return False
+        keywords = [
+            "提醒", "通知", "推送", "弹窗", "打扰", "催", "安静", "静音", "暂停",
+            "恢复", "关闭", "打开", "少一点", "多一点", "只提醒", "别吵", "别弹",
+            "专注提醒", "任务提醒", "承诺提醒", "手机", "浏览器", "后台",
+        ]
+        return any(keyword in compact for keyword in keywords)
+
+    def _normalize_llm_control(self, parsed: Dict[str, Any]) -> Dict[str, Any]:
+        if not isinstance(parsed, dict):
+            return {}
+        intent = str(parsed.get("intent", "none")).strip().lower()
+        allowed_intents = {
+            "restore_reminders",
+            "pause_reminders",
+            "quiet_today",
+            "reduce_reminders",
+            "increase_reminders",
+            "commitments_only",
+            "focus_only",
+            "tasks_only",
+            "all_reminders",
+        }
+        if intent not in allowed_intents:
+            return {}
+        try:
+            confidence = float(parsed.get("confidence", 0))
+        except (TypeError, ValueError):
+            confidence = 0
+        if confidence < 0.65:
+            return {}
+
+        base = self._control_update_from_intent(intent)
+        preferences = {
+            **base.get("preferences", {}),
+            **self._safe_llm_control_preferences(parsed.get("preferences", {})),
+        }
+        return {
+            "intent": intent,
+            "summary": self._compact(parsed.get("summary") or base.get("summary", ""), 120),
+            "preferences": preferences,
+            "source": "llm",
+        }
+
+    def _control_update_from_intent(self, intent: str) -> Dict[str, Any]:
+        today_until = datetime.now().replace(hour=23, minute=59, second=59, microsecond=0).isoformat(timespec="seconds")
+        mapping = {
+            "restore_reminders": {
+                "summary": "已恢复正常提醒。",
+                "preferences": {
+                    "enabled": True,
+                    "quiet_until": "",
+                    "push_min_severity": "medium",
+                    "browser_min_severity": "medium",
+                    "background_min_severity": "high",
+                    "notify_focus": True,
+                    "notify_commitments": True,
+                    "notify_tasks": True,
+                },
+            },
+            "pause_reminders": {
+                "summary": "已暂停主动提醒。",
+                "preferences": {"enabled": False, "quiet_until": ""},
+            },
+            "quiet_today": {
+                "summary": "今天会先保持安静，提醒仍会记录在页面内。",
+                "preferences": {
+                    "enabled": True,
+                    "quiet_until": today_until,
+                    "push_min_severity": "high",
+                    "browser_min_severity": "high",
+                    "background_min_severity": "high",
+                },
+            },
+            "reduce_reminders": {
+                "summary": "已降低主动提醒强度。",
+                "preferences": {
+                    "enabled": True,
+                    "push_min_severity": "high",
+                    "browser_min_severity": "high",
+                    "background_min_severity": "high",
+                    "default_snooze_minutes": 120,
+                },
+            },
+            "increase_reminders": {
+                "summary": "已略微提高主动提醒强度。",
+                "preferences": {
+                    "enabled": True,
+                    "quiet_until": "",
+                    "push_min_severity": "medium",
+                    "browser_min_severity": "medium",
+                    "background_min_severity": "medium",
+                },
+            },
+            "commitments_only": {
+                "summary": "已切换为只主动提醒承诺。",
+                "preferences": {
+                    "enabled": True,
+                    "quiet_until": "",
+                    "notify_focus": False,
+                    "notify_commitments": True,
+                    "notify_tasks": False,
+                },
+            },
+            "focus_only": {
+                "summary": "已切换为只主动提醒专注。",
+                "preferences": {
+                    "enabled": True,
+                    "quiet_until": "",
+                    "notify_focus": True,
+                    "notify_commitments": False,
+                    "notify_tasks": False,
+                },
+            },
+            "tasks_only": {
+                "summary": "已切换为只主动提醒任务停滞。",
+                "preferences": {
+                    "enabled": True,
+                    "quiet_until": "",
+                    "notify_focus": False,
+                    "notify_commitments": False,
+                    "notify_tasks": True,
+                },
+            },
+            "all_reminders": {
+                "summary": "已开启全部提醒类型。",
+                "preferences": {
+                    "enabled": True,
+                    "quiet_until": "",
+                    "notify_focus": True,
+                    "notify_commitments": True,
+                    "notify_tasks": True,
+                },
+            },
+        }
+        return mapping.get(intent, {})
+
+    def _safe_llm_control_preferences(self, value: Any) -> Dict[str, Any]:
+        if not isinstance(value, dict):
+            return {}
+        safe: Dict[str, Any] = {}
+        severity_fields = {"page_min_severity", "browser_min_severity", "background_min_severity", "push_min_severity"}
+        for field in severity_fields:
+            severity = str(value.get(field, "")).strip().lower()
+            if severity in {"low", "medium", "high"}:
+                safe[field] = severity
+        for field in ["enabled", "notify_focus", "notify_commitments", "notify_tasks"]:
+            if isinstance(value.get(field), bool):
+                safe[field] = value[field]
+        if "event_type_min_severity" in value:
+            event_type_min_severity = self._normalize_event_type_min_severity(value.get("event_type_min_severity"))
+            if event_type_min_severity:
+                safe["event_type_min_severity"] = event_type_min_severity
+        if "default_snooze_minutes" in value:
+            safe["default_snooze_minutes"] = self._bounded_int(value.get("default_snooze_minutes"), 5, 1440)
+        return safe
+
+    def _parse_json_object(self, text: str) -> Dict[str, Any]:
+        text = str(text or "").strip()
+        if text.startswith("```"):
+            text = text.strip("`")
+            if text.startswith("json"):
+                text = text[4:].strip()
+        start = text.find("{")
+        end = text.rfind("}")
+        if start == -1 or end == -1 or end < start:
+            raise ValueError("reminder control output is not a JSON object")
+        parsed = json.loads(text[start:end + 1])
+        if not isinstance(parsed, dict):
+            raise ValueError("reminder control JSON is not object")
+        return parsed
+
+    def _compact(self, text: Any, limit: int = 160) -> str:
+        text = " ".join(str(text or "").split())
+        if len(text) <= limit:
+            return text
+        return text[: max(0, limit - 1)].rstrip() + "…"
+
+    def _natural_language_updates(self, text: str) -> Dict[str, Any]:
+        text = str(text or "").strip()
+        if not text:
+            return {}
+        compact = "".join(text.split()).lower()
+        today_until = datetime.now().replace(hour=23, minute=59, second=59, microsecond=0).isoformat(timespec="seconds")
+
+        if any(phrase in compact for phrase in ["恢复提醒", "打开提醒", "正常提醒", "继续提醒", "提醒恢复"]):
+            return {
+                "intent": "restore_reminders",
+                "summary": "已恢复正常提醒。",
+                "preferences": {
+                    "enabled": True,
+                    "quiet_until": "",
+                    "push_min_severity": "medium",
+                    "browser_min_severity": "medium",
+                    "background_min_severity": "high",
+                    "notify_focus": True,
+                    "notify_commitments": True,
+                    "notify_tasks": True,
+                },
+            }
+
+        if any(phrase in compact for phrase in ["只提醒承诺", "只要承诺提醒", "只推送承诺"]):
+            return {
+                "intent": "commitments_only",
+                "summary": "已切换为只主动提醒承诺。",
+                "preferences": {
+                    "enabled": True,
+                    "quiet_until": "",
+                    "notify_focus": False,
+                    "notify_commitments": True,
+                    "notify_tasks": False,
+                },
+            }
+
+        if any(phrase in compact for phrase in ["只提醒专注", "只要专注提醒", "只推送专注"]):
+            return {
+                "intent": "focus_only",
+                "summary": "已切换为只主动提醒专注。",
+                "preferences": {
+                    "enabled": True,
+                    "quiet_until": "",
+                    "notify_focus": True,
+                    "notify_commitments": False,
+                    "notify_tasks": False,
+                },
+            }
+
+        if any(phrase in compact for phrase in ["只提醒任务", "只要任务提醒", "只推送任务"]):
+            return {
+                "intent": "tasks_only",
+                "summary": "已切换为只主动提醒任务停滞。",
+                "preferences": {
+                    "enabled": True,
+                    "quiet_until": "",
+                    "notify_focus": False,
+                    "notify_commitments": False,
+                    "notify_tasks": True,
+                },
+            }
+
+        if any(phrase in compact for phrase in ["提醒全部", "全部提醒", "所有提醒"]):
+            return {
+                "intent": "all_reminders",
+                "summary": "已开启全部提醒类型。",
+                "preferences": {
+                    "enabled": True,
+                    "quiet_until": "",
+                    "notify_focus": True,
+                    "notify_commitments": True,
+                    "notify_tasks": True,
+                },
+            }
+
+        if any(phrase in compact for phrase in ["今天安静一点", "今天别提醒", "今天不要提醒", "今天先安静", "今天安静"]):
+            return {
+                "intent": "quiet_today",
+                "summary": "今天会先保持安静，提醒仍会记录在页面内。",
+                "preferences": {
+                    "enabled": True,
+                    "quiet_until": today_until,
+                    "push_min_severity": "high",
+                    "browser_min_severity": "high",
+                    "background_min_severity": "high",
+                },
+            }
+
+        if any(phrase in compact for phrase in ["暂停提醒", "关闭提醒", "不要提醒我", "先别提醒"]):
+            return {
+                "intent": "pause_reminders",
+                "summary": "已暂停主动提醒。",
+                "preferences": {
+                    "enabled": False,
+                    "quiet_until": "",
+                },
+            }
+
+        if any(phrase in compact for phrase in ["少提醒", "别太频繁", "提醒少一点", "安静一点"]):
+            return {
+                "intent": "reduce_reminders",
+                "summary": "已降低主动提醒强度。",
+                "preferences": {
+                    "enabled": True,
+                    "push_min_severity": "high",
+                    "browser_min_severity": "high",
+                    "background_min_severity": "high",
+                    "default_snooze_minutes": 120,
+                },
+            }
+
+        if any(phrase in compact for phrase in ["多提醒", "积极提醒", "提醒积极一点"]):
+            return {
+                "intent": "increase_reminders",
+                "summary": "已略微提高主动提醒强度。",
+                "preferences": {
+                    "enabled": True,
+                    "quiet_until": "",
+                    "push_min_severity": "medium",
+                    "browser_min_severity": "medium",
+                    "background_min_severity": "medium",
+                },
+            }
+
+        return {}
 
     def _parse_clock(self, text: str) -> Optional[int]:
         parts = str(text or "").split(":")
@@ -514,14 +1215,30 @@ class SupervisionEventManager:
         push_min_severity = str(preferences.get("push_min_severity", defaults["push_min_severity"])).lower()
         if push_min_severity not in {"low", "medium", "high"}:
             push_min_severity = defaults["push_min_severity"]
+        page_min_severity = str(preferences.get("page_min_severity", defaults["page_min_severity"])).lower()
+        if page_min_severity not in {"low", "medium", "high"}:
+            page_min_severity = defaults["page_min_severity"]
+        browser_min_severity = str(preferences.get("browser_min_severity", push_min_severity)).lower()
+        if browser_min_severity not in {"low", "medium", "high"}:
+            browser_min_severity = push_min_severity
+        background_min_severity = str(preferences.get("background_min_severity", defaults["background_min_severity"])).lower()
+        if background_min_severity not in {"low", "medium", "high"}:
+            background_min_severity = defaults["background_min_severity"]
+        event_type_min_severity = self._normalize_event_type_min_severity(
+            preferences.get("event_type_min_severity", defaults["event_type_min_severity"])
+        )
         strength = str(preferences.get("reminder_strength", defaults["reminder_strength"])).lower()
-        if strength not in {"gentle", "normal"}:
+        if strength not in {"soft", "gentle", "normal"}:
             strength = defaults["reminder_strength"]
         return {
             "enabled": bool(preferences.get("enabled", defaults["enabled"])),
             "reminder_strength": strength,
             "min_severity": severity,
-            "push_min_severity": push_min_severity,
+            "push_min_severity": browser_min_severity,
+            "page_min_severity": page_min_severity,
+            "browser_min_severity": browser_min_severity,
+            "background_min_severity": background_min_severity,
+            "event_type_min_severity": event_type_min_severity,
             "default_snooze_minutes": self._bounded_int(preferences.get("default_snooze_minutes", 60), 5, 1440),
             "default_mute_hours": self._bounded_int(preferences.get("default_mute_hours", 24), 1, 168),
             "quiet_hours_enabled": bool(preferences.get("quiet_hours_enabled", defaults["quiet_hours_enabled"])),
@@ -529,10 +1246,33 @@ class SupervisionEventManager:
             if self._parse_clock(preferences.get("quiet_hours_start", "")) is not None else defaults["quiet_hours_start"],
             "quiet_hours_end": preferences.get("quiet_hours_end", defaults["quiet_hours_end"])
             if self._parse_clock(preferences.get("quiet_hours_end", "")) is not None else defaults["quiet_hours_end"],
+            "quiet_until": preferences.get("quiet_until", defaults["quiet_until"])
+            if self._parse_time(preferences.get("quiet_until", "")) is not None or not preferences.get("quiet_until")
+            else defaults["quiet_until"],
             "notify_focus": bool(preferences.get("notify_focus", defaults["notify_focus"])),
             "notify_commitments": bool(preferences.get("notify_commitments", defaults["notify_commitments"])),
             "notify_tasks": bool(preferences.get("notify_tasks", defaults["notify_tasks"])),
         }
+
+    def _normalize_event_type_min_severity(self, value: Any) -> Dict[str, Dict[str, str]]:
+        if not isinstance(value, dict):
+            return {}
+        allowed_types = {"focus_expired", "commitment_due_today", "commitment_overdue", "task_stale"}
+        allowed_channels = {"page", "browser", "background"}
+        result: Dict[str, Dict[str, str]] = {}
+        for event_type, channels in value.items():
+            event_type = str(event_type or "").strip()
+            if event_type not in allowed_types or not isinstance(channels, dict):
+                continue
+            normalized_channels = {}
+            for channel, severity in channels.items():
+                channel = str(channel or "").strip().lower()
+                severity = str(severity or "").strip().lower()
+                if channel in allowed_channels and severity in {"low", "medium", "high"}:
+                    normalized_channels[channel] = severity
+            if normalized_channels:
+                result[event_type] = normalized_channels
+        return result
 
     def _dedupe_key(self, event: Dict[str, Any]) -> str:
         return "|".join([

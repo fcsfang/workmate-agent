@@ -101,10 +101,13 @@ class MemoryManager:
         self.task_state_manager = self.task_state.task_state_manager
         self.commitment_manager = self.task_state.commitment_manager
         self.user_profile_manager = user_profile_manager or UserProfileManager()
+        self.llm_client: Any = None
         self.last_pipeline_result: Dict[str, Any] = {}
+        self.last_reminder_control: Dict[str, Any] = {}
         self.memory_path.parent.mkdir(parents=True, exist_ok=True)
 
     def set_llm_client(self, llm_client: Any) -> None:
+        self.llm_client = llm_client
         self.extractor.set_llm_client(llm_client)
         self.insight_manager.set_llm_client(llm_client)
         self.intent_manager.set_llm_client(llm_client)
@@ -346,10 +349,15 @@ class MemoryManager:
             focus_state=self.get_focus_session_state(),
             commitments=self.task_state.all_commitments(),
             task_view=self.get_task_view(),
+            user_profile=self.get_user_profile(),
         )
 
-    def get_supervision_event_state(self) -> Dict[str, Any]:
-        return self.supervision_event_manager.build_state()
+    def get_supervision_event_state(self, current_prompt: str = "") -> Dict[str, Any]:
+        support_state = self.get_support_knowledge_state(current_prompt) if current_prompt else {}
+        return self.supervision_event_manager.build_state(
+            support_state=support_state,
+            user_profile=self.get_user_profile(),
+        )
 
     def update_supervision_event(
         self,
@@ -379,6 +387,11 @@ class MemoryManager:
 
     def update_supervision_preferences(self, updates: Dict[str, Any]) -> Dict[str, Any]:
         return self.supervision_event_manager.update_preferences(updates)
+
+    def apply_reminder_control_from_text(self, text: str) -> Dict[str, Any]:
+        result = self.supervision_event_manager.apply_natural_language_control(text, llm_client=self.llm_client)
+        self.last_reminder_control = result
+        return result
 
     def _resolve_supervision_subject(self, event: Dict[str, Any]) -> List[Dict[str, Any]]:
         event_type = event.get("type", "")
@@ -665,7 +678,7 @@ class MemoryManager:
             {"role": "system", "content": self.memory_category_manager.format_for_context()},
             {"role": "system", "content": self.memory_item_manager.format_for_context()},
             {"role": "system", "content": self.supervision_manager.format_for_context(self.get_supervision_state())},
-            {"role": "system", "content": self.supervision_event_manager.format_for_context(self.get_supervision_event_state())},
+            {"role": "system", "content": self.supervision_event_manager.format_for_context(self.get_supervision_event_state(current_prompt))},
             {"role": "system", "content": self.support_knowledge_manager.format_for_context(self.get_support_knowledge_state(current_prompt))},
             *self.get_recent_messages(),
         ]
@@ -690,7 +703,7 @@ class MemoryManager:
             "memory_conflicts": self.get_memory_conflicts(),
             "reflections": self.get_reflections(),
             "supervision": self.get_supervision_state(),
-            "supervision_events": self.get_supervision_event_state(),
+            "supervision_events": self.get_supervision_event_state(current_prompt),
             "focus_session": self.get_focus_session_state(),
             "support_knowledge": self.get_support_knowledge_state(current_prompt),
         }

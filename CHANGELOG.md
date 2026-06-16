@@ -1,3 +1,85 @@
+## V1.4
+### 目标
+- 将现有“上下文规划、内部工具调用、模型回复、记忆写回”流程显性化为可观察的 Agent Runtime
+- 让项目从 API 聊天窗口进一步升级为具备清晰 Agent Loop 和运行轨迹的工程项目
+
+### 已实现
+#### Agent Runtime
+- 新增 `agent/runtime.py`，封装单轮 Agent 执行流程
+- 每轮统一生成 `turn_id`，并记录 `started_at`、`completed_at`、`duration_ms`、`status` 和 `streaming`
+- 执行阶段拆分为 `apply_reminder_control`、`plan_context`、`execute_tools`、`generate_response`、`write_memory`、`update_supervision_state`
+- 每个阶段记录状态、耗时、摘要 metadata 和错误信息，用于观察 Agent Loop 是否正常执行
+- `src/core.py` 改为委托 `AgentRuntime` 执行，保留原有 `WorkmateAgent.invoke()`、`invoke_stream()`、CLI 行为
+
+#### Turn Trace
+- 将原有 `last_context_messages`、`last_tool_calls`、`last_pipeline_result` 整合为统一的 `turn_trace`
+- `turn_trace` 记录上下文消息数、上下文估算、工具调用结果、工具观察、记忆写回结果和回复摘要
+- 新增 `WorkmateAgent.get_last_turn_trace()`，方便 Web/API 读取最近一轮运行轨迹
+- trace 只暴露执行过程，不记录或展示模型隐藏推理链
+
+#### Web/API 可观察性
+- `/api/chat`、流式 done 事件、`/api/memory` 和 `/api/context` 均返回最近一轮 `turn_trace`
+- Web 左侧 `MEMORY` 面板新增 `runtime` 字段，展示 turn id、执行状态、耗时、消息数量和主要阶段
+- 保持原有 `tool_calls`、`MODEL CONTEXT` 和记忆调试信息不变
+
+## V1.3
+### 目标
+- 让主动提醒策略开始参考用户反馈，而不是所有提醒长期使用同一套强度
+- 保持用户可控：系统只给策略建议，不在后台悄悄改变提醒边界
+
+### 已实现
+#### 提醒策略建议层
+- `SupervisionEventManager.build_state()` 新增 `strategy`
+- 策略层会基于 `feedback_stats` 分析用户更常确认/关闭提醒，还是更常稍后/静音提醒
+- 当用户多次选择 `snoozed` 或 `muted` 时，会建议提高 `push_min_severity` 或延长默认稍后提醒间隔
+- 当用户近期更常确认或关闭提醒，且当前推送门槛过高时，会建议把 `push_min_severity` 从 `high` 调回 `medium`
+- 策略层会输出 `recommendations`、`preference_updates` 和按事件类型统计的 `type_friction`
+
+#### 压力感知语气策略
+- `strategy` 新增 `tone_policy`
+- 复用支持性知识层识别到的 `anxious / tired / avoidant / stuck / scattered / overplanning` 等状态，自动建议降低监督语气
+- 深夜或清晨等休息时段会进入 `soften` 策略，提示模型只做状态确认和一个很小的提示，不追问、不催促、不展开长建议
+- 前端 `APPLY STRATEGY` 会同时合并普通策略建议和语气策略建议，例如把 `reminder_strength` 调整为 `soft`、把 `push_min_severity` 调整为 `high`
+- 语气策略进入模型上下文，用于减少用户低能量状态下的压力感
+
+#### 个性化提醒文案
+- `strategy` 新增 `copy_policy`
+- 监督事件刷新时会读取长期用户画像中的 `communication_preference` 和 `effective_interventions`
+- 根据“先帮用户记住和整理”“低压力回应”“只给一个小建议”“不要要求证明”等偏好，为事件生成用户可见的 `display_message`
+- 原始 `message` 继续保留用于结构化调试，Web 事件卡片、浏览器通知和后台推送优先使用 `display_message`
+- 模型上下文会标注当前提醒文案策略，避免监督事件在低压力偏好下显得生硬
+
+#### 分渠道提醒门槛
+- 提醒偏好新增 `page_min_severity`、`browser_min_severity` 和 `background_min_severity`
+- 保留 `push_min_severity` 作为兼容字段，并映射到浏览器通知门槛
+- 页面内监督事件列表按 `page_min_severity` 过滤，默认仍显示低优先级事件
+- 浏览器 Notification API 使用 `browser_min_severity`，默认从中等级事件开始弹出
+- 后台常驻推送使用 `background_min_severity`，默认只推送高优先级事件，减少 macOS/Bark/飞书等渠道的打扰
+- 自适应策略和自然语言控制会同步更新浏览器/后台门槛，例如“今天安静一点”会把两个主动推送渠道都调到 `high`
+
+#### 事件类型反馈策略
+- 提醒偏好新增 `event_type_min_severity`
+- 策略层会根据 `feedback_stats.by_type` 观察不同监督事件类型的反馈，例如 `focus_expired`、`task_stale`、`commitment_due_today`
+- 如果某类提醒更常被 `snoozed` 或 `muted`，策略会只提高这一类事件的浏览器/后台门槛，而不粗暴降低所有提醒
+- 如果某类提醒更常被确认或关闭，策略会允许这一类事件保持中等级浏览器提醒
+- 前端策略卡片新增 `type_preference_signals` 展示，让用户点击 `APPLY STRATEGY` 前能看到是哪类提醒触发了调整
+
+#### 自然语言提醒控制
+- 新增 `SupervisionEventManager.apply_natural_language_control()`
+- `WorkmateAgent` 在构建上下文前会先识别用户输入中的显式提醒控制短语
+- 支持“今天安静一点”“今天别提醒”“暂停提醒”“恢复提醒”“只提醒承诺”“只提醒专注”“只提醒任务”“提醒全部”“少提醒”“多提醒”等轻量控制
+- V1.3 后续增强为 LLM 优先分类、规则兜底：当输入看起来像提醒/通知/推送控制时，会先调用 `LLMClient.invoke_raw()` 识别意图和安全偏好更新
+- LLM 输出只允许白名单字段生效，包括启停提醒、三类渠道门槛、默认稍后分钟数和事件类型开关；置信度不足或 JSON 不合法时自动回退到规则短语
+- 新增偏好字段 `quiet_until`，用于支持“今天安静一点”这类临时静音，不需要关闭整个监督系统
+- `/api/memory` 和 `/api/context` 暴露 `last_reminder_control`，方便调试最近一次自然语言控制是否生效
+
+#### Web 交互
+- `SUPERVISION EVENTS / PREFERENCES` 区域新增 adaptive reminder strategy 卡片
+- 前端展示当前策略模式、推荐改动和事件类型摩擦说明
+- 前端会展示自然语言临时静音状态，例如安静到当天几点
+- 新增 `APPLY STRATEGY` 按钮，用户点击后才会把推荐值写入提醒偏好
+- 保持原有手动偏好设置不变，策略建议只是辅助用户调整提醒强度
+
 ## V1.2
 ### 目标
 - 让用户打开页面后，不需要翻聊天记录就能看到当前主线、今日进展和本周节奏

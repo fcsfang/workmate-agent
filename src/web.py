@@ -43,6 +43,7 @@ class WorkmateWebApp:
             "memory": self.memory_state(prompt),
             "context": self.context_state(),
             "tool_calls": self.tool_state(),
+            "turn_trace": self.turn_trace_state(),
         }
 
     def chat_stream(self, prompt):
@@ -53,6 +54,7 @@ class WorkmateWebApp:
             "memory": self.memory_state(prompt),
             "context": self.context_state(),
             "tool_calls": self.tool_state(),
+            "turn_trace": self.turn_trace_state(),
         }
 
     def memory_state(self, current_prompt=""):
@@ -83,10 +85,12 @@ class WorkmateWebApp:
             "memory_conflicts": self.memory_manager.get_memory_conflicts(),
             "reflections": self.memory_manager.get_reflections(),
             "supervision": self.memory_manager.get_supervision_state(),
-            "supervision_events": self.memory_manager.get_supervision_event_state(),
+            "supervision_events": self.memory_manager.get_supervision_event_state(current_prompt),
             "focus_session": self.memory_manager.get_focus_session_state(),
             "support_knowledge": self.memory_manager.get_support_knowledge_state(current_prompt),
             "tool_calls": self.tool_state(),
+            "turn_trace": self.turn_trace_state(),
+            "last_reminder_control": self.memory_manager.last_reminder_control,
             "memory_pipeline": context_debug.get("memory_pipeline", {}),
             "last_pipeline_result": context_debug.get("last_pipeline_result", {}),
             "context_stats": context_debug.get("context_stats", {}),
@@ -119,6 +123,8 @@ class WorkmateWebApp:
             "focus_session": self.memory_manager.get_focus_session_state(),
             "support_knowledge": self.memory_manager.get_support_knowledge_state(""),
             "tool_calls": self.tool_state(),
+            "turn_trace": self.turn_trace_state(),
+            "last_reminder_control": self.memory_manager.last_reminder_control,
             "last_pipeline_result": self.memory_manager.last_pipeline_result,
         }
 
@@ -148,6 +154,11 @@ class WorkmateWebApp:
         if not self.agent:
             return []
         return self.agent.get_last_tool_calls()
+
+    def turn_trace_state(self):
+        if not self.agent:
+            return {}
+        return self.agent.get_last_turn_trace()
 
     def dashboard_state(self):
         self.memory_manager.refresh_supervision_events()
@@ -210,10 +221,10 @@ class WorkmateWebApp:
     def run_background_checks(self):
         events = self.memory_manager.refresh_supervision_events()
         for event in events:
-            if not self.memory_manager.supervision_event_manager.should_notify(event):
+            if not self.memory_manager.supervision_event_manager.should_notify(event, channel="background"):
                 continue
             title = event.get("title") or "Workmate Agent 提醒"
-            body = event.get("message") or "有一个事项需要你稍后回来处理。"
+            body = event.get("display_message") or event.get("message") or "有一个事项需要你稍后回来处理。"
             self.notifier.send_notification(title, body)
             self.memory_manager.update_supervision_event(event.get("id", ""), "mark_notified")
 
