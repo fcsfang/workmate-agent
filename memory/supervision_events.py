@@ -386,6 +386,15 @@ class SupervisionEventManager:
         # 如果没有配置大模型，或者大模型调用失败，则退回到本地规则匹配 (Rule-based check)
         
         app_name, window_title = self._get_active_window_macos()
+        
+        # 如果当前活跃窗口是本 Agent 的前端网页（Workmate Agent）或终端，则直接静默跳过，避免生成提醒干扰用户交互
+        if app_name:
+            app_lower = app_name.lower()
+            title_lower = window_title.lower()
+            if "workmate" in app_lower or "workmate" in title_lower or "antigravity" in app_lower or "antigravity" in title_lower:
+                print(f"[DEBUG] Active window is Workmate Agent ({app_name} - {window_title}), skipping screen monitor.")
+                return {}
+                
         rule_result = self._rule_based_check(app_name, window_title, goal) if app_name else None
 
         # 尝试调用多模态 Vision 模型
