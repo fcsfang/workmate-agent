@@ -160,8 +160,6 @@ def test_rule_based_whitelist_bypass(tmp_path):
         preferences_path=str(tmp_path / "preferences.json"),
     )
     
-    mock_llm = MagicMock()
-    manager.set_llm_client(mock_llm)
 
     focus_state = {
         "current": {
@@ -193,7 +191,7 @@ def test_rule_based_whitelist_bypass(tmp_path):
         # 结果应不生成偏航事件，并且完全没有调用 invoke_vision API 扣费
         deviation_events = [e for e in active_events if e["type"] == "screen_deviation"]
         assert len(deviation_events) == 0
-        mock_llm.invoke_vision.assert_not_called()
+
 
 
 def test_rule_based_blacklist_intercept(tmp_path):
@@ -203,8 +201,6 @@ def test_rule_based_blacklist_intercept(tmp_path):
         preferences_path=str(tmp_path / "preferences.json"),
     )
     
-    mock_llm = MagicMock()
-    manager.set_llm_client(mock_llm)
 
     focus_state = {
         "current": {
@@ -238,7 +234,7 @@ def test_rule_based_blacklist_intercept(tmp_path):
         assert len(deviation_events) == 1
         assert deviation_events[0]["subject_id"] == "focus-session-123"
         assert "Google Chrome" in deviation_events[0]["message"]
-        mock_llm.invoke_vision.assert_not_called()
+
 
 
 def test_auto_monitor_during_work_hours(tmp_path):
@@ -248,8 +244,6 @@ def test_auto_monitor_during_work_hours(tmp_path):
         preferences_path=str(tmp_path / "preferences.json"),
     )
     
-    mock_llm = MagicMock()
-    manager.set_llm_client(mock_llm)
 
     # No active focus session
     focus_state = {"current": {}}
@@ -297,14 +291,12 @@ def test_auto_monitor_during_work_hours(tmp_path):
         assert deviation_events[0]["subject_type"] == "task"
         assert deviation_events[0]["subject_id"] == "task-abc"
         assert "补习大模型多模态论文" in deviation_events[0]["display_message"]
-        mock_llm.invoke_vision.assert_not_called()
+
 
 
 def test_screen_deviation_chat_injection(tmp_memory_manager):
     """测试当检测到屏幕偏航事件时，系统会自动在对话历史记录中插入一条偏航提醒消息"""
     # Initialize mock llm_client
-    mock_llm = MagicMock()
-    tmp_memory_manager.supervision_event_manager.set_llm_client(mock_llm)
 
     # Enable auto work hours monitor
     prefs = tmp_memory_manager.get_supervision_preferences()
@@ -380,8 +372,6 @@ def test_custom_blacklist_keywords_intercept(tmp_path):
         preferences_path=str(tmp_path / "preferences.json"),
     )
     
-    mock_llm = MagicMock()
-    manager.set_llm_client(mock_llm)
 
     focus_state = {
         "current": {
@@ -407,7 +397,7 @@ def test_custom_blacklist_keywords_intercept(tmp_path):
         deviation_events = [e for e in active_events if e["type"] == "screen_deviation"]
         assert len(deviation_events) == 1
         assert "WeChat" in deviation_events[0]["message"]
-        mock_llm.invoke_vision.assert_not_called()  # 验证没调用 Vision
+  # 验证没调用 Vision
 
     # Clear events and preferences for the second test
     manager.save_events([])
@@ -425,7 +415,7 @@ def test_custom_blacklist_keywords_intercept(tmp_path):
         deviation_events = [e for e in active_events if e["type"] == "screen_deviation"]
         assert len(deviation_events) == 1
         assert "Google Chrome" in deviation_events[0]["message"]
-        mock_llm.invoke_vision.assert_not_called()
+
 
 
 def test_screen_accompaniment_and_auto_resolution(tmp_memory_manager):
@@ -434,8 +424,6 @@ def test_screen_accompaniment_and_auto_resolution(tmp_memory_manager):
     2. 伴随消息应成功持久化写入对话历史。
     3. 当用户下一次检测时偏航到 Bilibili 时，旧的 screen_accompaniment 事件应该自动被 resolution 机制状态机 resolved，并且产生新的 screen_deviation 事件。
     """
-    mock_llm = MagicMock()
-    tmp_memory_manager.supervision_event_manager.set_llm_client(mock_llm)
 
     # 开启工作时间监视
     prefs = tmp_memory_manager.get_supervision_preferences()

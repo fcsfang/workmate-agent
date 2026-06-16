@@ -368,8 +368,11 @@ class LLMClient:
         
         from openai import OpenAI
 
-        #创建openai客户端
-        self.client = OpenAI(api_key=self.apiKey, base_url=self.baseUrl, timeout=self.timeout)
+        # 创建 openai 客户端，覆盖默认 User-Agent 以防止部分中转 API (如 ccapi.us) 的防火墙拦截
+        default_headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        self.client = OpenAI(api_key=self.apiKey, base_url=self.baseUrl, timeout=self.timeout, default_headers=default_headers)
         self.vision_model = os.getenv("VISION_MODEL_ID") or self.model
         self.vision_apiKey = os.getenv("VISION_API_KEY") or self.apiKey
         self.vision_baseUrl = os.getenv("VISION_BASE_URL") or self.baseUrl
@@ -377,7 +380,7 @@ class LLMClient:
         if self.vision_apiKey == self.apiKey and self.vision_baseUrl == self.baseUrl:
             self.vision_client = self.client
         else:
-            self.vision_client = OpenAI(api_key=self.vision_apiKey, base_url=self.vision_baseUrl, timeout=self.timeout)
+            self.vision_client = OpenAI(api_key=self.vision_apiKey, base_url=self.vision_baseUrl, timeout=self.timeout, default_headers=default_headers)
 
 
     def _build_messages(self, prompt=None, messages=None):

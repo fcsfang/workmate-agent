@@ -10,7 +10,9 @@
 - **免 App 控制权限弹窗优化**：重构 AppleScript 系统交互，使用 `System Events` 的 `frontmostProcess` 探测活跃窗口，在 macOS 下仅需一次性授予“辅助功能”权限，后续切换到任何新软件都绝对不会触发频繁控制弹窗，保证极佳体验。
 - **自定义黑/白名单过滤**：前端新增自定义黑名单/白名单关键词输入，逗号分隔，比对活跃窗口具有最高优先级，命中时直接拦截/放行，**绕过 Vision 多模态模型**，实现零延时和零 API 扣费。
 - **前端偏好设置面板**：在 Web 页面的 "SUPERVISION EVENTS" 标题右侧增加 `⚙️ 配置` 折叠/展开按钮。支持可视化配置屏幕监测开关、冷却时间（测试阶段硬编码强制 1 分钟）、工作时间自动激活及时间起止范围、自定义黑白名单关键词。
-- **测试覆盖**：在 `tests/test_screen_monitor.py` 中新增 `test_screen_accompaniment_and_auto_resolution` 等完整单元测试。运行 `pytest` 所有 26 项单元测试全部通过。
+- **中转 API 防火墙伪装与绕过**：针对官方 OpenAI SDK 流量易被部分中转 API 站（如 `ccapi.us`）的 Cloudflare / WAF 防火墙误杀拦截（报错 `Your request was blocked`）的问题，在 [src/LLMClient.py](file:///Users/joey/01 Projects/实习/workmate-agent/src/LLMClient.py) 中重构了客户端初始化逻辑，强制注入标准的 macOS 浏览器 `User-Agent` 请求头成功实施伪装绕过，实现充值账户高可用。
+- **检测逻辑优先级优化**：配置大模型时，检测始终**优先调用 Vision 多模态模型**分析屏幕内容，生成高度定制化、情境相关的陪伴跟进或偏航警报文案，而将本地白名单/黑名单仅作为免配大模型/网络异常时的无缝降级（Fallback）防线；同时扩展默认白名单以屏蔽 Agent 看板自身的误识别。
+- **单元测试与防抖时间 Mock 优化**：同步调整 [tests/test_screen_monitor.py](file:///Users/joey/01 Projects/实习/workmate-agent/tests/test_screen_monitor.py) 以支持优先级变更和无 API 降级拦截覆盖；解决了测试由于系统当前真实时间与 patch 时间冲突导致的负差时间防抖拦截漏洞。运行 `pytest` 所有 26 项单元测试全部通过。
 
 ## V1.8
 ### 目标
