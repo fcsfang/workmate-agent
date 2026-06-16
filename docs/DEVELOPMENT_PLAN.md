@@ -189,6 +189,8 @@ error isolation, and state mutation auditing.
 
 ### V1.7 Evaluation Suite
 
+状态：已实现。
+
 目标：补齐 Agent 项目最关键的工程证明：可复现评估。
 
 要做：
@@ -218,6 +220,15 @@ error isolation, and state mutation auditing.
 - 至少 20 条固定用例
 - 报告输出到 `evals/reports/`
 - CI 中可以运行不依赖真实 LLM 的 eval smoke test
+
+实现记录：
+
+- 新增 `evals/cases.json`，内置 24 条固定评估用例
+- 新增 `evals/run_eval.py`，使用 rule / fake LLM 模式运行，不依赖真实 API Key
+- 覆盖 memory recall、task tracking、commitment extraction、reminder control、tool calling、context planning、supervision event lifecycle
+- 输出 JSON 和 Markdown 报告到 `evals/reports/`
+- 默认 `--min-score 1.0`，可直接作为后续 CI smoke test 命令
+- `.gitignore` 忽略本地生成的 eval 报告，只保留 `evals/reports/.gitkeep`
 
 简历亮点：
 

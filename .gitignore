@@ -23,6 +23,10 @@ __pycache__/
 tmp/
 temp/
 
+evals/reports/*.json
+evals/reports/*.md
+!evals/reports/.gitkeep
+
 memory/data/*.json
 memory/data/daily_summaries/*
 !memory/data/.gitkeep

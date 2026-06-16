@@ -1,0 +1,171 @@
+[
+  {
+    "id": "intent_task_001",
+    "category": "intent_accuracy",
+    "input": "我今天继续开发工具调用 trace",
+    "expected": {"intent": "task"}
+  },
+  {
+    "id": "intent_search_001",
+    "category": "intent_accuracy",
+    "input": "帮我找一下之前关于记忆系统的讨论",
+    "expected": {"intent": "search"}
+  },
+  {
+    "id": "intent_supervision_001",
+    "category": "intent_accuracy",
+    "input": "今晚 9 点提醒我复盘",
+    "expected": {"intent": "supervision"}
+  },
+  {
+    "id": "memory_recall_task_001",
+    "category": "memory_recall",
+    "input": "记忆检索任务现在有什么进度",
+    "items": [
+      {"type": "task", "id": "task-rag", "text": "Hybrid Memory RAG 记忆检索任务 正在完成评分解释", "terms": ["hybrid", "memory", "rag", "记忆", "检索", "任务", "进度"], "salience": 0.8, "status": "active"},
+      {"type": "record", "id": "record-chat", "text": "普通闲聊", "terms": ["普通", "闲聊"]}
+    ],
+    "expected": {"top_source_id": "task-rag"}
+  },
+  {
+    "id": "memory_recall_commitment_001",
+    "category": "memory_recall",
+    "input": "我之前承诺过什么",
+    "items": [
+      {"type": "commitment", "id": "commit-readme", "text": "承诺 今天补齐 README", "terms": ["承诺", "今天", "readme"], "salience": 0.6, "status": "open"},
+      {"type": "task", "id": "task-other", "text": "调试前端布局", "terms": ["前端", "布局"]}
+    ],
+    "expected": {"top_source_id": "commit-readme"}
+  },
+  {
+    "id": "memory_recall_pattern_001",
+    "category": "memory_recall",
+    "input": "最近有什么行为模式值得注意",
+    "items": [
+      {"type": "behavior_pattern", "id": "pattern-scatter", "text": "任务分散 多个任务同时推进", "terms": ["任务", "分散", "模式"], "salience": 0.7, "status": "active"},
+      {"type": "record", "id": "record-other", "text": "今天吃饭", "terms": ["吃饭"]}
+    ],
+    "expected": {"top_source_id": "pattern-scatter"}
+  },
+  {
+    "id": "task_tracking_done_001",
+    "category": "task_tracking",
+    "input": "我完成了工具 trace 测试",
+    "task": {"id": "task-tool", "title": "工具 trace 测试", "status": "active"},
+    "action": {"status": "done", "reason": "用户明确完成"},
+    "expected": {"status": "done"}
+  },
+  {
+    "id": "task_tracking_blocked_001",
+    "category": "task_tracking",
+    "input": "我卡在前端展示 trace",
+    "task": {"id": "task-front", "title": "前端展示 trace", "status": "active"},
+    "action": {"status": "blocked", "reason": "用户明确卡住"},
+    "expected": {"status": "blocked"}
+  },
+  {
+    "id": "task_tracking_abandoned_001",
+    "category": "task_tracking",
+    "input": "这个旧任务先放弃",
+    "task": {"id": "task-old", "title": "旧任务", "status": "active"},
+    "action": {"status": "abandoned", "reason": "用户明确放弃"},
+    "expected": {"status": "abandoned"}
+  },
+  {
+    "id": "commitment_extract_new_001",
+    "category": "commitment_extraction",
+    "input": "我今晚整理 README",
+    "extracted": {"user_commitments": ["今晚整理 README"]},
+    "expected": {"open_contains": "README"}
+  },
+  {
+    "id": "commitment_extract_close_001",
+    "category": "commitment_extraction",
+    "input": "我已经完成整理 README",
+    "seed_commitments": [{"id": "commit-readme", "owner": "user", "task": "文档", "commitment": "整理 README", "deadline": "", "status": "open", "created_at": "2026-06-16T09:00:00", "closed_at": ""}],
+    "extracted": {"user_commitments": []},
+    "expected": {"closed_id": "commit-readme"}
+  },
+  {
+    "id": "commitment_extract_deadline_001",
+    "category": "commitment_extraction",
+    "input": "我明天补测试",
+    "extracted": {"user_commitments": ["明天补测试"]},
+    "expected": {"open_contains": "补测试", "has_deadline": true}
+  },
+  {
+    "id": "reminder_control_quiet_001",
+    "category": "reminder_control",
+    "input": "今天安静一点",
+    "expected": {"applied": true, "browser_min_severity": "high"}
+  },
+  {
+    "id": "reminder_control_commitments_001",
+    "category": "reminder_control",
+    "input": "今天只提醒承诺",
+    "expected": {"applied": true, "notify_commitments": true, "notify_focus": false, "notify_tasks": false}
+  },
+  {
+    "id": "reminder_control_resume_001",
+    "category": "reminder_control",
+    "input": "恢复提醒",
+    "expected": {"applied": true, "enabled": true}
+  },
+  {
+    "id": "tool_calling_search_001",
+    "category": "tool_calling",
+    "tool": "search_memory",
+    "arguments": {"query": "工具 trace"},
+    "expected": {"status": "success", "read_only": true}
+  },
+  {
+    "id": "tool_calling_update_task_001",
+    "category": "tool_calling",
+    "tool": "update_task_status",
+    "arguments": {"task_id": "task-1", "status": "done", "reason": "完成"},
+    "expected": {"status": "success", "read_only": false}
+  },
+  {
+    "id": "tool_calling_max_calls_001",
+    "category": "tool_calling",
+    "plan": [{"tool": "noop"}, {"tool": "noop"}, {"tool": "noop"}],
+    "max_calls": 2,
+    "expected": {"call_count": 2}
+  },
+  {
+    "id": "context_planning_task_001",
+    "category": "context_planning",
+    "input": "我继续开发评估系统",
+    "expected": {"includes": ["task_lifecycle", "task_state", "retrieval_plan", "related_memories"]}
+  },
+  {
+    "id": "context_planning_weekly_001",
+    "category": "context_planning",
+    "input": "帮我生成本周复盘",
+    "expected": {"includes": ["weekly_report_data", "behavior_stats", "commitments"]}
+  },
+  {
+    "id": "context_planning_support_001",
+    "category": "context_planning",
+    "input": "我现在很焦虑，任务太多",
+    "expected": {"includes": ["support_knowledge"]}
+  },
+  {
+    "id": "supervision_lifecycle_focus_001",
+    "category": "supervision_lifecycle",
+    "scenario": "focus_expired_acknowledge",
+    "expected": {"detected_type": "focus_expired", "final_status": "acknowledged"}
+  },
+  {
+    "id": "supervision_lifecycle_commitment_001",
+    "category": "supervision_lifecycle",
+    "scenario": "commitment_overdue_resolve",
+    "expected": {"detected_type": "commitment_overdue", "final_status": "resolved"}
+  },
+  {
+    "id": "supervision_lifecycle_task_001",
+    "category": "supervision_lifecycle",
+    "scenario": "task_stale_snooze",
+    "expected": {"detected_type": "task_stale", "final_status": "snoozed"}
+  }
+]

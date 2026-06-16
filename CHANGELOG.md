@@ -1,3 +1,31 @@
+## V1.7
+### 目标
+- 为 Agent 项目补齐可复现评估体系
+- 支持无真实 API Key 的 rule / fake LLM 模式，方便本地和后续 CI 运行
+
+### 已实现
+#### Evaluation Suite
+- 新增 `evals/`
+- 新增 `evals/cases.json`，内置 24 条固定评估用例
+- 新增 `evals/run_eval.py`，支持直接运行评估并输出报告
+- 评估报告会输出到 `evals/reports/`，同时生成 JSON 和 Markdown 两种格式
+- `evals/reports/*.json` 和 `*.md` 默认不提交，避免时间戳报告污染版本库
+
+#### 评估覆盖
+- `intent_accuracy`：意图识别准确率
+- `memory_recall`：长期记忆召回命中率
+- `task_tracking`：任务状态更新正确性
+- `commitment_extraction`：承诺新增、关闭和 deadline 识别
+- `reminder_control`：自然语言提醒控制
+- `tool_calling`：工具调用正确性、只读/写状态和最大调用次数
+- `context_planning`：上下文规划是否注入必要模块
+- `supervision_lifecycle`：监督事件检测、确认、稍后和关闭状态流转
+
+#### 运行方式
+- `conda run -n agent python evals/run_eval.py`
+- 支持 `--cases`、`--report-dir` 和 `--min-score`
+- 默认 `--min-score 1.0`，适合作为后续 CI smoke test 的基础
+
 ## V1.6
 ### 目标
 - 将内部状态工具调用升级为可观察、可测试、可审计的 Agent tool-use 模块
