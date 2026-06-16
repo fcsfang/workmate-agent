@@ -239,6 +239,8 @@ tool-use correctness, and proactive supervision lifecycle transitions.
 
 ### V1.8 Tests 与 CI
 
+状态：已实现。
+
 目标：让项目从个人原型提升为可信工程项目。
 
 要做：
@@ -267,6 +269,16 @@ tool-use correctness, and proactive supervision lifecycle transitions.
 - CI 绿色
 - 测试使用临时目录或 fixture 隔离状态
 - README 展示测试命令
+
+实现记录：
+
+- 新增 `pytest.ini`，引入 `pytest`
+- 新增 `tests/conftest.py`，通过临时目录 fixture 隔离测试状态
+- 新增 memory pipeline、context planner、task lifecycle、supervision event state machine、web API smoke tests
+- 保留并纳入 V1.5 MemoryRetriever 与 V1.6 ToolExecutor 测试
+- 新增 `.github/workflows/ci.yml`
+- CI 执行 syntax check、pytest、eval smoke test
+- 本地验证结果：`18 passed`
 
 简历亮点：
 

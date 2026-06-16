@@ -1,3 +1,29 @@
+## V1.8
+### 目标
+- 将项目从个人原型进一步提升为可验证工程项目
+- 引入 pytest 与 GitHub Actions，让核心 Agent 模块可以自动化验证
+
+### 已实现
+#### Pytest 测试体系
+- 新增 `pytest.ini`
+- `requirements.txt` 新增 `pytest`
+- 新增 `tests/conftest.py`，提供使用临时目录的 `tmp_memory_manager` fixture，避免测试写入真实 `memory/data`
+- 现有 unittest 风格测试继续可被 pytest 收集运行
+
+#### 核心模块测试覆盖
+- 新增 `tests/test_memory_pipeline.py`，覆盖记忆流水线阶段契约和端到端写入流程
+- 新增 `tests/test_context_planner.py`，覆盖任务、周报和低能量支持性知识上下文规划
+- 新增 `tests/test_task_lifecycle.py`，覆盖任务创建、子任务和状态流转
+- 新增 `tests/test_supervision_events.py`，覆盖监督事件检测、确认、稍后、关闭和提醒策略建议
+- 新增 `tests/test_web_api.py`，覆盖 Web `/api/context` 与 `/api/memory` smoke test
+- V1.5/V1.6 的 memory retriever 与 tool executor 测试继续保留
+
+#### CI
+- 新增 `.github/workflows/ci.yml`
+- CI 运行 Python 3.12
+- CI 步骤包括依赖安装、Python syntax check、`pytest`、`evals/run_eval.py` smoke test
+- eval 报告输出到 `/tmp/workmate-eval-reports`，不污染仓库
+
 ## V1.7
 ### 目标
 - 为 Agent 项目补齐可复现评估体系

@@ -1,5 +1,6 @@
 import json
 import mimetypes
+import os
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -20,16 +21,19 @@ WEB_ROOT = PROJECT_ROOT / "web"
 
 
 class WorkmateWebApp:
-    def __init__(self):
+    def __init__(self, memory_manager=None, notifier=None, start_background=None):
         import threading
         from memory import Notifier
 
-        self.memory_manager = MemoryManager()
+        self.memory_manager = memory_manager or MemoryManager()
         self.agent = None
         
-        self.notifier = Notifier()
+        self.notifier = notifier or Notifier()
 
-        threading.Thread(target=self.start_scheduler, daemon=True).start()
+        if start_background is None:
+            start_background = os.getenv("WORKMATE_DISABLE_SCHEDULER", "").lower() not in {"1", "true", "yes"}
+        if start_background:
+            threading.Thread(target=self.start_scheduler, daemon=True).start()
 
     def get_agent(self):
         if self.agent is None:
