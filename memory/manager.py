@@ -362,7 +362,7 @@ class MemoryManager:
                     fallback_msg = (
                         "检测到屏幕活动偏离了当前目标，记得回来看一眼任务哦。"
                         if event.get("type") == "screen_deviation"
-                        else "检测到屏幕活动，师姐一直陪着你哦。"
+                        else "检测到屏幕活动，咱们一起加油哦。"
                     )
                     body = event.get("display_message") or event.get("message") or fallback_msg
                     self.persist_record(

@@ -448,7 +448,7 @@ class SupervisionEventManager:
                                 "  \"is_deviated\": true 或 false,\n"
                                 "  \"activity_summary\": \"简短描述用户正在做什么（例如：在 VS Code 中写 Python 代码，或者在看 Bilibili 视频）\",\n"
                                 "  \"deviation_reason\": \"如果是偏航，简述偏航原因；如果没有偏航，留空\",\n"
-                                "  \"tone_suggestion\": \"一句话提醒或鼓励：符合你'70%温柔师姐/20%并肩奋斗同事/10%朋友'性格的、极低压力、柔和的话语。如果是偏航，给出一句温柔的偏航提醒（例如：'师弟/师妹，当前咱们的目标是{goal}，不过屏幕上好像在忙别的事哦。先把这个分支收一收，回来看一眼咱们的任务。'）；如果没有偏航（在正常工作），给出一句温暖的鼓励或陪伴跟进的话（例如：'师弟加油！看到你正在专注写代码，目前的进展还顺利吗？累了的话记得起来喝口水哦。'）\"\n"
+                                "  \"tone_suggestion\": \"一句话提醒或鼓励：符合你'70%并肩作战默契伙伴/20%专业温暖支持者/10%朋友'性格的、极低压力、柔和的话语。直接使用'你'或'咱们'称呼用户（绝对不要使用'师弟'、'师妹'、'学弟'、'学妹'等称谓）。如果是偏航，给出一句温和的偏航提醒（例如：'咱们当前的目标是{goal}，不过屏幕上好像在忙别的事哦。先把这个分支收一收，回来看一眼咱们的任务。'）；如果没有偏航（在正常工作），给出一句温暖的鼓励或陪伴跟进的话（例如：'加油！看到你正在专注于{goal}，目前的进展还顺利吗？累了的话记得起来喝口水哦。'）\"\n"
                                 "}"
                             ).replace("{goal}", goal).replace("{task_title}", task_title).replace("{local_context}", local_rule_context)
                             
@@ -498,7 +498,7 @@ class SupervisionEventManager:
                     "severity": "low",
                     "title": "工位陪伴提醒 🌟",
                     "message": f"监测到屏幕活动正常：{activity_summary}",
-                    "display_message": tone_suggestion or f"正在专注于目标【{goal}】，太棒了！继续保持，师姐一直陪着你哦。",
+                    "display_message": tone_suggestion or f"正在专注于目标【{goal}】，太棒了！继续保持，咱们一起加油。",
                     "metadata": {
                         "activity_summary": activity_summary,
                         "focus_goal": goal,
@@ -509,10 +509,10 @@ class SupervisionEventManager:
             # 大模型未配置或调用失败，退回到本地规则结果
             if rule_result is False:
                 activity_summary = f"处于工作应用：{app_name}，窗口标题：{window_title}"
-                display_msg = f"正在专注于【{goal}】（当前前台是 {app_name}），太棒了！继续保持，师姐一直陪着你，累了记得起来喝水哦！"
+                display_msg = f"正在专注于【{goal}】（当前前台是 {app_name}），太棒了！继续保持，咱们一起加油，累了记得起来喝水哦！"
                 app_lower = app_name.lower()
                 if "code" in app_lower or "cursor" in app_lower or "pycharm" in app_lower:
-                    display_msg = f"看到你正在 {app_name} 里专心写代码，编译顺利哦，加油师弟！师姐一直陪着你呢。"
+                    display_msg = f"看到你正在 {app_name} 里专心写代码，编译顺利哦，加油推进！咱们一起并肩作战。"
                 elif "terminal" in app_lower or "iterm" in app_lower:
                     display_msg = f"命令行飞舞，极客风范满满！专注的背影最帅气了，加油推进【{goal}】！"
                 elif "github" in window_title.lower() or "stackoverflow" in window_title.lower():
