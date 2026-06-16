@@ -42,6 +42,7 @@ Workmate Agent 的长期愿景，是成为一个能陪用户持续行动的个�
 - Evaluation Suite：V1.7 起提供不依赖真实 API Key 的固定评估集，覆盖记忆召回、任务状态、承诺、提醒控制、工具调用、上下文规划和监督事件生命周期
 - 自动化测试与 CI：V1.8 起引入 pytest 与 GitHub Actions，自动运行语法检查、单元测试和 eval smoke test
 - 智能陪伴与屏幕双向状态流转监测：V1.9 起引入 `screen_accompaniment` 陪伴鼓励事件与配套本地规则和 Vision 鼓励文案生成，支持专注工作与娱乐偏航状态转换时自动解决（resolve）旧事件并注入陪伴提醒/警报，支持多模态分离 API 配置、免控制权限频繁弹窗、自定义黑白名单预过滤绕过 Vision、中转 API 防火墙 (Cloudflare WAF) 浏览器 User-Agent 伪装绕过，大模型配置下优先调用 Vision 分析并以本地黑白名单规则作为无缝降级兜底方案，以及前端 Preferences 面板配置折叠交互可视化。
+- FastAPI + OpenAPI：V1.10 起 Web 后端切换为 FastAPI，保留原有前端 `/api/...` 契约和 SSE 流式响应，同时自动提供 `/docs`、`/redoc` 和 `/openapi.json`，方便展示、调试和后续接入客户端
 - 主动监督信号：根据任务停滞、未关闭承诺、反复阻塞和任务过散生成监督提醒
 - 支持性知识层：V0.6 起在用户焦虑、分散、拖延、疲惫、卡住或准备执行学习任务时，按需注入轻量方法论卡片
 - 内部状态工具层：V0.7 起支持受控工具调用，用于读取和更新任务、承诺、记忆等 Workmate 内部状态
@@ -206,7 +207,7 @@ LLM_BASE_URL=https://openrouter.ai/api/v1
 
 ### 推荐方式
 
-当前推荐入口是 `src.web`。启动它以后，整个项目就跑起来了：本地前端页面、`/api/chat` 对话接口、`/api/memory` 记忆接口会一起启动。
+当前推荐入口是 `src.web`。启动它以后，整个项目就跑起来了：本地前端页面、`/api/chat` 对话接口、`/api/memory` 记忆接口和 FastAPI OpenAPI 文档会一起启动。
 
 推荐使用前端界面调试连续对话：
 
@@ -218,6 +219,18 @@ LLM_BASE_URL=https://openrouter.ai/api/v1
 
 ```text
 http://127.0.0.1:7860
+```
+
+API 文档：
+
+```text
+http://127.0.0.1:7860/docs
+```
+
+OpenAPI schema：
+
+```text
+http://127.0.0.1:7860/openapi.json
 ```
 
 页面会显示对话区、最近记忆、记忆摘要和本地记录数量。每次发送消息都会调用同一个 `WorkmateAgent` 流程，并写入 `memory/data/records.json`。
@@ -232,6 +245,12 @@ http://127.0.0.1:7860
 
 ```bash
 conda run -n agent python -m src.web
+```
+
+如果你想直接使用 ASGI 服务器入口，也可以运行：
+
+```bash
+conda run -n agent python -m uvicorn src.web:app --host 127.0.0.1 --port 7860
 ```
 
 或者先激活环境：

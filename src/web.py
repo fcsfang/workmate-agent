@@ -1,10 +1,12 @@
 import json
-import mimetypes
 import os
 import sys
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from typing import Any, Dict, Generator, Optional
+
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from pydantic import BaseModel, ConfigDict, Field
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
@@ -15,19 +17,65 @@ try:
 except ImportError:
     from core import WorkmateAgent
 
-from memory import MemoryManager
+from memory import MemoryManager, Notifier
 
 WEB_ROOT = PROJECT_ROOT / "web"
+
+
+def model_to_dict(model: BaseModel, exclude_none: bool = False) -> Dict[str, Any]:
+    if hasattr(model, "model_dump"):
+        return model.model_dump(exclude_none=exclude_none)
+    return model.dict(exclude_none=exclude_none)
+
+
+class ChatRequest(BaseModel):
+    prompt: str = Field(..., min_length=1)
+
+
+class FocusRequest(BaseModel):
+    action: str
+    goal: str = ""
+    duration_minutes: int = 45
+    outcome: str = ""
+
+
+class TaskStatusRequest(BaseModel):
+    id: str
+    status: str
+
+
+class SupervisionEventRequest(BaseModel):
+    id: str
+    action: str
+    hours: int = 24
+    minutes: int = 0
+
+
+class SupervisionPreferencesRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    enabled: Optional[bool] = None
+    work_hours_enabled: Optional[bool] = None
+    work_hours_start: Optional[str] = None
+    work_hours_end: Optional[str] = None
+    cooldown_minutes: Optional[int] = None
+    default_snooze_minutes: Optional[int] = None
+    reminder_strength: Optional[str] = None
+    page_min_severity: Optional[str] = None
+    browser_min_severity: Optional[str] = None
+    background_min_severity: Optional[str] = None
+    push_min_severity: Optional[str] = None
+    custom_blacklist_keywords: Optional[list[str]] = None
+    custom_whitelist_keywords: Optional[list[str]] = None
+    event_type_min_severity: Optional[Dict[str, str]] = None
 
 
 class WorkmateWebApp:
     def __init__(self, memory_manager=None, notifier=None, start_background=None):
         import threading
-        from memory import Notifier
 
         self.memory_manager = memory_manager or MemoryManager()
         self.agent = None
-        
         self.notifier = notifier or Notifier()
 
         if start_background is None:
@@ -221,15 +269,14 @@ class WorkmateWebApp:
 
     def start_scheduler(self):
         import time
-        import sys
-        # 启动等待 5 秒以避开服务初始载入
+
         time.sleep(5)
         while True:
             try:
                 self.run_background_checks()
             except Exception as e:
                 print(f"[Background Scheduler Error] {e}", file=sys.stderr)
-            time.sleep(60) # 每分钟扫描一次
+            time.sleep(60)
 
     def run_background_checks(self):
         events = self.memory_manager.refresh_supervision_events()
@@ -243,162 +290,142 @@ class WorkmateWebApp:
 
 
 APP = WorkmateWebApp()
+app = FastAPI(
+    title="Workmate Agent API",
+    description="Local API for chat, memory, focus sessions, supervision events, and runtime observability.",
+    version="1.10.0",
+)
 
 
-class WorkmateRequestHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        path = urlparse(self.path).path
-        if path == "/":
-            self._send_file(WEB_ROOT / "index.html")
-            return
+@app.exception_handler(ValueError)
+async def value_error_handler(request: Request, exc: ValueError):
+    return JSONResponse({"error": str(exc)}, status_code=400)
 
-        if path == "/api/memory":
-            self._send_json(APP.memory_state())
-            return
 
-        if path == "/api/context":
-            self._send_json(APP.context_state())
-            return
-        if path == "/api/dashboard":
-            self._send_json(APP.dashboard_state())
-            return
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    detail = exc.detail if isinstance(exc.detail, str) else "Request failed"
+    return JSONResponse({"error": detail}, status_code=exc.status_code)
 
-        if path == "/api/supervision/events":
-            self._send_json(APP.supervision_events())
-            return
 
-        if path == "/api/supervision/preferences":
-            self._send_json(APP.supervision_preferences())
-            return
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    return JSONResponse({"error": str(exc)}, status_code=500)
 
-        if path == "/api/notify/status":
-            import os
-            channels = [c.strip() for c in os.getenv("PUSH_CHANNELS", "").split(",") if c.strip()]
-            status = {
-                "enabled_channels": channels,
-                "local_configured": True,  # macOS native is always supported
-                "bark_configured": bool(os.getenv("BARK_KEY")),
-                "lark_configured": bool(os.getenv("LARK_WEBHOOK_URL")),
-            }
-            self._send_json(status)
-            return
 
-        safe_path = path.lstrip("/")
-        file_path = (WEB_ROOT / safe_path).resolve()
-        if WEB_ROOT.resolve() not in file_path.parents and file_path != WEB_ROOT.resolve():
-            self._send_error(403, "Forbidden")
-            return
+@app.get("/", include_in_schema=False)
+async def index():
+    return FileResponse(WEB_ROOT / "index.html")
 
-        if file_path.is_file():
-            self._send_file(file_path)
-            return
 
-        self._send_error(404, "Not found")
+@app.get("/api/memory", summary="Get current memory state")
+async def get_memory():
+    return APP.memory_state()
 
-    def do_POST(self):
-        path = urlparse(self.path).path
-        try:
-            payload = self._read_json()
-            if path == "/api/focus":
-                self._send_json(APP.focus(payload))
-                return
 
-            if path == "/api/notify/test":
-                try:
-                    APP.notifier.send_notification(
-                        "自检测试通知 🔔",
-                        "这是一条来自 Workmate Agent 的自检测试通知，听到/看到声音表示配置正确！"
-                    )
-                    self._send_json({"success": True})
-                except Exception as e:
-                    self._send_json({"success": False, "error": str(e)}, status=500)
-                return
+@app.get("/api/context", summary="Get latest model context and debug state")
+async def get_context():
+    return APP.context_state()
 
-            if path == "/api/task/update-status":
-                self._send_json(APP.update_task_status(payload))
-                return
 
-            if path == "/api/supervision/events":
-                self._send_json(APP.update_supervision_event(payload))
-                return
+@app.get("/api/dashboard", summary="Get today dashboard state")
+async def get_dashboard():
+    return APP.dashboard_state()
 
-            if path == "/api/supervision/preferences":
-                self._send_json(APP.update_supervision_preferences(payload))
-                return
 
-            if path != "/api/chat":
-                self._send_error(404, "Not found")
-                return
+@app.get("/api/supervision/events", summary="Get active supervision events")
+async def get_supervision_events():
+    return APP.supervision_events()
 
-            prompt = str(payload.get("prompt", "")).strip()
-            if not prompt:
-                self._send_error(400, "Prompt is required")
-                return
-            self._send_chat_stream(prompt)
-        except Exception as exc:
-            self._send_error(500, str(exc))
 
-    def log_message(self, format, *args):
-        return
+@app.post("/api/supervision/events", summary="Update a supervision event")
+async def post_supervision_events(payload: SupervisionEventRequest):
+    return APP.update_supervision_event(model_to_dict(payload))
 
-    def _read_json(self):
-        content_length = int(self.headers.get("Content-Length", "0"))
-        raw_body = self.rfile.read(content_length).decode("utf-8")
-        if not raw_body:
-            return {}
-        return json.loads(raw_body)
 
-    def _send_json(self, payload, status=200):
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+@app.get("/api/supervision/preferences", summary="Get supervision preferences")
+async def get_supervision_preferences():
+    return APP.supervision_preferences()
 
-    def _send_chat_stream(self, prompt):
-        self.send_response(200)
-        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
-        self.send_header("Cache-Control", "no-cache")
-        self.send_header("X-Accel-Buffering", "no")
-        self.end_headers()
 
-        try:
-            for event in APP.chat_stream(prompt):
-                self._send_sse_event(event)
-        except (BrokenPipeError, ConnectionResetError):
-            return
-        except Exception as exc:
-            self._send_sse_event({"type": "error", "error": str(exc)})
+@app.post("/api/supervision/preferences", summary="Update supervision preferences")
+async def post_supervision_preferences(payload: SupervisionPreferencesRequest):
+    return APP.update_supervision_preferences(model_to_dict(payload, exclude_none=True))
 
-    def _send_sse_event(self, payload):
-        body = f"data: {json.dumps(payload, ensure_ascii=False)}\n\n".encode("utf-8")
-        self.wfile.write(body)
-        self.wfile.flush()
 
-    def _send_file(self, file_path):
-        body = file_path.read_bytes()
-        content_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
-        self.send_response(200)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+@app.get("/api/notify/status", summary="Get notification channel status")
+async def get_notify_status():
+    channels = [c.strip() for c in os.getenv("PUSH_CHANNELS", "").split(",") if c.strip()]
+    return {
+        "enabled_channels": channels,
+        "local_configured": True,
+        "bark_configured": bool(os.getenv("BARK_KEY")),
+        "lark_configured": bool(os.getenv("LARK_WEBHOOK_URL")),
+    }
 
-    def _send_error(self, status, message):
-        self._send_json({"error": message}, status=status)
+
+@app.post("/api/notify/test", summary="Send a test notification")
+async def post_notify_test():
+    try:
+        APP.notifier.send_notification(
+            "自检测试通知 🔔",
+            "这是一条来自 Workmate Agent 的自检测试通知，听到/看到声音表示配置正确！",
+        )
+        return {"success": True}
+    except Exception as exc:
+        return JSONResponse({"success": False, "error": str(exc)}, status_code=500)
+
+
+@app.post("/api/focus", summary="Start, complete, or abandon a focus session")
+async def post_focus(payload: FocusRequest):
+    return APP.focus(model_to_dict(payload))
+
+
+@app.post("/api/task/update-status", summary="Update task status")
+async def post_task_update_status(payload: TaskStatusRequest):
+    return APP.update_task_status(model_to_dict(payload))
+
+
+def stream_chat_events(prompt: str) -> Generator[str, None, None]:
+    try:
+        for event in APP.chat_stream(prompt):
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+    except Exception as exc:
+        error_event = {"type": "error", "error": str(exc)}
+        yield f"data: {json.dumps(error_event, ensure_ascii=False)}\n\n"
+
+
+@app.post("/api/chat", summary="Send a chat prompt and stream the response")
+async def post_chat(payload: ChatRequest):
+    prompt = payload.prompt.strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="Prompt is required")
+    return StreamingResponse(
+        stream_chat_events(prompt),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.get("/{file_path:path}", include_in_schema=False)
+async def static_file(file_path: str):
+    safe_path = file_path.lstrip("/")
+    resolved_path = (WEB_ROOT / safe_path).resolve()
+    web_root = WEB_ROOT.resolve()
+    if web_root not in resolved_path.parents and resolved_path != web_root:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if resolved_path.is_file():
+        return FileResponse(resolved_path)
+    raise HTTPException(status_code=404, detail="Not found")
 
 
 def run_web(host="127.0.0.1", port=7860):
-    server = ThreadingHTTPServer((host, port), WorkmateRequestHandler)
+    import uvicorn
+
     print(f"Workmate Web 已启动：http://{host}:{port}")
+    print(f"OpenAPI 文档：http://{host}:{port}/docs")
     print("按 Ctrl+C 结束服务。")
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        print("\n服务已结束。")
-    finally:
-        server.server_close()
+    uvicorn.run(app, host=host, port=port, reload=False)
 
 
 if __name__ == "__main__":

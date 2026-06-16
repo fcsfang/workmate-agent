@@ -1,9 +1,7 @@
 import importlib
-import json
 import os
-import threading
-from http.server import ThreadingHTTPServer
-from urllib.request import Request, urlopen
+
+from fastapi.testclient import TestClient
 
 
 def test_web_api_context_and_memory_smoke(monkeypatch):
@@ -106,27 +104,28 @@ def test_web_api_context_and_memory_smoke(monkeypatch):
             return {}
 
     app = web.WorkmateWebApp(memory_manager=FakeMemory(), notifier=object(), start_background=False)
-    app.agent = FakeAgent()
-    monkeypatch.setattr(web, "APP", app)
+    workmate_app = app
+    workmate_app.agent = FakeAgent()
+    monkeypatch.setattr(web, "APP", workmate_app)
 
-    server = ThreadingHTTPServer(("127.0.0.1", 0), web.WorkmateRequestHandler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    client = TestClient(web.app)
     try:
-        with urlopen(f"{base_url}/api/context", timeout=5) as response:
-            context = json.loads(response.read().decode("utf-8"))
+        response = client.get("/api/context")
+        assert response.status_code == 200
+        context = response.json()
         assert context["message_count"] == 1
         assert context["tool_schemas"][0]["name"] == "noop"
         assert context["turn_trace"]["turn_id"] == "turn-1"
 
-        request = Request(f"{base_url}/api/memory", method="GET")
-        with urlopen(request, timeout=5) as response:
-            memory = json.loads(response.read().decode("utf-8"))
+        response = client.get("/api/memory")
+        assert response.status_code == 200
+        memory = response.json()
         assert memory["count"] == 0
         assert memory["tool_schemas"][0]["read_only"] is True
+
+        response = client.get("/openapi.json")
+        assert response.status_code == 200
+        openapi = response.json()
+        assert "/api/chat" in openapi["paths"]
     finally:
-        server.shutdown()
-        server.server_close()
-        thread.join(timeout=5)
         os.environ.pop("WORKMATE_DISABLE_SCHEDULER", None)

@@ -1,3 +1,22 @@
+## V1.10
+### 目标
+- 将 Web 后端从手写 `http.server` 路由升级为 FastAPI，提升 API 工程化、可展示性和后续扩展能力
+
+### 已实现
+#### FastAPI + OpenAPI
+- `src/web.py` 改为 FastAPI ASGI 应用，保留 `WorkmateWebApp` 作为业务编排层，避免影响 Agent Runtime、记忆系统和监督事件核心逻辑
+- 保留现有前端依赖的 `/api/chat`、`/api/memory`、`/api/context`、`/api/dashboard`、`/api/focus`、`/api/task/update-status`、`/api/supervision/events`、`/api/supervision/preferences`、`/api/notify/status` 和 `/api/notify/test` 接口契约
+- `/api/chat` 继续使用 `text/event-stream` 流式输出，前端无需改变现有 SSE 解析逻辑
+- 新增 Pydantic 请求模型，用于聊天、专注会话、任务状态、监督事件和监督偏好配置接口的参数声明
+- 自动提供 `/docs`、`/redoc` 和 `/openapi.json`，方便在简历展示、接口调试和后续客户端接入时说明系统边界
+- 保留 `python -m src.web` 一键启动方式，并在 `run_web()` 中直接传入 FastAPI app，避免字符串导入导致后台 scheduler 被重复初始化
+
+#### 文档与测试
+- `requirements.txt` 新增 `fastapi` 和 `uvicorn`
+- `README.md` 补充 FastAPI API 文档入口和可选 `uvicorn` 启动方式
+- `tests/test_web_api.py` 改为使用 FastAPI `TestClient`，并新增 `/openapi.json` smoke test
+- `pytest` 全量 26 项测试通过
+
 ## V2.0 (规划中)
 ### 目标
 - 新增主动语音唤醒与监督语音播报提醒功能，降低感知摩擦，强化“工位陪伴搭子”的实体临场感
