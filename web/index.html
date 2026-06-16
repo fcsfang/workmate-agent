@@ -1381,6 +1381,7 @@
               </label>
               <button class="supervision-action" id="testVoiceReminder" type="button">TEST VOICE</button>
             </div>
+            <div class="task-value">TEST VOICE 会自动打开并保存语音提醒；其他修改请点击 SAVE。</div>
             <div class="supervision-pref-row">
               <label class="supervision-pref-item">
                 <input id="prefFocus" type="checkbox">
@@ -2513,7 +2514,7 @@
     function checkAndSpeak(activeEvents = [], preferences = {}) {
       if (!voiceCanSpeak(preferences)) return;
       activeEvents.forEach((event) => {
-        if (!event.id || event.status !== "detected") return;
+        if (!event.id || !["detected", "notified", "acknowledged"].includes(event.status || "")) return;
         if (!voiceShouldSpeakEvent(event, preferences)) return;
         const spokenKey = `spoken_supervision_${event.id}`;
         if (localStorage.getItem(spokenKey)) return;
@@ -3024,18 +3025,24 @@
     });
 
     if (testVoiceReminder) {
-      testVoiceReminder.addEventListener("click", () => {
+      testVoiceReminder.addEventListener("click", async () => {
         if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) {
           lastEvent.textContent = "voice is not supported";
           return;
         }
+        if (prefVoiceEnabled) prefVoiceEnabled.checked = true;
         const preferences = {
           voice_enabled: true,
           voice_volume: Number(prefVoiceVolume?.value || 0.7),
           voice_rate: Number(prefVoiceRate?.value || 1)
         };
         speakVoiceReminder("语音提醒已开启。我会尽量轻一点，只在需要时提醒你。", preferences);
-        lastEvent.textContent = "voice test played";
+        try {
+          await saveSupervisionPreferences();
+          lastEvent.textContent = "voice test played and saved";
+        } catch (error) {
+          lastEvent.textContent = `voice played, save failed: ${error.message}`;
+        }
       });
     }
 
