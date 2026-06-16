@@ -437,6 +437,10 @@
       color: var(--muted);
     }
 
+    .supervision-preferences.collapsed {
+      display: none !important;
+    }
+
     .supervision-pref-row {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1288,13 +1292,16 @@
         <section class="task-panel" aria-label="Supervision events">
           <div class="section-title">
             <span>SUPERVISION EVENTS</span>
-            <span id="supervisionEventCount">0 active</span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <button class="supervision-action" id="btnTogglePrefs" type="button" style="font-size: 11px; padding: 2px 5px;" title="配置检测参数">⚙️ 配置</button>
+              <span id="supervisionEventCount">0 active</span>
+            </div>
           </div>
           <div class="task-value" id="supervisionFeedbackStats">暂无反馈统计</div>
           <div class="supervision-event-list" id="supervisionEventList">
             <div class="task-value">暂无监督事件</div>
           </div>
-          <div class="supervision-preferences" aria-label="Supervision preferences">
+          <div class="supervision-preferences collapsed" aria-label="Supervision preferences">
             <div class="section-title">
               <span>PREFERENCES</span>
               <button class="supervision-action" id="saveSupervisionPrefs" type="button">SAVE</button>
@@ -1354,11 +1361,43 @@
                 <input id="prefCommitments" type="checkbox">
                 <span>commitments</span>
               </label>
+              <label class="supervision-pref-item">
+                <input id="prefTasks" type="checkbox">
+                <span>task stale</span>
+              </label>
             </div>
-            <label class="supervision-pref-item">
-              <input id="prefTasks" type="checkbox">
-              <span>task stale reminders</span>
-            </label>
+            <div class="supervision-pref-row">
+              <label class="supervision-pref-item">
+                <input id="prefWorkHoursEnabled" type="checkbox">
+                <span>work hours auto-monitor</span>
+              </label>
+              <label class="supervision-pref-item">
+                <span>from</span>
+                <input id="prefWorkHoursStart" type="time" value="09:00">
+              </label>
+              <label class="supervision-pref-item">
+                <span>to</span>
+                <input id="prefWorkHoursEnd" type="time" value="18:00">
+              </label>
+            </div>
+            <div class="supervision-pref-row">
+              <label class="supervision-pref-item">
+                <span>interval (mins)</span>
+                <input id="prefMonitorInterval" type="number" min="1" max="60" value="5">
+              </label>
+            </div>
+            <div class="supervision-pref-row" style="grid-template-columns: 1fr;">
+              <label class="supervision-pref-item" style="flex-direction: column; align-items: flex-start; gap: 4px; width: 100%;">
+                <span>custom blacklist keywords (comma split)</span>
+                <input id="prefCustomBlacklist" type="text" placeholder="e.g. wechat, 微信, qq, taobao" style="width: 100%; box-sizing: border-box; padding: 4px 8px; border: 1px solid var(--line); border-radius: 4px; background: transparent; color: var(--ink);">
+              </label>
+            </div>
+            <div class="supervision-pref-row" style="grid-template-columns: 1fr;">
+              <label class="supervision-pref-item" style="flex-direction: column; align-items: flex-start; gap: 4px; width: 100%;">
+                <span>custom whitelist keywords (comma split)</span>
+                <input id="prefCustomWhitelist" type="text" placeholder="e.g. documentation, api, github" style="width: 100%; box-sizing: border-box; padding: 4px 8px; border: 1px solid var(--line); border-radius: 4px; background: transparent; color: var(--ink);">
+              </label>
+            </div>
             <div class="supervision-strategy" aria-label="Adaptive reminder strategy">
               <div>
                 <strong id="reminderStrategyMode">steady</strong>
@@ -1584,6 +1623,12 @@
     const prefFocus = document.querySelector("#prefFocus");
     const prefCommitments = document.querySelector("#prefCommitments");
     const prefTasks = document.querySelector("#prefTasks");
+    const prefWorkHoursEnabled = document.querySelector("#prefWorkHoursEnabled");
+    const prefWorkHoursStart = document.querySelector("#prefWorkHoursStart");
+    const prefWorkHoursEnd = document.querySelector("#prefWorkHoursEnd");
+    const prefMonitorInterval = document.querySelector("#prefMonitorInterval");
+    const prefCustomBlacklist = document.querySelector("#prefCustomBlacklist");
+    const prefCustomWhitelist = document.querySelector("#prefCustomWhitelist");
     const reminderStrategyMode = document.querySelector("#reminderStrategyMode");
     const reminderStrategySummary = document.querySelector("#reminderStrategySummary");
     const reminderStrategyDetails = document.querySelector("#reminderStrategyDetails");
@@ -1678,10 +1723,13 @@
       }
     }
 
-    function appendMessage(role, content, time = "") {
+    function appendMessage(role, content, time = "", recordId = "") {
       emptyState?.remove();
       const message = document.createElement("article");
       message.className = `message message-${role}`;
+      if (recordId) {
+        message.setAttribute("data-record-id", recordId);
+      }
 
       const label = document.createElement("div");
       label.className = "message-role";
@@ -1722,8 +1770,8 @@
       transcript.querySelectorAll(".message").forEach((item) => item.remove());
     }
 
-    function appendRestoredMessage(role, content, time) {
-      appendMessage(role, content || "", time);
+    function appendRestoredMessage(role, content, time, recordId = "") {
+      appendMessage(role, content || "", time, recordId);
     }
 
     function restoreTranscript(records = []) {
@@ -1732,8 +1780,8 @@
 
       clearTranscript();
       usableRecords.forEach((record) => {
-        if (record.user) appendRestoredMessage("user", record.user, record.time);
-        if (record.assistant) appendRestoredMessage("agent", record.assistant, record.time);
+        if (record.user) appendRestoredMessage("user", record.user, record.time, record.id);
+        if (record.assistant) appendRestoredMessage("agent", record.assistant, record.time, record.id);
       });
       transcriptRestored = true;
       localTurns = usableRecords.length;
@@ -2157,6 +2205,26 @@
       prefFocus.checked = preferences.notify_focus !== false;
       prefCommitments.checked = preferences.notify_commitments !== false;
       prefTasks.checked = preferences.notify_tasks !== false;
+      if (prefWorkHoursEnabled) {
+        prefWorkHoursEnabled.checked = preferences.auto_monitor_work_hours_enabled !== false;
+      }
+      if (prefWorkHoursStart) {
+        prefWorkHoursStart.value = preferences.work_hours_start || "09:00";
+      }
+      if (prefWorkHoursEnd) {
+        prefWorkHoursEnd.value = preferences.work_hours_end || "18:00";
+      }
+      if (prefMonitorInterval) {
+        prefMonitorInterval.value = preferences.screen_monitor_interval_minutes || 5;
+      }
+      if (prefCustomBlacklist) {
+        const blacklist = preferences.custom_blacklist_keywords || [];
+        prefCustomBlacklist.value = blacklist.join(", ");
+      }
+      if (prefCustomWhitelist) {
+        const whitelist = preferences.custom_whitelist_keywords || [];
+        prefCustomWhitelist.value = whitelist.join(", ");
+      }
     }
 
     function renderSupervisionFeedbackStats(stats = {}) {
@@ -2329,6 +2397,16 @@
       renderTurnTrace(memory.turn_trace || {});
       if (options.restoreTranscript || (!transcriptRestored && records.length)) {
         restoreTranscript(records);
+      } else if (transcriptRestored && records.length) {
+        const usableRecords = records.filter((record) => record.user || record.assistant);
+        usableRecords.forEach((record) => {
+          if (record.id && !transcript.querySelector(`[data-record-id="${record.id}"]`)) {
+            if (record.user) appendMessage("user", record.user, record.time, record.id);
+            if (record.assistant) appendMessage("agent", record.assistant, record.time, record.id);
+          }
+        });
+        localTurns = usableRecords.length;
+        turnCount.textContent = localTurns;
       }
       recordList.innerHTML = "";
 
@@ -2484,7 +2562,19 @@
         quiet_hours_end: prefQuietEnd?.value || "07:00",
         notify_focus: Boolean(prefFocus?.checked),
         notify_commitments: Boolean(prefCommitments?.checked),
-        notify_tasks: Boolean(prefTasks?.checked)
+        notify_tasks: Boolean(prefTasks?.checked),
+        auto_monitor_work_hours_enabled: Boolean(prefWorkHoursEnabled?.checked),
+        work_hours_start: prefWorkHoursStart?.value || "09:00",
+        work_hours_end: prefWorkHoursEnd?.value || "18:00",
+        screen_monitor_interval_minutes: Number(prefMonitorInterval?.value || 5),
+        custom_blacklist_keywords: (prefCustomBlacklist?.value || "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+        custom_whitelist_keywords: (prefCustomWhitelist?.value || "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
       };
       const response = await fetch("/api/supervision/preferences", {
         method: "POST",
@@ -2524,6 +2614,18 @@
         notify_focus: Boolean(prefFocus?.checked),
         notify_commitments: Boolean(prefCommitments?.checked),
         notify_tasks: Boolean(prefTasks?.checked),
+        auto_monitor_work_hours_enabled: Boolean(prefWorkHoursEnabled?.checked),
+        work_hours_start: prefWorkHoursStart?.value || "09:00",
+        work_hours_end: prefWorkHoursEnd?.value || "18:00",
+        screen_monitor_interval_minutes: Number(prefMonitorInterval?.value || 5),
+        custom_blacklist_keywords: (prefCustomBlacklist?.value || "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+        custom_whitelist_keywords: (prefCustomWhitelist?.value || "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
         ...updates
       };
       const response = await fetch("/api/supervision/preferences", {
@@ -2778,6 +2880,16 @@
         setStatus("ready", false);
       }
     });
+
+    const btnTogglePrefs = document.querySelector("#btnTogglePrefs");
+    if (btnTogglePrefs) {
+      btnTogglePrefs.addEventListener("click", () => {
+        const supervisionPrefs = document.querySelector(".supervision-preferences");
+        if (supervisionPrefs) {
+          supervisionPrefs.classList.toggle("collapsed");
+        }
+      });
+    }
 
     saveSupervisionPrefs.addEventListener("click", async () => {
       setStatus("prefs", true);

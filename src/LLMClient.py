@@ -370,7 +370,15 @@ class LLMClient:
 
         #创建openai客户端
         self.client = OpenAI(api_key=self.apiKey, base_url=self.baseUrl, timeout=self.timeout)
-        
+        self.vision_model = os.getenv("VISION_MODEL_ID") or self.model
+        self.vision_apiKey = os.getenv("VISION_API_KEY") or self.apiKey
+        self.vision_baseUrl = os.getenv("VISION_BASE_URL") or self.baseUrl
+
+        if self.vision_apiKey == self.apiKey and self.vision_baseUrl == self.baseUrl:
+            self.vision_client = self.client
+        else:
+            self.vision_client = OpenAI(api_key=self.vision_apiKey, base_url=self.vision_baseUrl, timeout=self.timeout)
+
 
     def _build_messages(self, prompt=None, messages=None):
         if messages is None:
@@ -428,6 +436,30 @@ class LLMClient:
             messages=messages
         )
         return response.choices[0].message.content.strip()
+
+    def invoke_vision(self, prompt: str, image_base64: str) -> str:
+        """调用视觉/多模态模型分析 Base64 编码的图片"""
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{image_base64}"
+                        }
+                    }
+                ]
+            }
+        ]
+        response = self.vision_client.chat.completions.create(
+            model=self.vision_model,
+            messages=messages,
+            max_tokens=800
+        )
+        return response.choices[0].message.content.strip()
+
     
 
 

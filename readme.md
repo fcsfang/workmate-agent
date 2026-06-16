@@ -41,6 +41,7 @@ Workmate Agent 的长期愿景，是成为一个能陪用户持续行动的个�
 - Hybrid Memory RAG：V1.5 起用 `MemoryRetriever` 对长期记忆进行可解释召回，综合关键词、近期性、重要性、记忆类型权重和可选向量相似度，并输出召回来源和评分原因
 - Evaluation Suite：V1.7 起提供不依赖真实 API Key 的固定评估集，覆盖记忆召回、任务状态、承诺、提醒控制、工具调用、上下文规划和监督事件生命周期
 - 自动化测试与 CI：V1.8 起引入 pytest 与 GitHub Actions，自动运行语法检查、单元测试和 eval smoke test
+- 智能陪伴与屏幕双向状态流转监测：V1.9 起引入 `screen_accompaniment` 陪伴鼓励事件与配套本地规则和 Vision 鼓励文案生成，支持专注工作与娱乐偏航状态转换时自动解决（resolve）旧事件并注入陪伴提醒/警报，支持多模态分离 API 配置、免控制权限频繁弹窗、自定义黑白名单预过滤绕过 Vision，以及前端 Preferences 面板配置折叠交互可视化。
 - 主动监督信号：根据任务停滞、未关闭承诺、反复阻塞和任务过散生成监督提醒
 - 支持性知识层：V0.6 起在用户焦虑、分散、拖延、疲惫、卡住或准备执行学习任务时，按需注入轻量方法论卡片
 - 内部状态工具层：V0.7 起支持受控工具调用，用于读取和更新任务、承诺、记忆等 Workmate 内部状态
@@ -307,6 +308,6 @@ print(response)
 
 ## 当前边界
 
-当前版本是 JSON 文件记忆，适合早期验证连续对话、任务生命周期、统一记忆项、专注监督和可视化 Todo 闭环。V1.8 已经具备 Resource / MemoryItem / MemoryCategory 三层结构、语义压缩、高阶洞察、自我反省、记忆治理、Hybrid Memory RAG、检索计划、流水线契约、上下文压缩、主动监督信号、内部状态工具、schema-driven tool calling、tool trace、Agent Runtime、turn_trace、Evaluation Suite、pytest、GitHub Actions CI、专注会话、承诺 deadline、行为统计、行为模式分析、个人自律仪表盘、提醒策略建议、LLM 优先自然语言提醒控制、压力/低能量感知语气策略、长期画像驱动提醒文案、分渠道提醒门槛、事件类型反馈策略、早间简报、时间间隔感知、纯自然语言晚间总结复盘、前端弹窗提醒、后台守护线程常驻推送、周度自律诊断报告、Markdown 增强渲染、推送自检、可视化 Todo 列表、任务相似度去重、可追踪监督事件、提醒偏好配置、监督反馈统计和监督事件到专注/承诺/任务的轻量状态联动。
+当前版本是 JSON 文件记忆，适合早期验证连续对话、任务生命周期、统一记忆项、专注监督和可视化 Todo 闭环。V1.9 已经具备 Resource / MemoryItem / MemoryCategory 三层结构、语义压缩、高阶洞察、自我反省、记忆治理、Hybrid Memory RAG、检索计划、流水线契约、上下文压缩、主动监督信号、内部状态工具、schema-driven tool calling、tool trace、Agent Runtime、turn_trace、Evaluation Suite、pytest、GitHub Actions CI、专注会话、承诺 deadline、行为统计、行为模式分析、个人自律仪表盘、提醒策略建议、LLM 优先自然语言提醒控制、压力/低能量感知语气策略、长期画像驱动提醒文案、分渠道提醒门槛、事件类型反馈策略、早间简报、时间间隔感知、纯自然语言晚间总结复盘、前端弹窗提醒、后台守护线程常驻推送、周度自律诊断报告、Markdown 增强渲染、推送自检、可视化 Todo 列表、任务相似度去重、可追踪监督事件、提醒偏好配置、监督反馈统计、监督事件到专注/承诺/任务的轻量状态联动、智能陪伴鼓励、多模态分离 API 支持、免 App 权限弹窗、自定义黑白名单绕过 Vision 过滤以及前端 Preferences ⚙️配置面板折叠交互。
 
 后续记录变多后，可以继续加入更稳定的向量检索、更细粒度的行为模式分析、跨设备数据同步，以及更成熟的长期自律报告与主动陪伴策略。

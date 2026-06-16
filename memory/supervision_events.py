@@ -20,6 +20,10 @@ class SupervisionEventManager:
         )
         self.events_path.parent.mkdir(parents=True, exist_ok=True)
         self.preferences_path.parent.mkdir(parents=True, exist_ok=True)
+        self.llm_client = None
+
+    def set_llm_client(self, llm_client: Any) -> None:
+        self.llm_client = llm_client
 
     def load_events(self) -> List[Dict[str, Any]]:
         if not self.events_path.exists() or self.events_path.stat().st_size == 0:
@@ -106,6 +110,14 @@ class SupervisionEventManager:
             "notify_focus": True,
             "notify_commitments": True,
             "notify_tasks": True,
+            "screen_monitor_enabled": True,
+            "screen_monitor_interval_minutes": 5,
+            "last_screen_check": "",
+            "auto_monitor_work_hours_enabled": True,
+            "work_hours_start": "09:00",
+            "work_hours_end": "18:00",
+            "custom_blacklist_keywords": [],
+            "custom_whitelist_keywords": [],
         }
 
     def save_events(self, events: List[Dict[str, Any]]) -> None:
@@ -136,6 +148,9 @@ class SupervisionEventManager:
         stale_candidate = self._stale_task_candidate(task_view, now)
         if stale_candidate:
             candidates.append(stale_candidate)
+        screen_candidate = self._screen_deviation_candidate(focus_state, task_view, now)
+        if screen_candidate:
+            candidates.append(screen_candidate)
 
         copy_policy = self._copy_policy(user_profile or {})
         candidates = [self._apply_copy_policy(candidate, copy_policy) for candidate in candidates]
@@ -297,6 +312,330 @@ class SupervisionEventManager:
             },
         }
 
+    def _screen_deviation_candidate(
+        self,
+        focus_state: Dict[str, Any],
+        task_view: Dict[str, Any],
+        now: datetime,
+    ) -> Dict[str, Any]:
+        if not self.llm_client:
+            print("[DEBUG] no llm_client")
+            return {}
+
+        prefs = self.load_preferences()
+        if not prefs.get("screen_monitor_enabled", True):
+            print("[DEBUG] screen_monitor_enabled is False")
+            return {}
+
+        # 1. 触发判定判定 (Trigger check): Focus Session Or Work Hours
+        current_focus = (focus_state or {}).get("current") or {}
+        focus_active = current_focus and current_focus.get("status") == "active"
+        
+        auto_hours_active = False
+        if not focus_active and prefs.get("auto_monitor_work_hours_enabled", True):
+            # 检查是否在工作时间段
+            start_str = prefs.get("work_hours_start", "09:00")
+            end_str = prefs.get("work_hours_end", "18:00")
+            current_time_str = now.strftime("%H:%M")
+            if start_str <= current_time_str <= end_str:
+                auto_hours_active = True
+                
+        print(f"[DEBUG] focus_active={focus_active}, auto_hours_active={auto_hours_active}, prefs={prefs}")
+        if not focus_active and not auto_hours_active:
+            return {}
+
+        # 2. 监测目标同步 (Goal Sync): Determine active goal
+        goal = ""
+        subject_id = ""
+        subject_title = ""
+        subject_type = ""
+        
+        if focus_active:
+            goal = current_focus.get("goal", "")
+            subject_id = current_focus.get("id", "")
+            subject_title = current_focus.get("goal", "")
+            subject_type = "focus"
+        else:
+            # 读取当前任务
+            current_task = (task_view or {}).get("current") or {}
+            if current_task and current_task.get("status") == "active":
+                goal = current_task.get("title", "")
+                subject_id = current_task.get("id", "")
+                subject_title = current_task.get("title", "")
+                subject_type = "task"
+            else:
+                goal = "推进工作与学习"
+                subject_id = "auto-work-hours"
+                subject_title = "工作时间段自动监视"
+                subject_type = "system"
+
+        # 3. 冷却时间判定 (Cooldown/Interval check)
+        last_check_str = prefs.get("last_screen_check", "")
+        # 硬编码为 1 分钟以方便测试
+        interval_min = 1
+        
+        if last_check_str:
+            last_check = self._parse_time(last_check_str)
+            print(f"[DEBUG] last_check_str={last_check_str}, last_check={last_check}, now={now}")
+            if last_check:
+                diff_seconds = (now - last_check).total_seconds()
+                if 0 <= diff_seconds < interval_min * 60:
+                    print("[DEBUG] Within cooldown, skipping screen monitor check")
+                    return {}
+
+        self.update_preferences({"last_screen_check": now.isoformat(timespec="seconds")})
+
+        # 4. 本地窗口标题初筛 (Local window title pre-filter)
+        app_name, window_title = self._get_active_window_macos()
+        if app_name:
+            rule_result = self._rule_based_check(app_name, window_title, goal)
+            if rule_result is False:
+                # 规则确认：正在工作，不偏航，节省 Token 直接返回陪伴鼓励事件
+                activity_summary = f"处于工作应用：{app_name}，窗口标题：{window_title}"
+                # Generate localized warm encouragement
+                display_msg = f"正在专注于【{goal}】（当前前台是 {app_name}），太棒了！继续保持，师姐一直陪着你，累了记得起来喝水哦！"
+                app_lower = app_name.lower()
+                if "code" in app_lower or "cursor" in app_lower or "pycharm" in app_lower:
+                    display_msg = f"看到你正在 {app_name} 里专心写代码，编译顺利哦，加油师弟！师姐一直陪着你呢。"
+                elif "terminal" in app_lower or "iterm" in app_lower:
+                    display_msg = f"命令行飞舞，极客风范满满！专注的背影最帅气了，加油推进【{goal}】！"
+                elif "github" in window_title.lower() or "stackoverflow" in window_title.lower():
+                    display_msg = f"在查阅技术文档和社区（{window_title}）呢，思路一定被启发了吧！加油！"
+                    
+                return {
+                    "type": "screen_accompaniment",
+                    "subject_type": subject_type,
+                    "subject_id": subject_id,
+                    "subject_title": subject_title,
+                    "severity": "low",
+                    "title": "工位陪伴提醒 🌟",
+                    "message": f"监测到屏幕活动正常：{activity_summary}",
+                    "display_message": display_msg,
+                    "metadata": {
+                        "activity_summary": activity_summary,
+                        "focus_goal": goal,
+                        "triggered_by": "local_rules",
+                    },
+                }
+            elif rule_result is True:
+                # 规则确认：明确偏航，跳过 Vision 直接报错
+                activity_summary = f"处于活跃应用：{app_name}，窗口标题：{window_title}"
+                deviation_reason = "本地黑名单规则匹配成功，确定处于娱乐偏航状态"
+                display_msg = f"当前设定的目标是【{goal}】，不过屏幕上好像在看【{app_name} | {window_title}】哦？先收一收，回来看一眼任务吧！"
+                return {
+                    "type": "screen_deviation",
+                    "subject_type": subject_type,
+                    "subject_id": subject_id,
+                    "subject_title": subject_title,
+                    "severity": "high",
+                    "title": "工位偏航提醒 🔔",
+                    "message": f"监测到屏幕活动偏离目标：{activity_summary}。原因：{deviation_reason}",
+                    "display_message": display_msg,
+                    "metadata": {
+                        "activity_summary": activity_summary,
+                        "deviation_reason": deviation_reason,
+                        "focus_goal": goal,
+                        "triggered_by": "local_rules",
+                    },
+                }
+
+        # 5. 回退多模态大模型判定 (Fallback to Vision LLM)
+        import os
+        import base64
+        import subprocess
+        
+        screenshots_dir = self.events_path.parent / "screenshots"
+        screenshots_dir.mkdir(parents=True, exist_ok=True)
+        screenshot_path = screenshots_dir / f"screen-{now.strftime('%Y%m%d-%H%M%S')}.jpg"
+        
+        try:
+            cmd = ["/usr/sbin/screencapture", "-x", "-t", "jpeg", str(screenshot_path)]
+            if not os.path.exists("/usr/sbin/screencapture"):
+                return {}
+                
+            res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            if res.returncode != 0 or not screenshot_path.exists():
+                return {}
+                
+            with open(screenshot_path, "rb") as img_file:
+                img_data = img_file.read()
+                image_base64 = base64.b64encode(img_data).decode("utf-8")
+                
+            if screenshot_path.exists():
+                screenshot_path.unlink()
+        except Exception:
+            return {}
+
+        current_task = (task_view or {}).get("current") or {}
+        task_title = current_task.get("title", "") or "个人自律"
+        
+        prompt = (
+            "你是一个工位搭子的屏幕观察助手。用户当前设定的专注目标是：'{goal}'，主线任务是：'{task_title}'。\n"
+            "请查看这张用户电脑屏幕的截图，分析用户目前正在做什么，以及用户的当前行为是否偏离了设定的目标和主线任务。\n"
+            "如果用户当前正在编写代码、阅读相关技术文档、查找学习资料、查看工作任务或进行与上述目标直接相关的活动，则视为【没有偏航】。\n"
+            "如果用户当前正在刷社交媒体（如微博、微信、B站娱乐视频）、看小说、玩游戏或浏览完全不相关的网页，则视为【偏航】。\n"
+            "请严格只输出一个合法的 JSON 对象，不要包含 Markdown 格式标记，不要包含其他前后解释。JSON 结构必须恰好如下：\n"
+            "{\n"
+            "  \"is_deviated\": true 或 false,\n"
+            "  \"activity_summary\": \"简短描述用户正在做什么（例如：在 VS Code 中写 Python 代码，或者在看 Bilibili 视频）\",\n"
+            "  \"deviation_reason\": \"如果是偏航，简述偏航原因；如果没有偏航，留空\",\n"
+            "  \"tone_suggestion\": \"一句话提醒或鼓励：符合你'70%温柔师姐/20%并肩奋斗同事/10%朋友'性格的、极低压力、柔和的话语。如果是偏航，给出一句温柔的偏航提醒（例如：'师弟/师妹，当前咱们的目标是{goal}，不过屏幕上好像在忙别的事哦。先把这个分支收一收，回来看一眼咱们的任务。'）；如果没有偏航（在正常工作），给出一句温暖的鼓励或陪伴跟进的话（例如：'师弟加油！看到你正在专注写代码，目前的进展还顺利吗？累了的话记得起来喝口水哦。'）\"\n"
+            "}"
+        ).replace("{goal}", goal).replace("{task_title}", task_title)
+        
+        try:
+            raw_response = self.llm_client.invoke_vision(prompt, image_base64)
+            analysis = self._parse_json_response(raw_response)
+        except Exception:
+            return {}
+            
+        is_deviated = analysis.get("is_deviated", False)
+        activity_summary = analysis.get("activity_summary", "")
+        tone_suggestion = analysis.get("tone_suggestion", "")
+        
+        if is_deviated:
+            deviation_reason = analysis.get("deviation_reason", "")
+            return {
+                "type": "screen_deviation",
+                "subject_type": subject_type,
+                "subject_id": subject_id,
+                "subject_title": subject_title,
+                "severity": "high",
+                "title": "工位偏航提醒 🔔",
+                "message": f"监测到屏幕活动偏离目标：{activity_summary}。原因：{deviation_reason}",
+                "display_message": tone_suggestion or f"当前专注目标是【{goal}】，不过屏幕上好像在忙别的哦？先收收心推进主线吧！",
+                "metadata": {
+                    "activity_summary": activity_summary,
+                    "deviation_reason": deviation_reason,
+                    "focus_goal": goal,
+                    "triggered_by": "vision_llm",
+                },
+            }
+        else:
+            return {
+                "type": "screen_accompaniment",
+                "subject_type": subject_type,
+                "subject_id": subject_id,
+                "subject_title": subject_title,
+                "severity": "low",
+                "title": "工位陪伴提醒 🌟",
+                "message": f"监测到屏幕活动正常：{activity_summary}",
+                "display_message": tone_suggestion or f"正在专注于目标【{goal}】，太棒了！继续保持，师姐一直陪着你哦。",
+                "metadata": {
+                    "activity_summary": activity_summary,
+                    "focus_goal": goal,
+                    "triggered_by": "vision_llm",
+                },
+            }
+
+    def _parse_json_response(self, text: str) -> Dict[str, Any]:
+        import re
+        text = text.strip()
+        # Strip markdown block if exists
+        match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
+        if match:
+            text = match.group(1)
+        try:
+            return json.loads(text)
+        except Exception:
+            return {}
+
+    def _get_active_window_macos(self) -> tuple[str, str]:
+        """通过 AppleScript 获取当前最前台 App 的名称与活跃窗口标题。仅支持 macOS。"""
+        import os
+        import subprocess
+        
+        # 兼容性检查：如果不是 macOS 或者 AppleScript 不存在，则直接返回空
+        if not os.path.exists("/usr/sbin/screencapture"):
+            return "", ""
+            
+        script = (
+            'tell application "System Events"\n'
+            '    set frontmostProcess to first application process whose frontmost is true\n'
+            '    set appName to name of frontmostProcess\n'
+            '    set windowTitle to ""\n'
+            '    tell frontmostProcess\n'
+            '        try\n'
+            '            if exists window 1 then\n'
+            '                set windowTitle to name of window 1\n'
+            '            end if\n'
+            '        end try\n'
+            '    end tell\n'
+            'end tell\n'
+            'return appName & "|" & windowTitle'
+        )
+        
+        try:
+            cmd = ["osascript", "-e", script]
+            # 执行命令并设置 2 秒超时，防止卡死
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=2.0)
+            if res.returncode != 0:
+                return "", ""
+            output = res.stdout.strip()
+            if "|" in output:
+                parts = output.split("|", 1)
+                return parts[0].strip(), parts[1].strip()
+            return output, ""
+        except Exception:
+            return "", ""
+
+    def _rule_based_check(self, app_name: str, window_title: str, goal: str) -> Optional[bool]:
+        """本地规则过滤器。
+        返回 False 表示确认正在工作（无偏航），返回 True 表示确认娱乐偏航，返回 None 表示进入灰色地带。
+        """
+        if not app_name:
+            return None
+            
+        app_lower = app_name.lower()
+        title_lower = window_title.lower()
+        
+        # 0. 自定义黑白名单过滤 (最高优先级)
+        prefs = self.load_preferences()
+        custom_blacklist = prefs.get("custom_blacklist_keywords", [])
+        custom_whitelist = prefs.get("custom_whitelist_keywords", [])
+        
+        if any(kw.lower() in title_lower or kw.lower() in app_lower for kw in custom_blacklist if kw):
+            return True
+            
+        if any(kw.lower() in title_lower or kw.lower() in app_lower for kw in custom_whitelist if kw):
+            return False
+        
+        # 1. 软件黑名单直接判定偏航
+        blacklist_apps = {"steam", "epic games launcher", "league of legends", "genshin impact"}
+        if app_lower in blacklist_apps:
+            return True
+            
+        # 2. 网页黑名单直接判定偏航
+        blacklist_keywords = {
+            "bilibili", "youtube", "weibo", "taobao", "zhihu", 
+            "reddit", "netflix", "douyin", "xiaohongshu", "kuaishou", 
+            "tieba", "jd.com", "tmall", "steam"
+        }
+        if any(kw in title_lower or kw in app_lower for kw in blacklist_keywords):
+            return True
+            
+        # 3. 软件白名单直接判定无偏航 (IDE, Terminal)
+        whitelist_apps = {
+            "xcode", "visual studio code", "cursor", "terminal", 
+            "iterm", "iterm2", "pycharm", "intellij idea", "clion", 
+            "webstorm", "sublime text", "android studio", "docker"
+        }
+        if app_lower in whitelist_apps:
+            return False
+            
+        # 4. 网页白名单/工作关键词直接判定无偏航
+        whitelist_keywords = {
+            "github", "stackoverflow", "leetcode", "localhost", 
+            "documentation", "google search", "api reference", 
+            "developer", "mdn", "chatgpt", "deepseek", "kimi"
+        }
+        if any(kw in title_lower for kw in whitelist_keywords):
+            return False
+            
+        # 5. 进入灰色地带，需要截图 Vision LLM 判定
+        return None
+
+
     def _commitment_deadline_candidates(self, commitments: List[Dict[str, Any]], now: datetime) -> List[Dict[str, Any]]:
         candidates = []
         for item in commitments:
@@ -379,7 +718,7 @@ class SupervisionEventManager:
                 "title": candidate.get("title", existing.get("title", "")),
                 "message": candidate.get("message", existing.get("message", "")),
                 "display_message": candidate.get("display_message", existing.get("display_message", "")),
-                "metadata": candidate.get("metadata", existing.get("metadata", {})),
+                "metadata": {**existing.get("metadata", {}), **candidate.get("metadata", {})},
                 "last_detected_at": now_text,
                 "updated_at": now_text,
             })
@@ -431,6 +770,8 @@ class SupervisionEventManager:
                 "commitment_due_today",
                 "commitment_overdue",
                 "task_stale",
+                "screen_deviation",
+                "screen_accompaniment",
             }:
                 event["status"] = "resolved"
                 event["resolved_at"] = now_text
@@ -701,6 +1042,8 @@ class SupervisionEventManager:
             display = f"我先帮你记着：承诺【{subject}】今天到期，相关时轻轻处理一下就好。"
         elif event_type == "task_stale":
             display = f"我先帮你保留主线：当前任务【{subject}】有一阵子没更新了，回来时接上一个小动作就行。"
+        elif event_type in {"screen_deviation", "screen_accompaniment"}:
+            display = candidate.get("display_message") or candidate.get("message", "")
         else:
             display = candidate.get("message", "")
 
@@ -1230,6 +1573,17 @@ class SupervisionEventManager:
         strength = str(preferences.get("reminder_strength", defaults["reminder_strength"])).lower()
         if strength not in {"soft", "gentle", "normal"}:
             strength = defaults["reminder_strength"]
+
+        custom_blacklist = preferences.get("custom_blacklist_keywords", defaults.get("custom_blacklist_keywords", []))
+        if not isinstance(custom_blacklist, list):
+            custom_blacklist = []
+        custom_blacklist = [str(x).strip() for x in custom_blacklist if x]
+
+        custom_whitelist = preferences.get("custom_whitelist_keywords", defaults.get("custom_whitelist_keywords", []))
+        if not isinstance(custom_whitelist, list):
+            custom_whitelist = []
+        custom_whitelist = [str(x).strip() for x in custom_whitelist if x]
+
         return {
             "enabled": bool(preferences.get("enabled", defaults["enabled"])),
             "reminder_strength": strength,
@@ -1251,13 +1605,21 @@ class SupervisionEventManager:
             else defaults["quiet_until"],
             "notify_focus": bool(preferences.get("notify_focus", defaults["notify_focus"])),
             "notify_commitments": bool(preferences.get("notify_commitments", defaults["notify_commitments"])),
-            "notify_tasks": bool(preferences.get("notify_tasks", defaults["notify_tasks"])),
+            "notify_tasks": bool(preferences.get("notify_tasks", defaults.get("notify_tasks", True))),
+            "screen_monitor_enabled": bool(preferences.get("screen_monitor_enabled", defaults["screen_monitor_enabled"])),
+            "screen_monitor_interval_minutes": self._bounded_int(preferences.get("screen_monitor_interval_minutes", defaults["screen_monitor_interval_minutes"]), 1, 60),
+            "last_screen_check": str(preferences.get("last_screen_check", defaults["last_screen_check"])),
+            "auto_monitor_work_hours_enabled": bool(preferences.get("auto_monitor_work_hours_enabled", defaults["auto_monitor_work_hours_enabled"])),
+            "work_hours_start": str(preferences.get("work_hours_start", defaults["work_hours_start"])),
+            "work_hours_end": str(preferences.get("work_hours_end", defaults["work_hours_end"])),
+            "custom_blacklist_keywords": custom_blacklist,
+            "custom_whitelist_keywords": custom_whitelist,
         }
 
     def _normalize_event_type_min_severity(self, value: Any) -> Dict[str, Dict[str, str]]:
         if not isinstance(value, dict):
             return {}
-        allowed_types = {"focus_expired", "commitment_due_today", "commitment_overdue", "task_stale"}
+        allowed_types = {"focus_expired", "commitment_due_today", "commitment_overdue", "task_stale", "screen_deviation"}
         allowed_channels = {"page", "browser", "background"}
         result: Dict[str, Dict[str, str]] = {}
         for event_type, channels in value.items():

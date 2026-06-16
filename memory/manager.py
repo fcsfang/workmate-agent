@@ -116,6 +116,8 @@ class MemoryManager:
         self.summary_manager.set_llm_client(llm_client)
         self.task_state.set_llm_client(llm_client)
         self.user_profile_manager.set_llm_client(llm_client)
+        self.supervision_event_manager.set_llm_client(llm_client)
+
 
     def set_summary_client(self, llm_client: Any) -> None:
         self.set_llm_client(llm_client)
@@ -345,12 +347,44 @@ class MemoryManager:
         )
 
     def refresh_supervision_events(self) -> List[Dict[str, Any]]:
-        return self.supervision_event_manager.detect_events(
+        events = self.supervision_event_manager.detect_events(
             focus_state=self.get_focus_session_state(),
             commitments=self.task_state.all_commitments(),
             task_view=self.get_task_view(),
             user_profile=self.get_user_profile(),
         )
+        
+        has_new_chat_records = False
+        for event in events:
+            if event.get("type") in {"screen_deviation", "screen_accompaniment"} and event.get("status") == "detected":
+                metadata = event.get("metadata", {})
+                if not metadata.get("added_to_chat"):
+                    fallback_msg = (
+                        "检测到屏幕活动偏离了当前目标，记得回来看一眼任务哦。"
+                        if event.get("type") == "screen_deviation"
+                        else "检测到屏幕活动，师姐一直陪着你哦。"
+                    )
+                    body = event.get("display_message") or event.get("message") or fallback_msg
+                    self.persist_record(
+                        user_input="",
+                        assistant_output=body,
+                        extracted={},
+                        task_state=self.get_task_state(),
+                    )
+                    metadata["added_to_chat"] = True
+                    has_new_chat_records = True
+                    
+        if has_new_chat_records:
+            all_events = self.supervision_event_manager.load_events()
+            notified_ids = {e.get("id") for e in events if e.get("metadata", {}).get("added_to_chat")}
+            for ev in all_events:
+                if ev.get("id") in notified_ids:
+                    if "metadata" not in ev or not isinstance(ev["metadata"], dict):
+                        ev["metadata"] = {}
+                    ev["metadata"]["added_to_chat"] = True
+            self.supervision_event_manager.save_events(all_events)
+            
+        return events
 
     def get_supervision_event_state(self, current_prompt: str = "") -> Dict[str, Any]:
         support_state = self.get_support_knowledge_state(current_prompt) if current_prompt else {}
