@@ -50,3 +50,37 @@
 * **做法**：
   * 编写 Manifest V3 浏览器插件与本地 Agent 进行 IPC/WebSocket 通信。
   * 传递当前活跃标签页的完整大纲（DOM Summary）及 URL 路径，以提高对“在 GitHub 查资料”与“在 GitHub 摸鱼”的精细语义识别。
+
+---
+
+## 3. 产品化包装：macOS 原生桌面应用方案 (macOS Desktop Packaging)
+
+为了将 Workmate Agent 从“在终端启动、在浏览器中查看的命令行服务”升级为“点击即用、体验无缝的 macOS 桌面客户端”，以下是三个可行的技术实现路线：
+
+### 💡 路线一：PyInstaller + `pywebview` 纯 Python 轻量化包装（低成本首选）
+* **架构设计**：
+  * 使用 **PyInstaller** 将 Python 源码和依赖（包括 FastAPI、sqlite 等）打包成一个独立的 macOS App 二进制文件。
+  * 在入口代码中引入 **`pywebview`**。它是一个纯 Python 的轻量级 WebView 框架，在 macOS 下会直接调用系统原生的 `Cocoa/WebKit` (`WKWebView`) 渲染我们的前端 HTML 页面。
+  * 运行时，Python 程序先自动在后台启动 FastAPI 端口（如 127.0.0.1:7860），随后通过 `webview.create_window` 打开一个无浏览器边框的独立窗口加载该页面。
+* **优缺点**：
+  * *优点*：100% 纯 Python 开发，无需引入 Node.js 或 Rust，开发与打包成本最低，且包体积非常小（通常 < 50MB）。
+  * *缺点*：窗口的自定义样式能力较弱，不易制作复杂的 macOS 菜单栏（Menu Bar）驻留及弹出特效。
+
+### 💡 路线二：Swift Menu Bar Wrapper (菜单栏驻留型 App)
+* **架构设计**：
+  * 将 Workmate Agent 包装为常驻 macOS 右上角菜单栏的图标应用（类似于 1Password、Loom 等小工具）。
+  * 使用 **Swift** 编写一个极简的 macOS 菜单栏外壳（Status Bar App），在启动时调用系统进程启动后台的 Python FastAPI（通过 PyInstaller 打包的二进制包）。
+  * 用户点击菜单栏图标时，Swift 会弹出一个悬浮的 Popover 视窗，其内部嵌入一个 Swift 原生的 `WKWebView`，直接加载本地 FastAPI 页面。
+* **优缺点**：
+  * *优点*：体验最原生，常驻菜单栏，符合“自律工位搭子”的低侵入、高频率陪伴的定位，完全隐藏了后台命令行黑窗口。
+  * *缺点*：需要编写 Swift/Xcode 代码，外壳的二次开发需要了解苹果原生开发 API。
+
+### 💡 路线三：Tauri + Python Sidecar 现代桌面客户端
+* **架构设计**：
+  * 采用现代桌面开发框架 **Tauri**。它是一个基于 Rust 的极轻量级桌面框架（包体积仅十几MB，内存占用极低），比 Electron（打包动辄几百MB）更优秀。
+  * 将我们的 Web 前端放入 Tauri 的渲染层中，Tauri 会调用 macOS WebKit 渲染。
+  * 将 Python 核心使用 PyInstaller 编译为一个 **Sidecar**（附属可执行二进制文件）。Tauri 启动时，会自动管理并拉起这个 Python Sidecar，在进程生命周期结束时自动将其销毁，防止孤儿进程残留。
+* **优缺点**：
+  * *优点*：界面高度可定制，跨平台扩展性强，比 Electron 轻量极多，且进程管理极其规范。
+  * *缺点*：需要配置 Node.js/Rust 开发链，Tauri 侧与 Python Sidecar 侧如果要进行进程间深度通信（IPC），需要建立一定的通信通道。
+
