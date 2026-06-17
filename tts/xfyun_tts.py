@@ -58,6 +58,11 @@ class XFYunTTSClient:
         text = _normalize_text(text)
         if not text:
             raise XFYunTTSError("text is required")
+        if not hasattr(websocket, "create_connection"):
+            raise XFYunTTSError(
+                "websocket-client is required for XFYun TTS. "
+                "Run `pip uninstall websocket && pip install websocket-client` in the active environment."
+            )
         ws = websocket.create_connection(self._authorized_url(), timeout=self.config.timeout)
         try:
             ws.send(json.dumps(self._payload(text), ensure_ascii=False))

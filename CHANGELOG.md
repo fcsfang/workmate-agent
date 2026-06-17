@@ -1,3 +1,8 @@
+## V2.1.1
+### 修复
+- 修复讯飞 TTS 在 `conda agent` 环境中可能误导入旧版 `websocket` 包导致 `/api/tts/speech` 返回 500 的部署问题
+- 为讯飞 TTS 增加依赖冲突诊断提示，要求使用 `websocket-client` 提供的 `create_connection`
+
 ## V2.1
 ### 目标
 - 接入讯飞开放平台在线语音合成，让监督事件语音从浏览器系统朗读升级为可选云端 TTS，改善声音自然度
