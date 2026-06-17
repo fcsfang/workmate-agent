@@ -455,7 +455,7 @@ class SupervisionEventManager:
                                 "  \"is_deviated\": true 或 false,\n"
                                 "  \"activity_summary\": \"简短描述用户正在做什么（例如：在 VS Code 中写 Python 代码，或者在看 Bilibili 视频）\",\n"
                                 "  \"deviation_reason\": \"如果是偏航，简述偏航原因；如果没有偏航，留空\",\n"
-                                "  \"tone_suggestion\": \"一句话提醒或鼓励：符合你'70%并肩作战默契伙伴/20%专业温暖支持者/10%朋友'性格的、极低压力、柔和的话语。直接使用'你'或'咱们'称呼用户（绝对不要使用'师弟'、'师妹'、'学弟'、'学妹'等称谓）。如果是偏航，给出一句温和的偏航提醒（例如：'咱们先收收心，回到主线目标【{goal}】上吧，咱们一起加油！'）；如果没有偏航（在正常工作），给出一句温暖的鼓励或陪伴跟进的话（例如：'加油！看到你正在专注于【{goal}】，目前还顺利吗？累了记得喝口水休息一下。'）\"\n"
+                                "  \"tone_suggestion\": \"一句自然的短提醒或短陪伴语，像同桌轻声提醒，不要像系统通知。直接使用'你'或少量使用'咱们'，绝对不要使用'师弟'、'师妹'、'学弟'、'学妹'等称谓。不要固定使用'加油/方向很对/继续顺着/我陪你一起'。如果是偏航，轻轻把注意力拉回主线，例如：'先回来一下，把当前这一步收住就好。'；如果没有偏航，给一句不打扰的确认，例如：'嗯，这段是在主线上，先把手头这个点收完。'\"\n"
                                 "}"
                             ).replace("{goal}", goal).replace("{task_title}", task_title).replace("{local_context}", local_rule_context)
                             
@@ -488,7 +488,7 @@ class SupervisionEventManager:
                     "severity": "high",
                     "title": "工位偏航提醒 🔔",
                     "message": f"监测到屏幕活动偏离目标：{activity_summary}。原因：{deviation_reason}",
-                    "display_message": tone_suggestion or f"当前专注目标是【{goal}】，不过屏幕上好像在忙别的哦？先收收心推进主线吧！",
+                    "display_message": tone_suggestion or f"先回来一下，当前主线还是【{goal}】，把手头这一小步接上就好。",
                     "metadata": {
                         "activity_summary": activity_summary,
                         "deviation_reason": deviation_reason,
@@ -505,7 +505,7 @@ class SupervisionEventManager:
                     "severity": "low",
                     "title": "工位陪伴提醒 🌟",
                     "message": f"监测到屏幕活动正常：{activity_summary}",
-                    "display_message": tone_suggestion or f"正在专注于目标【{goal}】，太棒了！继续保持，咱们一起加油。",
+                    "display_message": tone_suggestion or f"嗯，这段还在【{goal}】这条线上，先把当前这个点收完。",
                     "metadata": {
                         "activity_summary": activity_summary,
                         "focus_goal": goal,
@@ -516,14 +516,14 @@ class SupervisionEventManager:
             # 大模型未配置或调用失败，退回到本地规则结果
             if rule_result is False:
                 activity_summary = f"处于工作应用：{app_name}，窗口标题：{window_title}"
-                display_msg = f"正在专注于【{goal}】（当前前台是 {app_name}），太棒了！继续保持，咱们一起加油，累了记得起来喝水哦！"
+                display_msg = f"这段还在【{goal}】上，先把当前这个点收完。"
                 app_lower = app_name.lower()
                 if "code" in app_lower or "cursor" in app_lower or "pycharm" in app_lower:
-                    display_msg = f"看到你正在 {app_name} 里专心写代码，编译顺利哦，加油推进！咱们一起并肩作战。"
+                    display_msg = f"代码这条线还在推进，先把眼前这个小问题收住。"
                 elif "terminal" in app_lower or "iterm" in app_lower:
-                    display_msg = f"命令行飞舞，极客风范满满！专注的背影最帅气了，加油推进【{goal}】！"
+                    display_msg = f"终端这边看起来是在处理任务相关的事，先把这一步跑完。"
                 elif "github" in window_title.lower() or "stackoverflow" in window_title.lower():
-                    display_msg = f"在查阅技术文档和社区（{window_title}）呢，思路一定被启发了吧！加油！"
+                    display_msg = f"资料这段可以，先抓住一个有用点带回当前任务。"
                     
                 return {
                     "type": "screen_accompaniment",
@@ -543,7 +543,7 @@ class SupervisionEventManager:
             elif rule_result is True:
                 activity_summary = f"处于活跃应用：{app_name}，窗口标题：{window_title}"
                 deviation_reason = "本地黑名单规则匹配成功，确定处于娱乐偏航状态"
-                display_msg = f"当前设定的目标是【{goal}】，不过屏幕上好像在看【{app_name} | {window_title}】哦？先收一收，回来看一眼任务吧！"
+                display_msg = f"先回来一下，当前主线是【{goal}】；把这个窗口放一边，接上任务里最小的一步。"
                 return {
                     "type": "screen_deviation",
                     "subject_type": subject_type,
@@ -1077,7 +1077,7 @@ class SupervisionEventManager:
         elif event_type == "task_stale":
             display = f"我先帮你保留主线：当前任务【{subject}】有一阵子没更新了，回来时接上一个小动作就行。"
         elif event_type in {"screen_deviation", "screen_accompaniment"}:
-            display = candidate.get("display_message") or candidate.get("message", "")
+            display = self._screen_display_message(candidate)
         else:
             display = candidate.get("message", "")
 
@@ -1094,6 +1094,73 @@ class SupervisionEventManager:
             "copy_policy": copy_policy.get("summary", ""),
         }
         return candidate
+
+    def _screen_display_message(self, candidate: Dict[str, Any]) -> str:
+        event_type = candidate.get("type", "")
+        metadata = candidate.get("metadata", {}) if isinstance(candidate.get("metadata", {}), dict) else {}
+        goal = metadata.get("focus_goal") or candidate.get("subject_title") or "当前主线"
+        activity = metadata.get("activity_summary") or candidate.get("message", "")
+        raw = self._sanitize_screen_copy(candidate.get("display_message") or "")
+        if raw and not self._looks_template_like(raw):
+            return self._compact_sentence(raw, limit=86)
+
+        if event_type == "screen_deviation":
+            variants = [
+                f"先回来一下，当前主线是【{goal}】；接上任务里最小的一步就好。",
+                f"这个窗口先放一边，回到【{goal}】看一眼下一步。",
+                f"注意力有点飘了，先把【{goal}】里最近的一小段收住。",
+                f"轻轻拉回一下：现在更值得接的是【{goal}】。",
+                "先别散开，回到刚才那条任务线，做一个很小的动作就行。",
+            ]
+        else:
+            variants = [
+                f"嗯，这段还在【{goal}】上，先把手头这个点收完。",
+                f"现在的动作和【{goal}】是连着的，保持这个小节奏就行。",
+                "这段是在推进，不用多想，先把眼前这一小块处理完。",
+                "状态在线，先顺手把当前这个点落下去。",
+                "可以，这会儿没有偏航；把当前窗口里的小问题收住就好。",
+            ]
+            if activity:
+                variants.append(f"我看你在处理相关内容，先抓一个结果留住就行。")
+
+        seed = "|".join([
+            str(candidate.get("type", "")),
+            str(candidate.get("subject_id", "")),
+            str(activity),
+            datetime.now().strftime("%Y%m%d%H%M"),
+        ])
+        index = int(hashlib.md5(seed.encode("utf-8")).hexdigest(), 16) % len(variants)
+        return variants[index]
+
+    def _sanitize_screen_copy(self, text: str) -> str:
+        text = str(text or "").strip()
+        replacements = {
+            "师弟/师妹": "你",
+            "师弟": "你",
+            "师妹": "你",
+            "学弟": "你",
+            "学妹": "你",
+            "师姐一直陪着你呢": "",
+            "咱们一起加油": "先做一小步",
+        }
+        for old, new in replacements.items():
+            text = text.replace(old, new)
+        return " ".join(text.split())
+
+    def _looks_template_like(self, text: str) -> bool:
+        text = str(text or "")
+        markers = [
+            "方向很对",
+            "节奏很稳",
+            "继续顺着",
+            "继续稳稳",
+            "咱们稳稳",
+            "我陪你一起",
+            "累了记得",
+            "看到你正在围绕",
+            "你现在就在围绕",
+        ]
+        return any(marker in text for marker in markers)
 
     def _compact_sentence(self, text: str, limit: int = 90) -> str:
         text = str(text or "").strip()

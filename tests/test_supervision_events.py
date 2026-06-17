@@ -111,3 +111,28 @@ def test_voice_preferences_are_normalized_and_persisted(tmp_path):
     assert preferences["voice_rate"] == 0.6
     assert preferences["voice_include_accompaniment"] is True
     assert preferences["event_type_min_severity"]["screen_deviation"]["voice"] == "medium"
+
+
+def test_screen_accompaniment_copy_avoids_repetitive_template(tmp_path):
+    manager = SupervisionEventManager(
+        events_path=str(tmp_path / "events.json"),
+        preferences_path=str(tmp_path / "preferences.json"),
+    )
+    candidate = {
+        "type": "screen_accompaniment",
+        "subject_title": "继续优化 workmate agent",
+        "subject_id": "task-1",
+        "display_message": "加油，你现在就在围绕【继续优化 workmate agent】做控制台验证，方向很对，咱们顺着这个点继续收敛就好。",
+        "metadata": {
+            "focus_goal": "继续优化 workmate agent",
+            "activity_summary": "控制台验证",
+        },
+    }
+
+    polished = manager._apply_copy_policy(candidate, manager._copy_policy({}))
+    message = polished["display_message"]
+
+    assert "方向很对" not in message
+    assert "继续顺着" not in message
+    assert "你现在就在围绕" not in message
+    assert message

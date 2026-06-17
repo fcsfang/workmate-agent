@@ -83,7 +83,8 @@ def test_screen_deviation_detection_triggered(tmp_path):
         assert deviation_events[0]["subject_id"] == "focus-session-123"
         assert deviation_events[0]["severity"] == "high"
         assert "Bilibili" in deviation_events[0]["message"]
-        assert "师弟" in deviation_events[0]["display_message"]
+        assert "师弟" not in deviation_events[0]["display_message"]
+        assert deviation_events[0]["display_message"]
 
 
 def test_screen_deviation_detection_not_triggered_on_correct_behavior(tmp_path):
@@ -337,8 +338,9 @@ def test_screen_deviation_chat_injection(tmp_memory_manager):
     records = tmp_memory_manager.load_records()
     assert len(records) == 1
     assert records[0]["user"] == ""
-    assert "Google Chrome" in records[0]["assistant"]
-    assert "bilibili" in records[0]["assistant"]
+    assert records[0]["assistant"]
+    assert "方向很对" not in records[0]["assistant"]
+    assert "bilibili" in deviation_events[0]["message"]
 
     # 3. Verify event metadata indicates it has been added to chat
     all_events = tmp_memory_manager.supervision_event_manager.load_events()
@@ -466,7 +468,8 @@ def test_screen_accompaniment_and_auto_resolution(tmp_memory_manager):
     records = tmp_memory_manager.load_records()
     assert len(records) == 1
     assert records[0]["user"] == ""
-    assert "VS Code" in records[0]["assistant"] or "写代码" in records[0]["assistant"]
+    assert records[0]["assistant"]
+    assert "方向很对" not in records[0]["assistant"]
 
     # Step 2: 再次运行，仍处于工作应用中，验证不会重复写入对话记录 (deduplication)
     prefs = tmp_memory_manager.get_supervision_preferences()
@@ -513,6 +516,3 @@ def test_screen_accompaniment_and_auto_resolution(tmp_memory_manager):
     # 验证对话历史增加了偏航提醒
     records3 = tmp_memory_manager.load_records()
     assert len(records3) == 2
-
-
-
