@@ -84,6 +84,11 @@ def test_screen_deviation_detection_triggered(tmp_path):
         assert deviation_events[0]["severity"] == "high"
         assert "Bilibili" in deviation_events[0]["message"]
         assert deviation_events[0]["display_message"] == "先把视频放一边，回到代码这一小步。"
+        vision_prompt = mock_llm.invoke_vision.call_args.args[0]
+        assert "可以很短，也可以稍长" in vision_prompt
+        assert "可以温柔托住，也可以在明显偏航时稍微坚定一点" in vision_prompt
+        assert "长度控制" not in vision_prompt
+        assert "一句自然短提醒" not in vision_prompt
 
 
 def test_screen_deviation_detection_not_triggered_on_correct_behavior(tmp_path):
