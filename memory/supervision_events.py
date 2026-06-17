@@ -1288,7 +1288,7 @@ class SupervisionEventManager:
         else:
             display = candidate.get("message", "")
 
-        if copy_policy.get("concise"):
+        if copy_policy.get("concise") and event_type not in {"screen_deviation", "screen_accompaniment"}:
             display = self._compact_sentence(display, limit=90)
         if copy_policy.get("no_proof"):
             display = display.replace("收一下进展", "说一句进展")

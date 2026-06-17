@@ -136,6 +136,30 @@ def test_screen_accompaniment_copy_respects_model_suggestion(tmp_path):
     assert polished["display_message"] == "这个点先收一下，别急着开新分支。"
 
 
+def test_screen_copy_policy_does_not_truncate_vision_message(tmp_path):
+    manager = SupervisionEventManager(
+        events_path=str(tmp_path / "events.json"),
+        preferences_path=str(tmp_path / "preferences.json"),
+    )
+    message = (
+        "你现在更像是在处理聊天和一段与老师沟通相关的内容，不是在推进 Workmate Agent 优化。"
+        "若这是临时必须处理的事，尽量收尾到一个明确节点；处理完就切回 Console/代码。"
+    )
+    candidate = {
+        "type": "screen_deviation",
+        "subject_title": "继续优化 Workmate Agent",
+        "subject_id": "task-1",
+        "display_message": message,
+        "metadata": {"focus_goal": "继续优化 Workmate Agent"},
+    }
+
+    polished = manager._apply_copy_policy(candidate, {"concise": True, "summary": "只给一个小提示"})
+
+    assert polished["display_message"] == message
+    assert polished["display_message"].endswith("Console/代码。")
+    assert not polished["display_message"].endswith("/代。")
+
+
 def test_screen_observation_policy_respects_vision_silence_and_force_message(tmp_path):
     manager = SupervisionEventManager(
         events_path=str(tmp_path / "events.json"),
