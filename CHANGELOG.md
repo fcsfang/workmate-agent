@@ -1,3 +1,11 @@
+## V2.1.9
+### 视觉陪伴重构
+- 将视觉监督从“分类器式偏航判断”重构为轻量 Screen Companion：Vision 只输出屏幕观察、目标关系说明、是否说话、消息类型和自然提醒文案
+- 移除屏幕 Vision Prompt 中的 `confidence`、`deviation_level`、`intervention_hint` 等冗余控制字段，把提醒表达放心交给视觉大模型
+- 屏幕观察缓存改为保存 `observation`、`goal_note`、`message_type`、`should_message` 和 `message`，减少对长期记忆和监督事件的污染
+- 新增 `screen_force_message` 偏好与前端 `force vision message` 开关，方便调试期强制展示 Vision 生成的提醒文案
+- 默认仍尊重 Vision 的 `should_message=false` 静默选择；开启强制输出后，只要 Vision 返回 message 就会生成屏幕提醒事件
+
 ## V2.1.8
 ### 视觉监督调整
 - 正式采用 Vision `direct_message` 作为屏幕监督的用户可见提醒，不再调用第二段语言模型进行二次改写

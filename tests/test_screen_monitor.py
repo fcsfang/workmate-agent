@@ -16,18 +16,11 @@ def test_screen_deviation_detection_triggered(tmp_path):
     # Initialize mock llm_client
     mock_llm = MagicMock()
     mock_llm.invoke_vision.return_value = (
-        '{"is_deviated": true, '
-        '"activity_summary": "在看 Bilibili 搞笑视频", '
-        '"activity_category": "entertainment", '
-        '"goal_relation": "off_track", '
-        '"likely_intent": "可能在娱乐放松", '
-        '"visual_evidence": "浏览器中正在播放 Bilibili 搞笑视频", '
-        '"uncertainty": "", '
-        '"confidence": 0.93, '
-        '"deviation_reason": "当前行为与学习 Python 目标无关", '
-        '"deviation_level": "high", '
-        '"intervention_hint": "firm_pullback", '
-        '"direct_message": "我看到你现在在看 Bilibili，和学习 Python 这条线有点分开了。先回来吧。"}'
+        '{"observation": "在看 Bilibili 搞笑视频", '
+        '"goal_note": "这和学习 Python 这条线有点分开了", '
+        '"message_type": "pullback", '
+        '"should_message": true, '
+        '"message": "我看到你现在在看 Bilibili，和学习 Python 这条线有点分开了。先回来吧。"}'
     )
     manager.set_llm_client(mock_llm)
 
@@ -95,9 +88,11 @@ def test_screen_deviation_detection_triggered(tmp_path):
         assert deviation_events[0]["metadata"]["vision_direct_message"] == "我看到你现在在看 Bilibili，和学习 Python 这条线有点分开了。先回来吧。"
         assert deviation_events[0]["metadata"]["reminder_generated_by"] == "vision_direct"
         vision_prompt = mock_llm.invoke_vision.call_args.args[0]
-        assert "direct_message 是唯一面向用户展示的自然提醒文案" in vision_prompt
-        assert "direct_message" in vision_prompt
+        assert "message 不限制长度" in vision_prompt
+        assert "message_type" in vision_prompt
         assert "不限制长度" in vision_prompt
+        assert "confidence" not in vision_prompt
+        assert "deviation_level" not in vision_prompt
         assert "tone_suggestion" not in vision_prompt
         mock_llm.invoke_raw.assert_not_called()
 
@@ -110,18 +105,11 @@ def test_screen_deviation_detection_not_triggered_on_correct_behavior(tmp_path):
     
     mock_llm = MagicMock()
     mock_llm.invoke_vision.return_value = (
-        '{"is_deviated": false, '
-        '"activity_summary": "在 VS Code 中编写 Python 代码", '
-        '"activity_category": "deep_work", '
-        '"goal_relation": "on_track", '
-        '"likely_intent": "正在推进代码任务", '
-        '"visual_evidence": "编辑器中打开 Python 文件", '
-        '"uncertainty": "", '
-        '"confidence": 0.88, '
-        '"deviation_reason": "", '
-        '"deviation_level": "none", '
-        '"intervention_hint": "quiet_confirm", '
-        '"direct_message": "你现在还在代码这条线上，继续处理眼前这个点就好。"}'
+        '{"observation": "在 VS Code 中编写 Python 代码", '
+        '"goal_note": "这和学习 Python 代码开发直接相关", '
+        '"message_type": "silent", '
+        '"should_message": false, '
+        '"message": ""}'
     )
     manager.set_llm_client(mock_llm)
 

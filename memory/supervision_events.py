@@ -130,6 +130,7 @@ class SupervisionEventManager:
             "notify_tasks": True,
             "screen_monitor_enabled": True,
             "screen_monitor_interval_minutes": 5,
+            "screen_force_message": False,
             "last_screen_check": "",
             "auto_monitor_work_hours_enabled": True,
             "work_hours_start": "09:00",
@@ -472,27 +473,22 @@ class SupervisionEventManager:
                                 "你使用的是强视觉模型，请尽量发挥对截图、窗口内容、任务语义和用户意图的理解能力。不要只按 App 名或网站名机械判断；如果页面内容本身与目标相关，要把这种关系识别出来。\n"
                                 "请查看这张或这几张用户电脑屏幕截图（支持多屏幕），分析用户此刻正在做什么、它和当前目标的关系、是否像短暂切换/查资料/休息/娱乐拖延/元工具拖延。\n"
                                 "最近几次屏幕观察如下，用来帮助你判断连续趋势，不要把当前截图当成孤立瞬间：\n{recent_context}\n"
-                                "JSON 中的观察字段用于本地连续状态策略判断；direct_message 是唯一面向用户展示的自然提醒文案。是否真正展示仍由本地策略决定。\n"
+                                "这不是分类任务，也不是安全审计。你更像坐在用户旁边的工位搭子：看见屏幕，理解目标，然后决定是否自然说一句。\n"
+                                "如果当下没必要打扰用户，可以让 should_message 为 false，并把 message 留空。如果值得陪伴、提醒或轻轻拉回，就直接在 message 中写给用户看的自然语言。\n"
+                                "message 不限制长度，不要写成固定模板；让表达充分贴合当前屏幕、目标和最近观察，可以温柔、明确、简短或稍微展开。\n"
                                 "请严格只输出一个合法 JSON 对象，不要包含 Markdown，不要包含其他前后解释。JSON 结构必须恰好如下：\n"
                                 "{\n"
-                                "  \"is_deviated\": true 或 false,\n"
-                                "  \"activity_summary\": \"简短描述用户正在做什么\",\n"
-                                "  \"activity_category\": \"deep_work|research|communication|planning|tooling|break|entertainment|unknown\",\n"
-                                "  \"goal_relation\": \"on_track|near_track|temporary_detour|off_track|unclear\",\n"
-                                "  \"likely_intent\": \"你对用户此刻意图的自然语言推测\",\n"
-                                "  \"visual_evidence\": \"你在截图中看到的关键依据，简短列出\",\n"
-                                "  \"uncertainty\": \"不确定之处；如果很确定可留空\",\n"
-                                "  \"confidence\": 0.0 到 1.0 的数字,\n"
-                                "  \"deviation_reason\": \"如果是偏航，简述偏航原因；如果不是偏航，留空\",\n"
-                                "  \"deviation_level\": \"none|low|medium|high\",\n"
-                                "  \"intervention_hint\": \"none|watch_only|quiet_confirm|gentle_pullback|firm_pullback\",\n"
-                                "  \"direct_message\": \"如果你要直接对用户说话，会怎样自然提醒；不要解释 JSON，不要写标题，不限制长度；让表达充分贴合当前屏幕、目标和偏航趋势，可以温柔、明确、简短或稍微展开\"\n"
+                                "  \"observation\": \"你看到用户屏幕上正在发生什么，用自然语言简要描述\",\n"
+                                "  \"goal_note\": \"这和当前目标/主线任务的关系，用自然语言说明；如果不确定就说不确定\",\n"
+                                "  \"message_type\": \"companion|pullback|silent\",\n"
+                                "  \"should_message\": true 或 false,\n"
+                                "  \"message\": \"如果要对用户说话，直接写在这里；如果不该打扰，留空\"\n"
                                 "}"
                             ).replace("{goal}", goal).replace("{task_title}", task_title).replace("{local_context}", local_rule_context).replace("{recent_context}", recent_context)
                             
                             raw_response = self.llm_client.invoke_vision(prompt, image_base64)
                             analysis = self._parse_json_response(raw_response)
-                            if "is_deviated" in analysis:
+                            if "observation" in analysis:
                                 vision_success = True
                                 
                 if screenshot_path.exists():
@@ -502,8 +498,9 @@ class SupervisionEventManager:
 
         # 根据检测结果生成事件
         if vision_success:
-            is_deviated = analysis.get("is_deviated", False)
-            activity_summary = analysis.get("activity_summary", "")
+            message_type = self._screen_message_type(analysis)
+            should_message = bool(analysis.get("should_message", False))
+            activity_summary = str(analysis.get("observation", "") or "")
             observation = self._record_screen_observation(
                 analysis=analysis,
                 now=now,
@@ -519,8 +516,7 @@ class SupervisionEventManager:
                 print(f"[DEBUG] Screen observation recorded without reminder: {policy}")
                 return {}
             
-            if is_deviated:
-                deviation_reason = analysis.get("deviation_reason", "")
+            if message_type == "pullback":
                 display_message = self._vision_direct_reminder(
                     analysis=analysis,
                     event_type="screen_deviation",
@@ -536,23 +532,17 @@ class SupervisionEventManager:
                     "subject_title": subject_title,
                     "severity": policy.get("severity", "high"),
                     "title": "工位偏航提醒 🔔",
-                    "message": f"监测到屏幕活动偏离目标：{activity_summary}。原因：{deviation_reason}",
+                    "message": f"视觉观察：{activity_summary}。{analysis.get('goal_note', '')}",
                     "display_message": display_message,
                     "metadata": {
                         "activity_summary": activity_summary,
-                        "activity_category": analysis.get("activity_category", ""),
-                        "goal_relation": analysis.get("goal_relation", ""),
-                        "likely_intent": analysis.get("likely_intent", ""),
-                        "visual_evidence": analysis.get("visual_evidence", ""),
-                        "uncertainty": analysis.get("uncertainty", ""),
-                        "vision_direct_message": self._clean_screen_reminder(analysis.get("direct_message", "")),
-                        "confidence": self._safe_float(analysis.get("confidence"), 0.0),
-                        "deviation_reason": deviation_reason,
-                        "deviation_level": analysis.get("deviation_level", ""),
-                        "intervention_hint": analysis.get("intervention_hint", ""),
+                        "goal_note": analysis.get("goal_note", ""),
+                        "message_type": message_type,
+                        "should_message": should_message,
+                        "vision_direct_message": self._clean_screen_reminder(analysis.get("message", "")),
                         "focus_goal": goal,
                         "triggered_by": "vision_llm",
-                        "reminder_generated_by": "vision_direct" if analysis.get("direct_message") else "fallback",
+                        "reminder_generated_by": "vision_direct" if analysis.get("message") else "fallback",
                         "screen_policy": policy,
                         "observation_id": observation.get("id", ""),
                     },
@@ -573,22 +563,17 @@ class SupervisionEventManager:
                     "subject_title": subject_title,
                     "severity": "low",
                     "title": "工位陪伴提醒 🌟",
-                    "message": f"监测到屏幕活动正常：{activity_summary}",
+                    "message": f"视觉观察：{activity_summary}。{analysis.get('goal_note', '')}",
                     "display_message": display_message,
                     "metadata": {
                         "activity_summary": activity_summary,
-                        "activity_category": analysis.get("activity_category", ""),
-                        "goal_relation": analysis.get("goal_relation", ""),
-                        "likely_intent": analysis.get("likely_intent", ""),
-                        "visual_evidence": analysis.get("visual_evidence", ""),
-                        "uncertainty": analysis.get("uncertainty", ""),
-                        "vision_direct_message": self._clean_screen_reminder(analysis.get("direct_message", "")),
-                        "confidence": self._safe_float(analysis.get("confidence"), 0.0),
-                        "deviation_level": analysis.get("deviation_level", ""),
-                        "intervention_hint": analysis.get("intervention_hint", ""),
+                        "goal_note": analysis.get("goal_note", ""),
+                        "message_type": message_type,
+                        "should_message": should_message,
+                        "vision_direct_message": self._clean_screen_reminder(analysis.get("message", "")),
                         "focus_goal": goal,
                         "triggered_by": "vision_llm",
-                        "reminder_generated_by": "vision_direct" if analysis.get("direct_message") else "fallback",
+                        "reminder_generated_by": "vision_direct" if analysis.get("message") else "fallback",
                         "screen_policy": policy,
                         "observation_id": observation.get("id", ""),
                     },
@@ -663,18 +648,12 @@ class SupervisionEventManager:
             "focus_goal": goal,
             "app_name": app_name or "",
             "window_title": window_title or "",
-            "is_deviated": bool(analysis.get("is_deviated", False)),
-            "activity_summary": str(analysis.get("activity_summary", "") or ""),
-            "activity_category": str(analysis.get("activity_category", "") or "unknown"),
-            "goal_relation": str(analysis.get("goal_relation", "") or "unclear"),
-            "likely_intent": str(analysis.get("likely_intent", "") or ""),
-            "visual_evidence": str(analysis.get("visual_evidence", "") or ""),
-            "uncertainty": str(analysis.get("uncertainty", "") or ""),
-            "direct_message": self._clean_screen_reminder(analysis.get("direct_message", "")),
-            "confidence": self._safe_float(analysis.get("confidence"), 0.0),
-            "deviation_reason": str(analysis.get("deviation_reason", "") or ""),
-            "deviation_level": str(analysis.get("deviation_level", "") or "none"),
-            "intervention_hint": str(analysis.get("intervention_hint", "") or "none"),
+            "observation": str(analysis.get("observation", "") or ""),
+            "activity_summary": str(analysis.get("observation", "") or ""),
+            "goal_note": str(analysis.get("goal_note", "") or ""),
+            "message_type": self._screen_message_type(analysis),
+            "should_message": bool(analysis.get("should_message", False)),
+            "message": self._clean_screen_reminder(analysis.get("message", "")),
         }
         observations = self.load_screen_observations()
         observations.append(observation)
@@ -694,75 +673,56 @@ class SupervisionEventManager:
             return "暂无历史观察。"
         lines = []
         for item in sorted(observations, key=lambda value: value.get("observed_at", "")):
-            status = "偏航" if item.get("is_deviated") else "主线/接近主线"
             lines.append(
-                f"- {item.get('observed_at', '')}: {status}; "
-                f"{item.get('activity_summary', '')}; "
-                f"relation={item.get('goal_relation', '')}; "
-                f"level={item.get('deviation_level', '')}; "
-                f"confidence={item.get('confidence', '')}"
+                f"- {item.get('observed_at', '')}: "
+                f"type={item.get('message_type', '')}; "
+                f"observation={item.get('observation') or item.get('activity_summary', '')}; "
+                f"goal_note={item.get('goal_note', '')}"
             )
         return "\n".join(lines)
 
     def _screen_observation_policy(self, observation: Dict[str, Any]) -> Dict[str, Any]:
-        relation = str(observation.get("goal_relation", "") or "").lower()
-        level = str(observation.get("deviation_level", "") or "none").lower()
-        hint = str(observation.get("intervention_hint", "") or "none").lower()
-        confidence = self._safe_float(observation.get("confidence"), 0.0)
-        if confidence == 0.0 and level == "high":
-            confidence = 0.75
-        is_deviated = bool(observation.get("is_deviated", False)) or relation == "off_track"
+        prefs = self.load_preferences()
+        message_type = str(observation.get("message_type", "") or "silent").lower()
+        should_message = bool(observation.get("should_message", False))
+        has_message = bool(str(observation.get("message", "") or "").strip())
         subject_id = observation.get("subject_id", "")
         recent = self._recent_screen_observations(subject_id=subject_id, limit=4)
-        consecutive_offtrack = 0
+        consecutive_pullback = 0
         for item in recent:
-            item_relation = str(item.get("goal_relation", "") or "").lower()
-            item_level = str(item.get("deviation_level", "") or "none").lower()
-            item_offtrack = bool(item.get("is_deviated", False)) or item_relation == "off_track"
-            if item_offtrack and item_level in {"low", "medium", "high"}:
-                consecutive_offtrack += 1
+            if str(item.get("message_type", "") or "").lower() == "pullback":
+                consecutive_pullback += 1
             else:
                 break
 
-        if not is_deviated:
-            return {
-                "action": "record_only",
-                "reason": "screen_on_track_or_near_track",
-                "severity": "low",
-                "consecutive_offtrack": consecutive_offtrack,
-            }
-
-        if level == "high" and confidence >= 0.72:
+        if prefs.get("screen_force_message", False) and has_message:
             return {
                 "action": "emit_event",
-                "reason": "high_confidence_direct_deviation",
-                "severity": "high",
-                "consecutive_offtrack": consecutive_offtrack,
+                "reason": "force_message_enabled",
+                "severity": "high" if message_type == "pullback" else "low",
+                "consecutive_pullback": consecutive_pullback,
             }
 
-        if hint == "firm_pullback" and confidence >= 0.8:
+        if should_message and has_message:
             return {
                 "action": "emit_event",
-                "reason": "vision_requested_firm_pullback",
-                "severity": "high",
-                "consecutive_offtrack": consecutive_offtrack,
-            }
-
-        if consecutive_offtrack >= 2:
-            severity = "high" if level == "high" or consecutive_offtrack >= 3 else "medium"
-            return {
-                "action": "emit_event",
-                "reason": "continuous_screen_deviation",
-                "severity": severity,
-                "consecutive_offtrack": consecutive_offtrack,
+                "reason": "vision_companion_message",
+                "severity": "high" if message_type == "pullback" else "low",
+                "consecutive_pullback": consecutive_pullback,
             }
 
         return {
             "action": "record_only",
-            "reason": "first_or_uncertain_deviation_observed",
+            "reason": "vision_chose_silence",
             "severity": "low",
-            "consecutive_offtrack": consecutive_offtrack,
+            "consecutive_pullback": consecutive_pullback,
         }
+
+    def _screen_message_type(self, analysis: Dict[str, Any]) -> str:
+        value = str(analysis.get("message_type", "") or "silent").strip().lower()
+        if value not in {"companion", "pullback", "silent"}:
+            return "silent"
+        return value
 
     def _vision_direct_reminder(
         self,
@@ -773,7 +733,7 @@ class SupervisionEventManager:
         app_name: str,
         window_title: str,
     ) -> str:
-        direct_message = self._clean_screen_reminder(analysis.get("direct_message", ""))
+        direct_message = self._clean_screen_reminder(analysis.get("message", ""))
         if direct_message:
             return direct_message
         return self._screen_fallback_message({
@@ -785,65 +745,6 @@ class SupervisionEventManager:
                 "window_title": window_title,
             },
         })
-
-    def _compose_screen_reminder(
-        self,
-        analysis: Dict[str, Any],
-        event_type: str,
-        goal: str,
-        subject_title: str,
-        app_name: str,
-        window_title: str,
-    ) -> str:
-        fallback = self._screen_fallback_message({
-            "type": event_type,
-            "subject_title": subject_title,
-            "metadata": {"focus_goal": goal},
-        })
-        if not self.llm_client:
-            return fallback
-
-        is_deviated = event_type == "screen_deviation"
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "你是 Workmate Agent 的工位搭子表达层。"
-                    "上一步视觉模型已经完成结构化观察和偏航判断；你只负责写最终展示给用户、也可能被语音播报的自然语言提醒。"
-                    "不要输出 JSON，不要解释你的判断过程，不要写标题。"
-                    "表达要像真实坐在旁边的人：可以短，也可以稍长；可以温柔，也可以在明显偏航时更坚定。"
-                    "不要套模板，不要每次都鼓励，不要羞辱或审判用户。"
-                    "绝对不要使用'师弟'、'师妹'、'学弟'、'学妹'等称谓。"
-                ),
-            },
-            {
-                "role": "user",
-                "content": (
-                    f"当前目标：{goal}\n"
-                    f"主线任务：{subject_title or goal}\n"
-                    f"前台应用：{app_name or '未知'}\n"
-                    f"窗口标题：{window_title or '未知'}\n"
-                    f"是否偏航：{'是' if is_deviated else '否'}\n"
-                    f"屏幕活动：{analysis.get('activity_summary', '')}\n"
-                    f"偏航原因：{analysis.get('deviation_reason', '')}\n"
-                    f"偏航程度：{analysis.get('deviation_level', '')}\n"
-                    f"干预提示：{analysis.get('intervention_hint', '')}\n\n"
-                    "请直接写出要展示给用户的一段提醒。"
-                    "它可以是一句话，也可以是两三句话；根据场景自然决定。"
-                    "如果用户明显偏航，可以明确把他拉回主线；如果用户仍在主线上，可以很轻地确认，甚至保持低存在感。"
-                ),
-            },
-        ]
-        try:
-            if hasattr(self.llm_client, "invoke_raw") and callable(getattr(self.llm_client, "invoke_raw")):
-                raw = self.llm_client.invoke_raw(messages)
-            else:
-                raw = self.llm_client.invoke(messages=messages)
-        except Exception:
-            return fallback
-
-        reminder = self._clean_screen_reminder(raw)
-        return reminder or fallback
 
     def _clean_screen_reminder(self, text: Any) -> str:
         if not isinstance(text, str):
@@ -1968,6 +1869,7 @@ class SupervisionEventManager:
             "notify_tasks": bool(preferences.get("notify_tasks", defaults.get("notify_tasks", True))),
             "screen_monitor_enabled": bool(preferences.get("screen_monitor_enabled", defaults["screen_monitor_enabled"])),
             "screen_monitor_interval_minutes": self._bounded_int(preferences.get("screen_monitor_interval_minutes", defaults["screen_monitor_interval_minutes"]), 1, 60),
+            "screen_force_message": bool(preferences.get("screen_force_message", defaults["screen_force_message"])),
             "last_screen_check": str(preferences.get("last_screen_check", defaults["last_screen_check"])),
             "auto_monitor_work_hours_enabled": bool(preferences.get("auto_monitor_work_hours_enabled", defaults["auto_monitor_work_hours_enabled"])),
             "work_hours_start": str(preferences.get("work_hours_start", defaults["work_hours_start"])),

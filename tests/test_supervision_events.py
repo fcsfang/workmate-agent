@@ -99,6 +99,7 @@ def test_voice_preferences_are_normalized_and_persisted(tmp_path):
         "voice_volume": 1.5,
         "voice_rate": 0.2,
         "voice_include_accompaniment": True,
+        "screen_force_message": True,
         "event_type_min_severity": {
             "screen_deviation": {"voice": "medium"},
         },
@@ -110,6 +111,7 @@ def test_voice_preferences_are_normalized_and_persisted(tmp_path):
     assert preferences["voice_volume"] == 1.0
     assert preferences["voice_rate"] == 0.6
     assert preferences["voice_include_accompaniment"] is True
+    assert preferences["screen_force_message"] is True
     assert preferences["event_type_min_severity"]["screen_deviation"]["voice"] == "medium"
 
 
@@ -134,24 +136,18 @@ def test_screen_accompaniment_copy_respects_model_suggestion(tmp_path):
     assert polished["display_message"] == "这个点先收一下，别急着开新分支。"
 
 
-def test_screen_observation_policy_waits_for_continuous_deviation(tmp_path):
+def test_screen_observation_policy_respects_vision_silence_and_force_message(tmp_path):
     manager = SupervisionEventManager(
         events_path=str(tmp_path / "events.json"),
         preferences_path=str(tmp_path / "preferences.json"),
     )
     now = datetime.now()
     base_analysis = {
-        "is_deviated": True,
-        "activity_summary": "在浏览与当前任务弱相关的网页",
-        "activity_category": "research",
-        "goal_relation": "off_track",
-        "likely_intent": "可能临时查资料，也可能开始发散",
-        "visual_evidence": "浏览器页面与当前任务不直接相关",
-        "uncertainty": "可能是短暂切换",
-        "confidence": 0.64,
-        "deviation_reason": "与当前主线关系较弱",
-        "deviation_level": "medium",
-        "intervention_hint": "gentle_pullback",
+        "observation": "在浏览与当前任务弱相关的网页",
+        "goal_note": "可能是短暂查资料，也可能有点发散",
+        "message_type": "pullback",
+        "should_message": False,
+        "message": "这段好像有点偏开了，先回来接一下论文主线。",
     }
 
     first = manager._record_screen_observation(
@@ -166,6 +162,10 @@ def test_screen_observation_policy_waits_for_continuous_deviation(tmp_path):
     )
     first_policy = manager._screen_observation_policy(first)
 
+    preferences = manager.load_preferences()
+    preferences["screen_force_message"] = True
+    manager.save_preferences(preferences)
+
     second = manager._record_screen_observation(
         analysis=base_analysis,
         now=now + timedelta(minutes=5),
@@ -179,8 +179,8 @@ def test_screen_observation_policy_waits_for_continuous_deviation(tmp_path):
     second_policy = manager._screen_observation_policy(second)
 
     assert first_policy["action"] == "record_only"
-    assert first_policy["reason"] == "first_or_uncertain_deviation_observed"
+    assert first_policy["reason"] == "vision_chose_silence"
     assert second_policy["action"] == "emit_event"
-    assert second_policy["reason"] == "continuous_screen_deviation"
-    assert second_policy["severity"] == "medium"
+    assert second_policy["reason"] == "force_message_enabled"
+    assert second_policy["severity"] == "high"
     assert len(manager.load_screen_observations()) == 2

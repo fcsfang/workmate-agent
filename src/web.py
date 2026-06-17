@@ -72,6 +72,7 @@ class SupervisionPreferencesRequest(BaseModel):
     voice_volume: Optional[float] = None
     voice_rate: Optional[float] = None
     voice_include_accompaniment: Optional[bool] = None
+    screen_force_message: Optional[bool] = None
     custom_blacklist_keywords: Optional[list[str]] = None
     custom_whitelist_keywords: Optional[list[str]] = None
     event_type_min_severity: Optional[Dict[str, str]] = None
