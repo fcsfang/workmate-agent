@@ -29,7 +29,6 @@ def test_screen_deviation_detection_triggered(tmp_path):
         '"intervention_hint": "firm_pullback", '
         '"direct_message": "我看到你现在在看 Bilibili，和学习 Python 这条线有点分开了。先回来吧。"}'
     )
-    mock_llm.invoke_raw.return_value = "先把视频放一边，回到代码这一小步。"
     manager.set_llm_client(mock_llm)
 
     # Setup focus session and task view states
@@ -92,16 +91,15 @@ def test_screen_deviation_detection_triggered(tmp_path):
         assert deviation_events[0]["subject_id"] == "focus-session-123"
         assert deviation_events[0]["severity"] == "high"
         assert "Bilibili" in deviation_events[0]["message"]
-        assert deviation_events[0]["display_message"] == "先把视频放一边，回到代码这一小步。"
+        assert deviation_events[0]["display_message"] == "我看到你现在在看 Bilibili，和学习 Python 这条线有点分开了。先回来吧。"
         assert deviation_events[0]["metadata"]["vision_direct_message"] == "我看到你现在在看 Bilibili，和学习 Python 这条线有点分开了。先回来吧。"
+        assert deviation_events[0]["metadata"]["reminder_generated_by"] == "vision_direct"
         vision_prompt = mock_llm.invoke_vision.call_args.args[0]
-        assert "这里只做观察和判断" in vision_prompt
-        assert "不要写给用户看的提醒文案" in vision_prompt
+        assert "direct_message 是唯一面向用户展示的自然提醒文案" in vision_prompt
+        assert "direct_message" in vision_prompt
+        assert "不限制长度" in vision_prompt
         assert "tone_suggestion" not in vision_prompt
-        reminder_messages = mock_llm.invoke_raw.call_args.args[0]
-        assert reminder_messages[0]["role"] == "system"
-        assert "不要输出 JSON" in reminder_messages[0]["content"]
-        assert "可以短，也可以稍长" in reminder_messages[0]["content"]
+        mock_llm.invoke_raw.assert_not_called()
 
 
 def test_screen_deviation_detection_not_triggered_on_correct_behavior(tmp_path):
@@ -125,7 +123,6 @@ def test_screen_deviation_detection_not_triggered_on_correct_behavior(tmp_path):
         '"intervention_hint": "quiet_confirm", '
         '"direct_message": "你现在还在代码这条线上，继续处理眼前这个点就好。"}'
     )
-    mock_llm.invoke_raw.return_value = "这段就在主线上，先把眼前这个点收住。"
     manager.set_llm_client(mock_llm)
 
     focus_state = {
@@ -391,25 +388,6 @@ def test_screen_deviation_chat_injection(tmp_memory_manager):
 
     records2 = tmp_memory_manager.load_records()
     assert len(records2) == 1  # Should still be 1, no duplicates!
-
-
-def test_screen_event_chat_body_shows_vision_and_processed_versions(tmp_memory_manager):
-    event = {
-        "type": "screen_deviation",
-        "display_message": "先把视频放一边，回到代码这一小步。",
-        "message": "监测到屏幕活动偏离目标：在看 Bilibili。",
-        "metadata": {
-            "triggered_by": "vision_llm",
-            "vision_direct_message": "我看到你在看 Bilibili，和当前目标已经分开了，先回来。",
-        },
-    }
-
-    body = tmp_memory_manager._format_screen_event_chat_body(event, "fallback")
-
-    assert "**Vision 直接提醒**" in body
-    assert "我看到你在看 Bilibili" in body
-    assert "**Agent 处理后提醒**" in body
-    assert "先把视频放一边" in body
 
 
 def test_custom_blacklist_keywords_intercept(tmp_path):

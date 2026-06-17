@@ -403,8 +403,7 @@ class SupervisionEventManager:
 
         # 3. 冷却时间判定 (Cooldown/Interval check)
         last_check_str = prefs.get("last_screen_check", "")
-        # 硬编码为 1 分钟以方便测试
-        interval_min = 1
+        interval_min = self._bounded_int(prefs.get("screen_monitor_interval_minutes", 5), 1, 120)
         
         if last_check_str:
             last_check = self._parse_time(last_check_str)
@@ -445,24 +444,19 @@ class SupervisionEventManager:
             screenshots_dir = self.events_path.parent / "screenshots"
             screenshots_dir.mkdir(parents=True, exist_ok=True)
             screenshot_path = screenshots_dir / f"screen-{now.strftime('%Y%m%d-%H%M%S')}.jpg"
-            screenshot_path_2 = screenshots_dir / f"screen-{now.strftime('%Y%m%d-%H%M%S')}_2.jpg"
-            screenshot_path_3 = screenshots_dir / f"screen-{now.strftime('%Y%m%d-%H%M%S')}_3.jpg"
-            screenshot_path_4 = screenshots_dir / f"screen-{now.strftime('%Y%m%d-%H%M%S')}_4.jpg"
-            screenshot_paths = [screenshot_path, screenshot_path_2, screenshot_path_3, screenshot_path_4]
             
             try:
-                cmd = ["/usr/sbin/screencapture", "-x", "-t", "jpeg"] + [str(p) for p in screenshot_paths]
+                cmd = ["/usr/sbin/screencapture", "-x", "-t", "jpeg", str(screenshot_path)]
                 if os.path.exists("/usr/sbin/screencapture"):
                     res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     if res.returncode == 0:
-                        image_base64_list = []
-                        for p in screenshot_paths:
-                            if p.exists():
-                                with open(p, "rb") as img_file:
-                                    img_data = img_file.read()
-                                    image_base64_list.append(base64.b64encode(img_data).decode("utf-8"))
+                        image_base64 = ""
+                        if screenshot_path.exists():
+                            with open(screenshot_path, "rb") as img_file:
+                                img_data = img_file.read()
+                                image_base64 = base64.b64encode(img_data).decode("utf-8")
                         
-                        if image_base64_list:
+                        if image_base64:
                             current_task = (task_view or {}).get("current") or {}
                             task_title = current_task.get("title", "") or "个人自律"
                             
@@ -478,7 +472,7 @@ class SupervisionEventManager:
                                 "你使用的是强视觉模型，请尽量发挥对截图、窗口内容、任务语义和用户意图的理解能力。不要只按 App 名或网站名机械判断；如果页面内容本身与目标相关，要把这种关系识别出来。\n"
                                 "请查看这张或这几张用户电脑屏幕截图（支持多屏幕），分析用户此刻正在做什么、它和当前目标的关系、是否像短暂切换/查资料/休息/娱乐拖延/元工具拖延。\n"
                                 "最近几次屏幕观察如下，用来帮助你判断连续趋势，不要把当前截图当成孤立瞬间：\n{recent_context}\n"
-                                "这里只做观察和判断，不要写给用户看的提醒文案。是否提醒、何时提醒会由本地连续状态策略决定。\n"
+                                "JSON 中的观察字段用于本地连续状态策略判断；direct_message 是唯一面向用户展示的自然提醒文案。是否真正展示仍由本地策略决定。\n"
                                 "请严格只输出一个合法 JSON 对象，不要包含 Markdown，不要包含其他前后解释。JSON 结构必须恰好如下：\n"
                                 "{\n"
                                 "  \"is_deviated\": true 或 false,\n"
@@ -492,20 +486,17 @@ class SupervisionEventManager:
                                 "  \"deviation_reason\": \"如果是偏航，简述偏航原因；如果不是偏航，留空\",\n"
                                 "  \"deviation_level\": \"none|low|medium|high\",\n"
                                 "  \"intervention_hint\": \"none|watch_only|quiet_confirm|gentle_pullback|firm_pullback\",\n"
-                                "  \"direct_message\": \"如果你要直接对用户说话，会怎样自然提醒；不要解释 JSON，不要写标题，可以长可以短，可以温柔也可以明确\"\n"
+                                "  \"direct_message\": \"如果你要直接对用户说话，会怎样自然提醒；不要解释 JSON，不要写标题，不限制长度；让表达充分贴合当前屏幕、目标和偏航趋势，可以温柔、明确、简短或稍微展开\"\n"
                                 "}"
                             ).replace("{goal}", goal).replace("{task_title}", task_title).replace("{local_context}", local_rule_context).replace("{recent_context}", recent_context)
                             
-                            # 传递图片列表或单张图片给 Vision 接口
-                            img_arg = image_base64_list if len(image_base64_list) > 1 else image_base64_list[0]
-                            raw_response = self.llm_client.invoke_vision(prompt, img_arg)
+                            raw_response = self.llm_client.invoke_vision(prompt, image_base64)
                             analysis = self._parse_json_response(raw_response)
                             if "is_deviated" in analysis:
                                 vision_success = True
                                 
-                for p in screenshot_paths:
-                    if p.exists():
-                        p.unlink()
+                if screenshot_path.exists():
+                    screenshot_path.unlink()
             except Exception as e:
                 print(f"[DEBUG] Vision check failed, falling back to rule check. Error: {e}")
 
@@ -530,7 +521,7 @@ class SupervisionEventManager:
             
             if is_deviated:
                 deviation_reason = analysis.get("deviation_reason", "")
-                display_message = self._compose_screen_reminder(
+                display_message = self._vision_direct_reminder(
                     analysis=analysis,
                     event_type="screen_deviation",
                     goal=goal,
@@ -561,13 +552,13 @@ class SupervisionEventManager:
                         "intervention_hint": analysis.get("intervention_hint", ""),
                         "focus_goal": goal,
                         "triggered_by": "vision_llm",
-                        "reminder_generated_by": "language_llm" if display_message else "fallback",
+                        "reminder_generated_by": "vision_direct" if analysis.get("direct_message") else "fallback",
                         "screen_policy": policy,
                         "observation_id": observation.get("id", ""),
                     },
                 }
             else:
-                display_message = self._compose_screen_reminder(
+                display_message = self._vision_direct_reminder(
                     analysis=analysis,
                     event_type="screen_accompaniment",
                     goal=goal,
@@ -597,7 +588,7 @@ class SupervisionEventManager:
                         "intervention_hint": analysis.get("intervention_hint", ""),
                         "focus_goal": goal,
                         "triggered_by": "vision_llm",
-                        "reminder_generated_by": "language_llm" if display_message else "fallback",
+                        "reminder_generated_by": "vision_direct" if analysis.get("direct_message") else "fallback",
                         "screen_policy": policy,
                         "observation_id": observation.get("id", ""),
                     },
@@ -772,6 +763,28 @@ class SupervisionEventManager:
             "severity": "low",
             "consecutive_offtrack": consecutive_offtrack,
         }
+
+    def _vision_direct_reminder(
+        self,
+        analysis: Dict[str, Any],
+        event_type: str,
+        goal: str,
+        subject_title: str,
+        app_name: str,
+        window_title: str,
+    ) -> str:
+        direct_message = self._clean_screen_reminder(analysis.get("direct_message", ""))
+        if direct_message:
+            return direct_message
+        return self._screen_fallback_message({
+            "type": event_type,
+            "subject_title": subject_title,
+            "metadata": {
+                "focus_goal": goal,
+                "app_name": app_name,
+                "window_title": window_title,
+            },
+        })
 
     def _compose_screen_reminder(
         self,
