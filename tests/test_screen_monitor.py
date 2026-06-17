@@ -19,7 +19,7 @@ def test_screen_deviation_detection_triggered(tmp_path):
         '{"is_deviated": true, '
         '"activity_summary": "在看 Bilibili 搞笑视频", '
         '"deviation_reason": "当前行为与学习 Python 目标无关", '
-        '"tone_suggestion": "师弟，咱们现在是在写代码哦，先把视频关一关呗？"}'
+        '"tone_suggestion": "先把视频放一边，回到代码这一小步。"}'
     )
     manager.set_llm_client(mock_llm)
 
@@ -83,8 +83,7 @@ def test_screen_deviation_detection_triggered(tmp_path):
         assert deviation_events[0]["subject_id"] == "focus-session-123"
         assert deviation_events[0]["severity"] == "high"
         assert "Bilibili" in deviation_events[0]["message"]
-        assert "师弟" not in deviation_events[0]["display_message"]
-        assert deviation_events[0]["display_message"]
+        assert deviation_events[0]["display_message"] == "先把视频放一边，回到代码这一小步。"
 
 
 def test_screen_deviation_detection_not_triggered_on_correct_behavior(tmp_path):

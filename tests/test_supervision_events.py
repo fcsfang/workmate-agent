@@ -113,7 +113,7 @@ def test_voice_preferences_are_normalized_and_persisted(tmp_path):
     assert preferences["event_type_min_severity"]["screen_deviation"]["voice"] == "medium"
 
 
-def test_screen_accompaniment_copy_avoids_repetitive_template(tmp_path):
+def test_screen_accompaniment_copy_respects_model_suggestion(tmp_path):
     manager = SupervisionEventManager(
         events_path=str(tmp_path / "events.json"),
         preferences_path=str(tmp_path / "preferences.json"),
@@ -122,7 +122,7 @@ def test_screen_accompaniment_copy_avoids_repetitive_template(tmp_path):
         "type": "screen_accompaniment",
         "subject_title": "继续优化 workmate agent",
         "subject_id": "task-1",
-        "display_message": "加油，你现在就在围绕【继续优化 workmate agent】做控制台验证，方向很对，咱们顺着这个点继续收敛就好。",
+        "display_message": "这个点先收一下，别急着开新分支。",
         "metadata": {
             "focus_goal": "继续优化 workmate agent",
             "activity_summary": "控制台验证",
@@ -130,9 +130,5 @@ def test_screen_accompaniment_copy_avoids_repetitive_template(tmp_path):
     }
 
     polished = manager._apply_copy_policy(candidate, manager._copy_policy({}))
-    message = polished["display_message"]
 
-    assert "方向很对" not in message
-    assert "继续顺着" not in message
-    assert "你现在就在围绕" not in message
-    assert message
+    assert polished["display_message"] == "这个点先收一下，别急着开新分支。"
