@@ -406,13 +406,27 @@ class SupervisionEventManager:
         last_check_str = prefs.get("last_screen_check", "")
         interval_min = self._bounded_int(prefs.get("screen_monitor_interval_minutes", 5), 1, 120)
         
+        # 自适应监测频率判定 (Adaptive Interval calculation)
+        adaptive_interval_min = float(interval_min)
+        recent_obs = self._recent_screen_observations(subject_id=subject_id, limit=1)
+        if recent_obs:
+            obs_time = self._parse_time(recent_obs[0].get("observed_at", ""))
+            if obs_time and (now - obs_time).total_seconds() <= 30 * 60:
+                msg_type = str(recent_obs[0].get("message_type", "")).strip().lower()
+                if msg_type == "pullback":
+                    adaptive_interval_min = interval_min * 0.4
+                    print(f"[DEBUG] Adaptive frequency: last observation was pullback. Scaling cooldown interval to {adaptive_interval_min}m (base={interval_min}m)")
+                elif msg_type in {"companion", "silent"}:
+                    adaptive_interval_min = interval_min * 1.5
+                    print(f"[DEBUG] Adaptive frequency: last observation was {msg_type}. Scaling cooldown interval to {adaptive_interval_min}m (base={interval_min}m)")
+        
         if last_check_str:
             last_check = self._parse_time(last_check_str)
             print(f"[DEBUG] last_check_str={last_check_str}, last_check={last_check}, now={now}")
             if last_check:
                 diff_seconds = (now - last_check).total_seconds()
-                if 0 <= diff_seconds < interval_min * 60:
-                    print("[DEBUG] Within cooldown, skipping screen monitor check")
+                if 0 <= diff_seconds < adaptive_interval_min * 60:
+                    print(f"[DEBUG] Within adaptive cooldown ({adaptive_interval_min}m), skipping screen monitor check")
                     return {}
 
         self.update_preferences({"last_screen_check": now.isoformat(timespec="seconds")})
@@ -427,7 +441,7 @@ class SupervisionEventManager:
         if app_name:
             app_lower = app_name.lower()
             title_lower = window_title.lower()
-            if "workmate" in app_lower or "workmate" in title_lower or "antigravity" in app_lower or "antigravity" in title_lower:
+            if "workmate" in app_lower or "workmate" in title_lower :
                 print(f"[DEBUG] Active window is Workmate Agent ({app_name} - {window_title}), skipping screen monitor.")
                 return {}
                 
@@ -469,24 +483,31 @@ class SupervisionEventManager:
                                 local_rule_context = f"\n（本地检测到前台 App 为：{app_name}，窗口标题为：{window_title}）"
                                 
                             prompt = (
-                                "你是 Workmate Agent 的屏幕观察模型。用户当前设定的专注目标是：'{goal}'，主线任务是：'{task_title}'。{local_context}\n"
-                                "你使用的是强视觉模型，请尽量发挥对截图、窗口内容、任务语义和用户意图的理解能力。不要只按 App 名或网站名机械判断；如果页面内容本身与目标相关，要把这种关系识别出来。\n"
-                                "请查看这张或这几张用户电脑屏幕截图（支持多屏幕），分析用户此刻正在做什么、它和当前目标的关系、是否像短暂切换/查资料/休息/娱乐拖延/元工具拖延。\n"
-                                "最近几次屏幕观察如下，用来帮助你判断连续趋势，不要把当前截图当成孤立瞬间：\n{recent_context}\n"
-                                "这不是分类任务，也不是安全审计。你更像坐在用户旁边的工位搭子：看见屏幕，理解目标，然后决定是否自然说一句。\n"
-                                "如果当下没必要打扰用户，可以让 should_message 为 false，并把 message 留空。如果值得陪伴、提醒或轻轻拉回，就直接在 message 中写给用户看的自然语言。\n"
-                                "message 不限制长度，不要写成固定模板；让表达充分贴合当前屏幕、目标和最近观察，可以温柔、明确、简短或稍微展开。\n"
-                                "请严格只输出一个合法 JSON 对象，不要包含 Markdown，不要包含其他前后解释。JSON 结构必须恰好如下：\n"
+                                "# 角色\n"
+                                "你是一个坐在用户旁边的“工位搭子”（同桌），温柔、有趣、懂技术，不是冷冰冰的安全审计员。你现在看到了用户当前的屏幕截图。\n\n"
+                                "# 目标与主线\n"
+                                "- 专注目标：'{goal}'\n"
+                                "- 主线任务：'{task_title}'\n"
+                                "{local_context}\n\n"
+                                "# 最近屏幕观察历史 (用来判断连续趋势，避免把当前截图当成孤立瞬间)\n"
+                                "{recent_context}\n\n"
+                                "# 任务说明\n"
+                                "你使用的是强视觉模型，请发挥你的多模态分析能力，看懂用户屏幕截图：\n"
+                                "1. 分析用户在做什么，以及这和当前目标与主线的关系。不要只按 App 名机械判断；如果页面内容本身与目标相关（如查报错、看文档），要把这种关系识别出来。\n"
+                                "2. 根据截图与历史，判断是短暂切换/查资料，还是已经进入偏航拖延状态。\n"
+                                "3. 决定是否对用户说话。如果不该打扰，让 should_message 为 false，message 留空；如果值得陪伴、提醒或轻轻拉回，直接在 message 中写下最自然的陪伴文案。文案不限制长度，不要写成固定模板，请贴合具体情境，可以温柔、明确、简短或稍微展开。\n\n"
+                                "# 输出格式\n"
+                                "请务必以 JSON 格式输出，对象必须恰好包含以下字段：\n"
                                 "{\n"
-                                "  \"observation\": \"你看到用户屏幕上正在发生什么，用自然语言简要描述\",\n"
-                                "  \"goal_note\": \"这和当前目标/主线任务的关系，用自然语言说明；如果不确定就说不确定\",\n"
+                                "  \"observation\": \"屏幕活动描述，用自然语言简要描述你看到屏幕上正在发生什么\",\n"
+                                "  \"goal_note\": \"活动与当前主线的关系，用自然语言说明\",\n"
                                 "  \"message_type\": \"companion|pullback|silent\",\n"
                                 "  \"should_message\": true 或 false,\n"
-                                "  \"message\": \"如果要对用户说话，直接写在这里；如果不该打扰，留空\"\n"
+                                "  \"message\": \"你对用户说的话，直接写在这里；如果不该打扰，留空\"\n"
                                 "}"
                             ).replace("{goal}", goal).replace("{task_title}", task_title).replace("{local_context}", local_rule_context).replace("{recent_context}", recent_context)
                             
-                            raw_response = self.llm_client.invoke_vision(prompt, image_base64)
+                            raw_response = self.llm_client.invoke_vision(prompt, image_base64, json_mode=True)
                             analysis = self._parse_json_response(raw_response)
                             if "observation" in analysis:
                                 vision_success = True

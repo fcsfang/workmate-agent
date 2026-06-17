@@ -43,7 +43,7 @@ def test_screen_deviation_detection_triggered(tmp_path):
 
     # Set last_screen_check to long ago so cooldown doesn't block it
     prefs = manager.load_preferences()
-    prefs["last_screen_check"] = (datetime.now() - timedelta(minutes=10)).isoformat(timespec="seconds")
+    prefs["last_screen_check"] = (datetime.now() - timedelta(minutes=120)).isoformat(timespec="seconds")
     manager.save_preferences(prefs)
 
     original_path_exists = Path.exists
@@ -88,12 +88,14 @@ def test_screen_deviation_detection_triggered(tmp_path):
         assert deviation_events[0]["metadata"]["vision_direct_message"] == "我看到你现在在看 Bilibili，和学习 Python 这条线有点分开了。先回来吧。"
         assert deviation_events[0]["metadata"]["reminder_generated_by"] == "vision_direct"
         vision_prompt = mock_llm.invoke_vision.call_args.args[0]
-        assert "message 不限制长度" in vision_prompt
+        assert "文案不限制长度" in vision_prompt
         assert "message_type" in vision_prompt
         assert "不限制长度" in vision_prompt
         assert "confidence" not in vision_prompt
         assert "deviation_level" not in vision_prompt
         assert "tone_suggestion" not in vision_prompt
+        # Check that json_mode=True was supplied
+        assert mock_llm.invoke_vision.call_args.kwargs.get("json_mode") is True
         mock_llm.invoke_raw.assert_not_called()
 
 
@@ -130,7 +132,7 @@ def test_screen_deviation_detection_not_triggered_on_correct_behavior(tmp_path):
 
     # Set last_screen_check to long ago
     prefs = manager.load_preferences()
-    prefs["last_screen_check"] = (datetime.now() - timedelta(minutes=10)).isoformat(timespec="seconds")
+    prefs["last_screen_check"] = (datetime.now() - timedelta(minutes=120)).isoformat(timespec="seconds")
     manager.save_preferences(prefs)
 
     original_path_exists = Path.exists
@@ -189,7 +191,7 @@ def test_rule_based_whitelist_bypass(tmp_path):
     }
 
     prefs = manager.load_preferences()
-    prefs["last_screen_check"] = (datetime.now() - timedelta(minutes=10)).isoformat(timespec="seconds")
+    prefs["last_screen_check"] = (datetime.now() - timedelta(minutes=120)).isoformat(timespec="seconds")
     manager.save_preferences(prefs)
 
     # Mock _get_active_window_macos to return VS Code
@@ -230,7 +232,7 @@ def test_rule_based_blacklist_intercept(tmp_path):
     }
 
     prefs = manager.load_preferences()
-    prefs["last_screen_check"] = (datetime.now() - timedelta(minutes=10)).isoformat(timespec="seconds")
+    prefs["last_screen_check"] = (datetime.now() - timedelta(minutes=120)).isoformat(timespec="seconds")
     manager.save_preferences(prefs)
 
     # Mock _get_active_window_macos to return Chrome showing Bilibili
@@ -269,16 +271,16 @@ def test_auto_monitor_during_work_hours(tmp_path):
         }
     }
 
+    # Current time is 14:00 (inside work hours)
+    now = datetime.combine(datetime.now().date(), datetime.strptime("14:00", "%H:%M").time())
+
     # Setup preferences to enable auto work hours monitor
     prefs = manager.load_preferences()
     prefs["auto_monitor_work_hours_enabled"] = True
     prefs["work_hours_start"] = "09:00"
     prefs["work_hours_end"] = "18:00"
-    prefs["last_screen_check"] = (datetime.now() - timedelta(minutes=10)).isoformat(timespec="seconds")
+    prefs["last_screen_check"] = (now - timedelta(minutes=10)).isoformat(timespec="seconds")
     manager.save_preferences(prefs)
-
-    # Current time is 14:00 (inside work hours)
-    now = datetime.combine(datetime.now().date(), datetime.strptime("14:00", "%H:%M").time())
 
     # Mock _get_active_window_macos to return Chrome showing Steam (blacklisted)
     with patch.object(SupervisionEventManager, "_get_active_window_macos", return_value=("Google Chrome", "Steam Community")):
@@ -310,12 +312,15 @@ def test_screen_deviation_chat_injection(tmp_memory_manager):
     """测试当检测到屏幕偏航事件时，系统会自动在对话历史记录中插入一条偏航提醒消息"""
     # Initialize mock llm_client
 
+    # Current time is 14:00 (inside work hours)
+    now = datetime.combine(datetime.now().date(), datetime.strptime("14:00", "%H:%M").time())
+
     # Enable auto work hours monitor
     prefs = tmp_memory_manager.get_supervision_preferences()
     prefs["auto_monitor_work_hours_enabled"] = True
     prefs["work_hours_start"] = "09:00"
     prefs["work_hours_end"] = "18:00"
-    prefs["last_screen_check"] = (datetime.now() - timedelta(minutes=10)).isoformat(timespec="seconds")
+    prefs["last_screen_check"] = (now - timedelta(minutes=10)).isoformat(timespec="seconds")
     tmp_memory_manager.update_supervision_preferences(prefs)
 
     # Mock active task in task_state
@@ -326,9 +331,6 @@ def test_screen_deviation_chat_injection(tmp_memory_manager):
             "status": "active"
         }
     })
-
-    # Current time is 14:00 (inside work hours)
-    now = datetime.combine(datetime.now().date(), datetime.strptime("14:00", "%H:%M").time())
 
     # Mock _get_active_window_macos to return Chrome showing Bilibili (blacklisted)
     with patch.object(SupervisionEventManager, "_get_active_window_macos", return_value=("Google Chrome", "【2026最新】大模型自研Agent实战 - bilibili")):
@@ -397,7 +399,7 @@ def test_custom_blacklist_keywords_intercept(tmp_path):
     # Setup preferences to include custom blacklist keywords
     prefs = manager.load_preferences()
     prefs["custom_blacklist_keywords"] = ["微信", "wechat"]
-    prefs["last_screen_check"] = (datetime.now() - timedelta(minutes=10)).isoformat(timespec="seconds")
+    prefs["last_screen_check"] = (datetime.now() - timedelta(minutes=120)).isoformat(timespec="seconds")
     manager.save_preferences(prefs)
 
     # 1. Test WeChat app name blacklist
@@ -412,10 +414,9 @@ def test_custom_blacklist_keywords_intercept(tmp_path):
         assert "WeChat" in deviation_events[0]["message"]
   # 验证没调用 Vision
 
-    # Clear events and preferences for the second test
     manager.save_events([])
     prefs = manager.load_preferences()
-    prefs["last_screen_check"] = (datetime.now() - timedelta(minutes=10)).isoformat(timespec="seconds")
+    prefs["last_screen_check"] = (datetime.now() - timedelta(minutes=120)).isoformat(timespec="seconds")
     manager.save_preferences(prefs)
 
     # 2. Test window title keyword blacklist (e.g. Chrome showing 微信网页版)
@@ -438,12 +439,15 @@ def test_screen_accompaniment_and_auto_resolution(tmp_memory_manager):
     3. 当用户下一次检测时偏航到 Bilibili 时，旧的 screen_accompaniment 事件应该自动被 resolution 机制状态机 resolved，并且产生新的 screen_deviation 事件。
     """
 
+    # Current time 14:00
+    now = datetime.combine(datetime.now().date(), datetime.strptime("14:00", "%H:%M").time())
+
     # 开启工作时间监视
     prefs = tmp_memory_manager.get_supervision_preferences()
     prefs["auto_monitor_work_hours_enabled"] = True
     prefs["work_hours_start"] = "09:00"
     prefs["work_hours_end"] = "18:00"
-    prefs["last_screen_check"] = (datetime.now() - timedelta(minutes=10)).isoformat(timespec="seconds")
+    prefs["last_screen_check"] = (now - timedelta(minutes=120)).isoformat(timespec="seconds")
     tmp_memory_manager.update_supervision_preferences(prefs)
 
     # Mock 当前任务
@@ -454,9 +458,6 @@ def test_screen_accompaniment_and_auto_resolution(tmp_memory_manager):
             "status": "active"
         }
     })
-
-    # 当前时间 14:00
-    now = datetime.combine(datetime.now().date(), datetime.strptime("14:00", "%H:%M").time())
 
     # Step 1: 在工作应用中 (Visual Studio Code)，应产生 screen_accompaniment
     with patch.object(SupervisionEventManager, "_get_active_window_macos", return_value=("Visual Studio Code", "main.py")):
@@ -527,3 +528,135 @@ def test_screen_accompaniment_and_auto_resolution(tmp_memory_manager):
     # 验证对话历史增加了偏航提醒
     records3 = tmp_memory_manager.load_records()
     assert len(records3) == 2
+
+
+def test_adaptive_screen_monitor_cooldown(tmp_path):
+    """测试自适应检测频率判定逻辑：
+    1. 当上一次监测结果为 pullback 时，频率应自动缩减（缩短为原基础 5m 的 40% = 2m）。
+    2. 当上一次监测结果为 companion 时，频率应自动舒张（延长为原基础 5m 的 1.5 倍 = 7.5m）。
+    3. 当上一次监测结果超时（超过 30m）时，应该退回默认基础的 5m 判定。
+    """
+    manager = SupervisionEventManager(
+        events_path=str(tmp_path / "events.json"),
+        preferences_path=str(tmp_path / "preferences.json"),
+    )
+    
+    # 模拟专注会话状态
+    focus_state = {
+        "current": {
+            "id": "focus-123",
+            "status": "active",
+            "goal": "学习 Python",
+        }
+    }
+    
+    # 基本配置，interval = 5m
+    prefs = manager.load_preferences()
+    prefs["screen_monitor_enabled"] = True
+    prefs["screen_monitor_interval_minutes"] = 5
+    manager.save_preferences(prefs)
+
+    # 1. 模拟上一次观察是 pullback
+    base_time = datetime.now()
+    manager.save_screen_observations([
+        {
+            "id": "obs-1",
+            "observed_at": base_time.isoformat(timespec="seconds"),
+            "subject_id": "focus-123",
+            "message_type": "pullback",
+            "should_message": True,
+            "message": "偏航啦",
+        }
+    ])
+
+    # 冷却时间判定：
+    # 距离上次观测 2.5 分钟后触发下一次检测 (2.5m > 2.0m, 所以自适应判定不应被冷却拦截)
+    now_pullback_not_blocked = base_time + timedelta(minutes=2, seconds=30)
+    prefs["last_screen_check"] = base_time.isoformat(timespec="seconds")
+    manager.save_preferences(prefs)
+
+    # Mock AppleScript 命中黑名单，退回本地直接偏航，防止调用大模型
+    with patch.object(SupervisionEventManager, "_get_active_window_macos", return_value=("Google Chrome", "Steam Community")), \
+         patch("memory.supervision_events.datetime") as mock_dt:
+        mock_dt.now.return_value = now_pullback_not_blocked
+        mock_dt.fromisoformat.side_effect = datetime.fromisoformat
+        mock_dt.combine.side_effect = datetime.combine
+        mock_dt.strptime.side_effect = datetime.strptime
+
+        active_events = manager.detect_events(
+            focus_state=focus_state,
+            commitments=[],
+            task_view={},
+        )
+    # pullback 状态下缩短冷却判定（2m），所以在 2.5m 时已经能够正常触发事件，不被冷却跳过
+    deviation_events = [e for e in active_events if e["type"] == "screen_deviation"]
+    assert len(deviation_events) == 1
+
+    # 2. 模拟上一次观察是 companion
+    manager.save_events([])
+    manager.save_screen_observations([
+        {
+            "id": "obs-2",
+            "observed_at": base_time.isoformat(timespec="seconds"),
+            "subject_id": "focus-123",
+            "message_type": "companion",
+            "should_message": True,
+            "message": "做得很棒",
+        }
+    ])
+
+    # 冷却时间判定：
+    # 距离上次观测 6.0 分钟后触发下一次检测 (6.0m < 7.5m, 应该被自适应冷却拦截)
+    now_companion_blocked = base_time + timedelta(minutes=6)
+    prefs["last_screen_check"] = base_time.isoformat(timespec="seconds")
+    manager.save_preferences(prefs)
+
+    with patch.object(SupervisionEventManager, "_get_active_window_macos", return_value=("Google Chrome", "Steam Community")), \
+         patch("memory.supervision_events.datetime") as mock_dt:
+        mock_dt.now.return_value = now_companion_blocked
+        mock_dt.fromisoformat.side_effect = datetime.fromisoformat
+        mock_dt.combine.side_effect = datetime.combine
+        mock_dt.strptime.side_effect = datetime.strptime
+
+        active_events = manager.detect_events(
+            focus_state=focus_state,
+            commitments=[],
+            task_view={},
+        )
+    # companion 状态下延展冷却判定（7.5m），所以在 6m 时触发检测会被冷却拦截，无法触发事件
+    deviation_events = [e for e in active_events if e["type"] == "screen_deviation"]
+    assert len(deviation_events) == 0
+
+    # 3. 模拟上一次观察超时（超过 30m）
+    manager.save_screen_observations([
+        {
+            "id": "obs-3",
+            "observed_at": base_time.isoformat(timespec="seconds"),
+            "subject_id": "focus-123",
+            "message_type": "pullback",
+            "should_message": True,
+            "message": "偏航啦",
+        }
+    ])
+
+    # 冷却时间判定：
+    # 距离观测已经过去 40 分钟，本次冷却检测时间距离上次检测 4.5 分钟 (4.5m < 5.0m, 由于超过 30m，退回默认 base=5m 判定，所以应该被冷却拦截)
+    now_timeout_blocked = base_time + timedelta(minutes=40)
+    prefs["last_screen_check"] = (base_time + timedelta(minutes=35, seconds=30)).isoformat(timespec="seconds")
+    manager.save_preferences(prefs)
+
+    with patch.object(SupervisionEventManager, "_get_active_window_macos", return_value=("Google Chrome", "Steam Community")), \
+         patch("memory.supervision_events.datetime") as mock_dt:
+        mock_dt.now.return_value = now_timeout_blocked
+        mock_dt.fromisoformat.side_effect = datetime.fromisoformat
+        mock_dt.combine.side_effect = datetime.combine
+        mock_dt.strptime.side_effect = datetime.strptime
+
+        active_events = manager.detect_events(
+            focus_state=focus_state,
+            commitments=[],
+            task_view={},
+        )
+    # 由于上一次观测超时，自适应频率退回为默认的 5m。当前时间距离 last_screen_check 只有 4.5m，因此被冷却拦截
+    deviation_events = [e for e in active_events if e["type"] == "screen_deviation"]
+    assert len(deviation_events) == 0

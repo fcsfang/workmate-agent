@@ -214,7 +214,12 @@ class MemoryRetriever:
     def _vector_enabled(self, configured: Optional[bool]) -> bool:
         if configured is not None:
             return configured
-        return os.getenv("WORKMATE_VECTOR_RETRIEVAL", "").lower() in {"1", "true", "yes", "on"}
+        env_val = os.getenv("WORKMATE_VECTOR_RETRIEVAL", "").lower() in {"1", "true", "yes", "on"}
+        if not env_val:
+            return False
+        if not self.embedding_client or self.embedding_client.__class__.__name__ == "NullEmbeddingClient":
+            return False
+        return True
 
     def _terms(self, text: str) -> List[str]:
         text = str(text)

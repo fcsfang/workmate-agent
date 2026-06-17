@@ -38,7 +38,7 @@ Workmate Agent 的长期愿景，是成为一个能陪用户持续行动的个�
 - 任务生命周期：把任务从当前快照升级为 `inbox / planned / active / blocked / done / abandoned` 的完整状态流，并支持主任务下的子任务
 - 上下文规划：根据用户输入选择注入任务、摘要、承诺、统一记忆项或相关历史，减少每轮全量上下文
 - 上下文压缩：系统记忆和最近对话分别控制预算，避免长对话让模型上下文膨胀
-- Hybrid Memory RAG：V1.5 起用 `MemoryRetriever` 对长期记忆进行可解释召回，综合关键词、近期性、重要性、记忆类型权重和可选向量相似度，并输出召回来源和评分原因
+- Hybrid Memory RAG：V1.5 起用 `MemoryRetriever` 对长期记忆进行可解释召回，综合关键词、近期性、重要性、记忆类型权重和可选向量相似度，并输出召回来源和评分原因。**V2.2 起正式集成嵌入式向量数据库 ChromaDB**，提供端云协同、双路降级容灾的生产级语义检索与增量向量哈希缓存。
 - Evaluation Suite：V1.7 起提供不依赖真实 API Key 的固定评估集，覆盖记忆召回、任务状态、承诺、提醒控制、工具调用、上下文规划和监督事件生命周期
 - 自动化测试与 CI：V1.8 起引入 pytest 与 GitHub Actions，自动运行语法检查、单元测试和 eval smoke test
 - 智能陪伴与屏幕双向状态流转监测：V1.9 起引入 `screen_accompaniment` 陪伴鼓励事件与配套本地规则和 Vision 鼓励文案生成，支持专注工作与娱乐偏航状态转换时自动解决（resolve）旧事件并注入陪伴提醒/警报，支持多模态分离 API 配置、免控制权限频繁弹窗、自定义黑白名单预过滤绕过 Vision、中转 API 防火墙 (Cloudflare WAF) 浏览器 User-Agent 伪装绕过，大模型配置下优先调用 Vision 分析并以本地黑白名单规则作为无缝降级兜底方案，以及前端 Preferences 面板配置折叠交互可视化。
@@ -134,7 +134,7 @@ workmate-agent/
 │       ├── task_state.json
 │       ├── commitments.json
 │       ├── user_profile.json
-│       ├── retrieval_index.json
+│       ├── chroma/               # ChromaDB 向量数据库目录
 │       ├── focus_sessions.json
 │       ├── behavior_patterns.json
 │       ├── supervision_events.json

@@ -7,10 +7,48 @@ from .retriever import MemoryRetriever
 
 
 class SearchManager:
-    def __init__(self, index_path: Optional[str] = None, retriever: Optional[MemoryRetriever] = None):
+    def __init__(
+        self,
+        index_path: Optional[str] = None,
+        retriever: Optional[MemoryRetriever] = None,
+        embedding_client: Optional[Any] = None,
+    ):
         self.index_path = Path(index_path) if index_path else memory_data_path("retrieval_index.json")
         self.index_path.parent.mkdir(parents=True, exist_ok=True)
-        self.retriever = retriever or MemoryRetriever()
+        
+        # Backward compatible directory path for ChromaDB
+        if index_path:
+            p = Path(index_path)
+            if p.is_dir():
+                self.db_path = p
+            else:
+                self.db_path = p.parent / "chroma"
+        else:
+            self.db_path = memory_data_path("chroma")
+
+        self.chroma_enabled = False
+        try:
+            import chromadb
+            self.db_path.mkdir(parents=True, exist_ok=True)
+            self.chroma_client = chromadb.PersistentClient(path=str(self.db_path))
+            self.collection = self.chroma_client.get_or_create_collection(
+                name="workmate_memories",
+                metadata={"hnsw:space": "cosine"}
+            )
+            self.chroma_enabled = True
+        except ImportError:
+            pass
+
+        if not retriever:
+            if not embedding_client:
+                try:
+                    from .embeddings import get_embedding_client
+                    embedding_client = get_embedding_client()
+                except ImportError:
+                    pass
+            self.retriever = MemoryRetriever(embedding_client=embedding_client)
+        else:
+            self.retriever = retriever
 
     def build_index(
         self,
@@ -26,15 +64,49 @@ class SearchManager:
         tasks: Optional[List[Dict[str, Any]]] = None,
         behavior_patterns: Optional[List[Dict[str, Any]]] = None,
     ) -> List[Dict[str, Any]]:
-        #把所有类型的记忆（对话记录、日摘、用户画像、承诺、知识点…）全部转换成统一格式：
-        #python
-        #{
-        #    "type": "memory_item",       # 这条记忆是什么类型
-        #    "id":   "item-xxx",
-        #    "text": "简历 优化 AI实习 ...",  # 把内容拍平成一个大字符串
-        #    "terms": ["简历", "优化", "ai实习"],  # 分词后的词列表
-        #    "payload": { ...原始数据... }
-        #}
+        # Load the existing index first to build an incremental cache
+        existing_items = {}
+        if self.chroma_enabled:
+            try:
+                existing = self.collection.get(include=["documents", "embeddings", "metadatas"])
+                ids = existing.get("ids", [])
+                documents = existing.get("documents", [])
+                embeddings = existing.get("embeddings")
+                if embeddings is None:
+                    embeddings = []
+                metadatas = existing.get("metadatas")
+                if metadatas is None:
+                    metadatas = []
+                for i_id, doc, emb, meta in zip(ids, documents, embeddings, metadatas):
+                    item_type = meta.get("type", "") if meta else ""
+                    emb_list = None
+                    if emb is not None:
+                        if hasattr(emb, "tolist"):
+                            emb_list = emb.tolist()
+                        else:
+                            emb_list = list(emb)
+                    existing_items[(item_type, i_id)] = (doc, emb_list)
+            except Exception as e:
+                print(f"[SearchManager] Error loading cache from ChromaDB: {e}")
+        else:
+            try:
+                old_items = self.load_index()
+                for item in old_items:
+                    if item.get("type") and item.get("id"):
+                        existing_items[(item.get("type"), item.get("id"))] = (item.get("text"), item.get("embedding"))
+            except Exception:
+                pass
+
+        # Helper function to compute or retrieve cached embeddings
+        def get_embedding(item_type: str, item_id: str, text_content: str) -> Optional[List[float]]:
+            if not self.retriever.vector_enabled:
+                return None
+            compacted = self._compact(text_content, 500)
+            cached_text, cached_embed = existing_items.get((item_type, item_id), (None, None))
+            if cached_embed is not None and cached_text == compacted:
+                return cached_embed
+            return self.retriever._embed(text_content)
+
         items = []
         for index, record in enumerate(records[-120:]):
             text = " ".join([
@@ -44,18 +116,26 @@ class SearchManager:
                 self._sanitize_text(record.get("assistant", "")),
                 json.dumps(record.get("extracted", {}), ensure_ascii=False),
             ])
-            items.append(self._item("record", f"record-{index}", text, record))
+            r_id = f"record-{index}"
+            emb = get_embedding("record", r_id, text)
+            items.append(self._item("record", r_id, text, record, embedding=emb))
 
         for summary in daily_summaries or []:
             text = self._sanitize_text(json.dumps(summary, ensure_ascii=False))
-            items.append(self._item("daily_summary", summary.get("date", ""), text, summary))
+            s_id = summary.get("date", "")
+            emb = get_embedding("daily_summary", s_id, text)
+            items.append(self._item("daily_summary", s_id, text, summary, embedding=emb))
 
         if user_profile:
-            items.append(self._item("user_profile", "user_profile", self._sanitize_text(json.dumps(user_profile, ensure_ascii=False)), user_profile))
+            text = self._sanitize_text(json.dumps(user_profile, ensure_ascii=False))
+            emb = get_embedding("user_profile", "user_profile", text)
+            items.append(self._item("user_profile", "user_profile", text, user_profile, embedding=emb))
 
         for commitment in commitments or []:
             text = self._sanitize_text(json.dumps(commitment, ensure_ascii=False))
-            items.append(self._item("commitment", commitment.get("id", ""), text, commitment))
+            c_id = commitment.get("id", "")
+            emb = get_embedding("commitment", c_id, text)
+            items.append(self._item("commitment", c_id, text, commitment, embedding=emb))
 
         for task in tasks or []:
             text = self._sanitize_text(" ".join([
@@ -66,7 +146,9 @@ class SearchManager:
                 json.dumps(task.get("next_actions", []), ensure_ascii=False),
                 json.dumps(task.get("subtasks", []), ensure_ascii=False),
             ]))
-            items.append(self._item("task", task.get("id", ""), text, task))
+            t_id = task.get("id", "")
+            emb = get_embedding("task", t_id, text)
+            items.append(self._item("task", t_id, text, task, embedding=emb))
 
         for memory_item in memory_items or []:
             if memory_item.get("status") == "archived":
@@ -79,7 +161,9 @@ class SearchManager:
                 memory_item.get("task_title", ""),
                 json.dumps(memory_item.get("metadata", {}), ensure_ascii=False),
             ]))
-            items.append(self._item("memory_item", memory_item.get("id", ""), text, memory_item))
+            m_id = memory_item.get("id", "")
+            emb = get_embedding("memory_item", m_id, text)
+            items.append(self._item("memory_item", m_id, text, memory_item, embedding=emb))
 
         for category in memory_categories or []:
             text = self._sanitize_text(" ".join([
@@ -88,7 +172,9 @@ class SearchManager:
                 category.get("summary", ""),
                 json.dumps(category.get("type_counts", {}), ensure_ascii=False),
             ]))
-            items.append(self._item("memory_category", category.get("id", ""), text, category))
+            cat_id = category.get("id", "")
+            emb = get_embedding("memory_category", cat_id, text)
+            items.append(self._item("memory_category", cat_id, text, category, embedding=emb))
 
         for resource in memory_resources or []:
             text = self._sanitize_text(" ".join([
@@ -99,7 +185,9 @@ class SearchManager:
                 resource.get("task_title", ""),
                 json.dumps(resource.get("extracted_categories", []), ensure_ascii=False),
             ]))
-            items.append(self._item("memory_resource", resource.get("id", ""), text, resource))
+            res_id = resource.get("id", "")
+            emb = get_embedding("memory_resource", res_id, text)
+            items.append(self._item("memory_resource", res_id, text, resource, embedding=emb))
 
         for dialogue in semantic_dialogues or []:
             text = self._sanitize_text(" ".join([
@@ -109,7 +197,9 @@ class SearchManager:
                 dialogue.get("semantic_summary", ""),
                 json.dumps(dialogue.get("key_points", []), ensure_ascii=False),
             ]))
-            items.append(self._item("semantic_dialogue", dialogue.get("id", ""), text, dialogue))
+            d_id = dialogue.get("id", "")
+            emb = get_embedding("semantic_dialogue", d_id, text)
+            items.append(self._item("semantic_dialogue", d_id, text, dialogue, embedding=emb))
 
         for insight in insights or []:
             if insight.get("status") not in {"active", ""}:
@@ -120,7 +210,9 @@ class SearchManager:
                 insight.get("why_it_matters", ""),
                 insight.get("suggested_intervention", ""),
             ]))
-            items.append(self._item("high_level_insight", insight.get("id", ""), text, insight))
+            ins_id = insight.get("id", "")
+            emb = get_embedding("high_level_insight", ins_id, text)
+            items.append(self._item("high_level_insight", ins_id, text, insight, embedding=emb))
 
         for pattern in behavior_patterns or []:
             if pattern.get("status") not in {"active", ""}:
@@ -133,9 +225,53 @@ class SearchManager:
                 pattern.get("severity", ""),
                 json.dumps(pattern.get("evidence", []), ensure_ascii=False),
             ]))
-            items.append(self._item("behavior_pattern", pattern.get("id", ""), text, pattern))
+            pat_id = pattern.get("id", "")
+            emb = get_embedding("behavior_pattern", pat_id, text)
+            items.append(self._item("behavior_pattern", pat_id, text, pattern, embedding=emb))
 
-        self.save_index(items)
+        if self.chroma_enabled:
+            try:
+                # Delete existing items to keep database in sync with built list
+                existing = self.collection.get()
+                if existing and existing.get("ids"):
+                    self.collection.delete(ids=existing["ids"])
+                
+                if items:
+                    ids_to_add = []
+                    documents_to_add = []
+                    metadatas_to_add = []
+                    embeddings_to_add = []
+                    
+                    for item in items:
+                        ids_to_add.append(item["id"])
+                        documents_to_add.append(item["text"])
+                        
+                        metadata = {
+                            "type": item["type"],
+                            "salience": item.get("salience", 0.0),
+                            "confidence": item.get("confidence", 0.0),
+                            "importance": item.get("importance", 0.0),
+                            "status": item.get("status", ""),
+                            "updated_at": item.get("updated_at", "")
+                        }
+                        metadatas_to_add.append(metadata)
+                        
+                        emb = item.get("embedding")
+                        if emb is not None:
+                            embeddings_to_add.append(emb)
+                        else:
+                            embeddings_to_add.append([0.0])
+                            
+                    self.collection.add(
+                        ids=ids_to_add,
+                        embeddings=embeddings_to_add,
+                        documents=documents_to_add,
+                        metadatas=metadatas_to_add
+                    )
+            except Exception as e:
+                print(f"[SearchManager] Failed to save to ChromaDB: {e}")
+        else:
+            self.save_index(items)
         return items
 
     def search(
@@ -239,6 +375,45 @@ class SearchManager:
             json.dump(serializable, file, ensure_ascii=False, indent=2)
 
     def load_index(self) -> List[Dict[str, Any]]:
+        if self.chroma_enabled:
+            try:
+                existing = self.collection.get(include=["documents", "embeddings", "metadatas"])
+                ids = existing.get("ids", [])
+                documents = existing.get("documents", [])
+                embeddings = existing.get("embeddings")
+                if embeddings is None:
+                    embeddings = []
+                metadatas = existing.get("metadatas")
+                if metadatas is None:
+                    metadatas = []
+                
+                items = []
+                for i_id, doc, emb, meta in zip(ids, documents, embeddings, metadatas):
+                    emb_list = None
+                    if emb is not None and len(emb) > 1:
+                        if hasattr(emb, "tolist"):
+                            emb_list = emb.tolist()
+                        else:
+                            emb_list = list(emb)
+                    item = {
+                        "id": i_id,
+                        "text": doc,
+                        "type": meta.get("type", "") if meta else "",
+                        "salience": float(meta.get("salience", 0.0)) if meta else 0.0,
+                        "confidence": float(meta.get("confidence", 0.0)) if meta else 0.0,
+                        "importance": float(meta.get("importance", 0.0)) if meta else 0.0,
+                        "status": meta.get("status", "") if meta else "",
+                        "updated_at": meta.get("updated_at", "") if meta else "",
+                        "embedding": emb_list
+                    }
+                    normalized = self._normalize_index_item(item)
+                    if normalized:
+                        items.append(normalized)
+                return items
+            except Exception as e:
+                print(f"[SearchManager] Failed to load index from ChromaDB: {e}")
+                return []
+
         if not self.index_path.exists() or self.index_path.stat().st_size == 0:
             return []
         try:
@@ -250,8 +425,15 @@ class SearchManager:
             return []
         return [item for item in (self._normalize_index_item(item) for item in data) if item]
 
-    def _item(self, item_type: str, item_id: str, text: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-        return {
+    def _item(
+        self,
+        item_type: str,
+        item_id: str,
+        text: str,
+        payload: Dict[str, Any],
+        embedding: Optional[List[float]] = None
+    ) -> Dict[str, Any]:
+        item_dict = {
             "type": item_type,
             "id": item_id,
             "text": self._compact(text, 500),
@@ -263,6 +445,9 @@ class SearchManager:
             "updated_at": payload.get("updated_at", "") if isinstance(payload, dict) else "",
             "payload": payload,
         }
+        if embedding is not None:
+            item_dict["embedding"] = embedding
+        return item_dict
 
     def _normalize_index_item(self, item: Any) -> Dict[str, Any]:
         if not isinstance(item, dict) or not item.get("type"):
@@ -283,6 +468,7 @@ class SearchManager:
             "importance": float(item.get("importance", 0)),
             "status": item.get("status", ""),
             "updated_at": item.get("updated_at", ""),
+            "embedding": item.get("embedding"),
         }
 
     def _has_source_data(self, *values: Any) -> bool:

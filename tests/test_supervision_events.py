@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from unittest.mock import patch
 
 from memory import SupervisionEventManager
 
@@ -8,17 +9,18 @@ def test_supervision_event_lifecycle_detect_ack_snooze_resolve(tmp_path):
         events_path=str(tmp_path / "events.json"),
         preferences_path=str(tmp_path / "preferences.json"),
     )
-    active = manager.detect_events(
-        focus_state={"current": {
-            "id": "focus-1",
-            "status": "expired",
-            "goal": "写测试",
-            "duration_minutes": 25,
-            "elapsed_minutes": 40,
-        }},
-        commitments=[],
-        task_view={"current": {}},
-    )
+    with patch.object(SupervisionEventManager, "_get_active_window_macos", return_value=("", "")):
+        active = manager.detect_events(
+            focus_state={"current": {
+                "id": "focus-1",
+                "status": "expired",
+                "goal": "写测试",
+                "duration_minutes": 25,
+                "elapsed_minutes": 40,
+            }},
+            commitments=[],
+            task_view={"current": {}},
+        )
 
     assert active[0]["type"] == "focus_expired"
     acknowledged = manager.acknowledge(active[0]["id"])
@@ -38,21 +40,22 @@ def test_supervision_event_detects_overdue_commitment_and_stale_task(tmp_path):
     yesterday = (datetime.now() - timedelta(days=1)).isoformat(timespec="seconds")
     old = (datetime.now() - timedelta(days=2)).isoformat(timespec="seconds")
 
-    active = manager.detect_events(
-        focus_state={"current": {}},
-        commitments=[{
-            "id": "commit-1",
-            "commitment": "补测试报告",
-            "deadline": yesterday,
-            "status": "open",
-        }],
-        task_view={"current": {
-            "id": "task-1",
-            "title": "补 CI",
-            "status": "active",
-            "updated_at": old,
-        }},
-    )
+    with patch.object(SupervisionEventManager, "_get_active_window_macos", return_value=("", "")):
+        active = manager.detect_events(
+            focus_state={"current": {}},
+            commitments=[{
+                "id": "commit-1",
+                "commitment": "补测试报告",
+                "deadline": yesterday,
+                "status": "open",
+            }],
+            task_view={"current": {
+                "id": "task-1",
+                "title": "补 CI",
+                "status": "active",
+                "updated_at": old,
+            }},
+        )
 
     event_types = {event["type"] for event in active}
     assert "commitment_overdue" in event_types

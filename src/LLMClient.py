@@ -440,7 +440,7 @@ class LLMClient:
         )
         return response.choices[0].message.content.strip()
 
-    def invoke_vision(self, prompt: str, image_base64) -> str:
+    def invoke_vision(self, prompt: str, image_base64, json_mode: bool = False) -> str:
         """调用视觉/多模态模型分析 Base64 编码的图片（支持单张或多张）"""
         content = [{"type": "text", "text": prompt}]
         if isinstance(image_base64, list):
@@ -465,10 +465,16 @@ class LLMClient:
                 "content": content
             }
         ]
+        
+        kwargs = {}
+        if json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
+
         response = self.vision_client.chat.completions.create(
             model=self.vision_model,
             messages=messages,
-            max_tokens=800
+            max_tokens=800,
+            **kwargs
         )
         return response.choices[0].message.content.strip()
 

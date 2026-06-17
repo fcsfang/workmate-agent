@@ -4,3 +4,4 @@ pytest
 fastapi
 uvicorn
 websocket-client
+chromadb
