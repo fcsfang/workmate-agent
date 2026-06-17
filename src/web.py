@@ -2,7 +2,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, Generator, Optional
+from typing import Any, Dict, Generator, List, Optional, Union
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
@@ -78,9 +78,323 @@ class SupervisionPreferencesRequest(BaseModel):
     event_type_min_severity: Optional[Dict[str, str]] = None
 
 
+class SubTask(BaseModel):
+    id: Optional[str] = ""
+    title: str
+    status: Optional[str] = "active"
+
+
+class Task(BaseModel):
+    id: Optional[str] = ""
+    title: Optional[str] = ""
+    status: Optional[str] = "inbox"
+    priority: Optional[str] = "normal"
+    created_at: Optional[str] = ""
+    updated_at: Optional[str] = ""
+    started_at: Optional[str] = ""
+    completed_at: Optional[str] = ""
+    abandoned_at: Optional[str] = ""
+    due_at: Optional[str] = ""
+    last_user_update_at: Optional[str] = ""
+    next_check_at: Optional[str] = ""
+    progress: List[Any] = []
+    subtasks: List[SubTask] = []
+    blockers: List[Any] = []
+    next_actions: List[Any] = []
+    user_commitments: List[Any] = []
+    related_record_ids: List[str] = []
+
+
+class TaskView(BaseModel):
+    current: Optional[Task] = None
+    active: List[Task] = []
+    inbox: List[Task] = []
+    completed: List[Task] = []
+    abandoned: List[Task] = []
+
+
+class TaskState(BaseModel):
+    active_task: Optional[str] = ""
+    task_id: Optional[str] = ""
+    status: Optional[str] = ""
+    current_progress: Optional[str] = ""
+    updated_at: Optional[str] = ""
+
+
+class Commitment(BaseModel):
+    id: Optional[str] = ""
+    owner: Optional[str] = "user"
+    task: Optional[str] = ""
+    commitment: Optional[str] = ""
+    status: Optional[str] = "open"
+    created_at: Optional[str] = ""
+    closed_at: Optional[str] = ""
+    related_record_ids: List[str] = []
+
+
+class SupervisionEvent(BaseModel):
+    id: Optional[str] = ""
+    dedupe_key: Optional[str] = ""
+    type: Optional[str] = ""
+    subject_type: Optional[str] = ""
+    subject_id: Optional[str] = ""
+    subject_title: Optional[str] = ""
+    severity: Optional[str] = "low"
+    title: Optional[str] = ""
+    message: Optional[str] = ""
+    display_message: Optional[str] = ""
+    status: Optional[str] = "detected"
+    source: Optional[str] = ""
+    created_at: Optional[str] = ""
+    updated_at: Optional[str] = ""
+    snoozed_until: Optional[str] = ""
+    muted_until: Optional[str] = ""
+    feedback_history: List[Dict[str, Any]] = []
+    metadata: Optional[Dict[str, Any]] = None
+
+
+class SupervisionEventsState(BaseModel):
+    active: List[SupervisionEvent] = []
+    snoozed: List[SupervisionEvent] = []
+    muted: List[SupervisionEvent] = []
+    recent: List[SupervisionEvent] = []
+    screen_observations: List[Dict[str, Any]] = []
+    preferences: Dict[str, Any] = {}
+    feedback_stats: Dict[str, Any] = {}
+    strategy: Dict[str, Any] = {}
+    counts: Dict[str, int] = {}
+
+
+class MemoryItem(BaseModel):
+    id: Optional[str] = ""
+    type: Optional[str] = "memory"
+    category: Optional[str] = ""
+    content: Optional[str] = ""
+    task_id: Optional[str] = ""
+    task_title: Optional[str] = ""
+    source_record_ids: List[str] = []
+    confidence: Optional[float] = 0.0
+    salience: Optional[float] = 0.0
+    status: Optional[str] = "active"
+    metadata: Optional[Dict[str, Any]] = None
+    created_at: Optional[str] = ""
+    updated_at: Optional[str] = ""
+    last_accessed_at: Optional[str] = ""
+
+
+class MemoryCategory(BaseModel):
+    id: Optional[str] = ""
+    name: Optional[str] = ""
+    description: Optional[str] = ""
+
+
+class BehaviorPatterns(BaseModel):
+    active: List[Dict[str, Any]] = []
+    recent: List[Dict[str, Any]] = []
+
+
+class FocusSession(BaseModel):
+    id: Optional[str] = ""
+    goal: Optional[str] = ""
+    task_id: Optional[str] = ""
+    task_title: Optional[str] = ""
+    status: Optional[str] = ""
+    duration_minutes: Optional[int] = 45
+    started_at: Optional[str] = ""
+    expected_end_at: Optional[str] = ""
+    ended_at: Optional[str] = ""
+    elapsed_minutes: Optional[int] = 0
+    outcome: Optional[str] = ""
+    created_at: Optional[str] = ""
+    updated_at: Optional[str] = ""
+
+
+class ToolCallTrace(BaseModel):
+    tool: Optional[str] = ""
+    status: Optional[str] = ""
+    read_only: Optional[bool] = True
+    duration_ms: Optional[float] = 0.0
+    reason: Optional[str] = ""
+    side_effects: List[str] = []
+    error: Optional[str] = None
+
+
+class TurnTrace(BaseModel):
+    turn_id: Optional[str] = ""
+    stages: List[Dict[str, Any]] = []
+    tool_calls: List[ToolCallTrace] = []
+
+
+class MemoryStateResponse(BaseModel):
+    count: int
+    recent: List[Dict[str, Any]] = []
+    summary: str = ""
+    structured_summary: str = ""
+    recent_summary: Dict[str, Any] = {}
+    recent_summary_context: str = ""
+    task_state: Optional[TaskState] = None
+    task_view: Optional[TaskView] = None
+    open_commitments: List[Commitment] = []
+    user_profile: Dict[str, Any] = {}
+    memory_items: List[MemoryItem] = []
+    memory_categories: List[MemoryCategory] = []
+    memory_resources: List[Dict[str, Any]] = []
+    semantic_dialogues: List[Dict[str, Any]] = []
+    high_level_insights: List[Dict[str, Any]] = []
+    behavior_patterns: Optional[BehaviorPatterns] = None
+    dashboard: Dict[str, Any] = {}
+    memory_conflicts: List[Dict[str, Any]] = []
+    reflections: List[Dict[str, Any]] = []
+    supervision: Dict[str, Any] = {}
+    supervision_events: Optional[SupervisionEventsState] = None
+    focus_session: Optional[FocusSession] = None
+    support_knowledge: Dict[str, Any] = {}
+    tool_calls: List[Dict[str, Any]] = []
+    tool_schemas: List[Dict[str, Any]] = []
+    turn_trace: Optional[TurnTrace] = None
+    last_reminder_control: Dict[str, Any] = {}
+    memory_pipeline: Dict[str, Any] = {}
+    last_pipeline_result: Dict[str, Any] = {}
+    context_stats: Dict[str, Any] = {}
+    retrieval_plan: Dict[str, Any] = {}
+
+
+class ContextStateResponse(BaseModel):
+    messages: List[Dict[str, Any]] = []
+    message_count: int = 0
+    context_stats: Dict[str, Any] = {}
+    retrieval_plan: Dict[str, Any] = {}
+    open_commitments: List[Commitment] = []
+    task_view: Optional[TaskView] = None
+    user_profile: Dict[str, Any] = {}
+    memory_items: List[MemoryItem] = []
+    memory_categories: List[MemoryCategory] = []
+    memory_resources: List[Dict[str, Any]] = []
+    semantic_dialogues: List[Dict[str, Any]] = []
+    high_level_insights: List[Dict[str, Any]] = []
+    behavior_patterns: Optional[BehaviorPatterns] = None
+    dashboard: Dict[str, Any] = {}
+    memory_conflicts: List[Dict[str, Any]] = []
+    reflections: List[Dict[str, Any]] = []
+    supervision: Dict[str, Any] = {}
+    supervision_events: Optional[SupervisionEventsState] = None
+    focus_session: Optional[FocusSession] = None
+    support_knowledge: Dict[str, Any] = {}
+    tool_calls: List[Dict[str, Any]] = []
+    tool_schemas: List[Dict[str, Any]] = []
+    turn_trace: Optional[TurnTrace] = None
+    last_pipeline_result: Dict[str, Any] = {}
+
+
+class DashboardToday(BaseModel):
+    date: str
+    focus_completed: int
+    focus_minutes: int
+    tasks_completed: int
+    commitments_closed: int
+    open_commitments: int
+    due_or_overdue_commitments: int
+    active_supervision_events: int
+
+
+class DashboardMainline(BaseModel):
+    id: str = ""
+    title: str = "暂无当前任务"
+    status: str = ""
+    has_focus: bool = False
+
+
+class DashboardLoad(BaseModel):
+    open_tasks: int
+    blocked_tasks: int
+    task_dispersion: str
+    active_patterns: int
+
+
+class DashboardWeek(BaseModel):
+    start: str
+    focus_completed: int
+    focus_minutes: int
+    tasks_completed: int
+    commitments_opened: int
+    commitments_closed: int
+    commitment_fulfillment_rate: float
+    active_days: int
+
+
+class DashboardSuggestion(BaseModel):
+    type: str = "general"
+    level: str = "info"
+    text: str = "暂无建议"
+    ref_task_id: str = ""
+    ref_event_id: str = ""
+
+
+class DashboardStateResponse(BaseModel):
+    today: DashboardToday
+    mainline: DashboardMainline
+    load: DashboardLoad
+    week: DashboardWeek
+    suggestion: DashboardSuggestion
+    quick_actions: List[Dict[str, Any]] = []
+
+
+class SupervisionEventUpdateResponse(BaseModel):
+    event: Optional[Dict[str, Any]] = None
+    supervision_events: SupervisionEventsState
+    memory: MemoryStateResponse
+    context: ContextStateResponse
+
+
+class SupervisionPreferencesUpdateResponse(BaseModel):
+    preferences: Dict[str, Any]
+    supervision_events: SupervisionEventsState
+
+
+class NotifyStatusResponse(BaseModel):
+    enabled_channels: List[str]
+    local_configured: bool
+    bark_configured: bool
+    lark_configured: bool
+
+
+class NotifyTestResponse(BaseModel):
+    success: bool
+    error: Optional[str] = None
+
+
+class FocusResponse(BaseModel):
+    session: Optional[Dict[str, Any]] = None
+    focus_session: Dict[str, Any]
+    memory: MemoryStateResponse
+    context: ContextStateResponse
+
+
+class TaskUpdateStatusResponse(BaseModel):
+    task_view: Optional[Dict[str, Any]] = None
+    task_details: Optional[Dict[str, Any]] = None
+    memory: MemoryStateResponse
+    context: ContextStateResponse
+
+
 class TTSRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=500)
     provider: str = "xfyun"
+
+
+class ChatStreamDeltaEvent(BaseModel):
+    type: str = "delta"
+    content: str
+
+
+class ChatStreamDoneEvent(BaseModel):
+    type: str = "done"
+    memory: MemoryStateResponse
+    context: ContextStateResponse
+    tool_calls: List[Dict[str, Any]] = []
+    tool_schemas: List[Dict[str, Any]] = []
+    turn_trace: Optional[TurnTrace] = None
+
 
 
 class WorkmateWebApp:
@@ -306,7 +620,7 @@ APP = WorkmateWebApp()
 app = FastAPI(
     title="Workmate Agent API",
     description="Local API for chat, memory, focus sessions, supervision events, and runtime observability.",
-    version="1.10.0",
+    version="2.2.1",
 )
 
 
@@ -331,42 +645,42 @@ async def index():
     return FileResponse(WEB_ROOT / "index.html")
 
 
-@app.get("/api/memory", summary="Get current memory state")
+@app.get("/api/memory", summary="Get current memory state", response_model=MemoryStateResponse)
 async def get_memory():
     return APP.memory_state()
 
 
-@app.get("/api/context", summary="Get latest model context and debug state")
+@app.get("/api/context", summary="Get latest model context and debug state", response_model=ContextStateResponse)
 async def get_context():
     return APP.context_state()
 
 
-@app.get("/api/dashboard", summary="Get today dashboard state")
+@app.get("/api/dashboard", summary="Get today dashboard state", response_model=DashboardStateResponse)
 async def get_dashboard():
     return APP.dashboard_state()
 
 
-@app.get("/api/supervision/events", summary="Get active supervision events")
+@app.get("/api/supervision/events", summary="Get active supervision events", response_model=SupervisionEventsState)
 async def get_supervision_events():
     return APP.supervision_events()
 
 
-@app.post("/api/supervision/events", summary="Update a supervision event")
+@app.post("/api/supervision/events", summary="Update a supervision event", response_model=SupervisionEventUpdateResponse)
 async def post_supervision_events(payload: SupervisionEventRequest):
     return APP.update_supervision_event(model_to_dict(payload))
 
 
-@app.get("/api/supervision/preferences", summary="Get supervision preferences")
+@app.get("/api/supervision/preferences", summary="Get supervision preferences", response_model=Dict[str, Any])
 async def get_supervision_preferences():
     return APP.supervision_preferences()
 
 
-@app.post("/api/supervision/preferences", summary="Update supervision preferences")
+@app.post("/api/supervision/preferences", summary="Update supervision preferences", response_model=SupervisionPreferencesUpdateResponse)
 async def post_supervision_preferences(payload: SupervisionPreferencesRequest):
     return APP.update_supervision_preferences(model_to_dict(payload, exclude_none=True))
 
 
-@app.get("/api/notify/status", summary="Get notification channel status")
+@app.get("/api/notify/status", summary="Get notification channel status", response_model=NotifyStatusResponse)
 async def get_notify_status():
     channels = [c.strip() for c in os.getenv("PUSH_CHANNELS", "").split(",") if c.strip()]
     return {
@@ -377,7 +691,7 @@ async def get_notify_status():
     }
 
 
-@app.post("/api/notify/test", summary="Send a test notification")
+@app.post("/api/notify/test", summary="Send a test notification", response_model=NotifyTestResponse)
 async def post_notify_test():
     try:
         APP.notifier.send_notification(
@@ -398,12 +712,12 @@ async def post_tts_speech(payload: TTSRequest):
         return JSONResponse({"error": str(exc)}, status_code=500)
 
 
-@app.post("/api/focus", summary="Start, complete, or abandon a focus session")
+@app.post("/api/focus", summary="Start, complete, or abandon a focus session", response_model=FocusResponse)
 async def post_focus(payload: FocusRequest):
     return APP.focus(model_to_dict(payload))
 
 
-@app.post("/api/task/update-status", summary="Update task status")
+@app.post("/api/task/update-status", summary="Update task status", response_model=TaskUpdateStatusResponse)
 async def post_task_update_status(payload: TaskStatusRequest):
     return APP.update_task_status(model_to_dict(payload))
 

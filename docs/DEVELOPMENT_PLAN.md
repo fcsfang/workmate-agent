@@ -289,6 +289,8 @@ tool-use, context planning, and supervision state transitions.
 
 ### V1.9 FastAPI 与 API Schema
 
+状态：已实现。
+
 目标：把当前 Web API 从原型 HTTP handler 升级为更标准的后端服务。
 
 要做：
@@ -313,12 +315,20 @@ tool-use, context planning, and supervision state transitions.
 - 前端对话、记忆、dashboard、监督事件正常工作
 - 旧接口路径尽量兼容
 
+实现记录：
+
+- 引入 `FastAPI` 并重构 `src/web.py` 路由注册
+- 定义了完整的嵌套 Pydantic 响应模型：`Task`, `SubTask`, `TaskView`, `TaskState`, `Commitment`, `SupervisionEvent`, `SupervisionEventsState`, `MemoryItem`, `MemoryCategory`, `BehaviorPatterns`, `FocusSession`, `ToolCallTrace`, `TurnTrace`
+- 全量绑定 Web API 端点的 `response_model`，保证数据的自动校验与类型转换
+- 前端 `/docs` 可直观查看并调试符合 OpenAPI 规范的接口数据结构与模型定义
+- 新增自动化测试 `tests/test_web_api.py` 以及数据校验脚本对现有数据库文件的 JSON 进行完整解析验证
+
 简历亮点：
 
 ```text
-Migrated the local agent backend to FastAPI with typed request/response schemas
-and OpenAPI documentation.
+Migrated the local agent backend to FastAPI with strongly-typed, nested request/response schemas and fully compliant OpenAPI documentation.
 ```
+
 
 ### V2.0 Demo Packaging
 
@@ -381,8 +391,8 @@ evaluation reports, and Docker-based local deployment.
 
 - 更细腻的情绪陪伴语气
 - 更多前端视觉优化
-- 更复杂的提醒文案个性化
-- 更强的个人自律方法论库
+- 更多前端性能调优
+- 数据库底座的非必要替换（如使用 `zvec` 替换 ChromaDB，对当前小规模本地记忆优化有限，建议后续作为简历扩展优化亮点进行口头探讨）
 - 多用户系统
 - 商业化账户体系
 - 复杂日历集成

@@ -1,3 +1,7 @@
+## V2.2.1
+### 功能升级
+- **FastAPI 嵌套响应模型重构与 Schema 强类型校验**：定义了 `Task`, `SubTask`, `TaskView`, `TaskState`, `Commitment`, `SupervisionEvent`, `SupervisionEventsState`, `MemoryItem`, `MemoryCategory`, `BehaviorPatterns`, `FocusSession`, `ToolCallTrace`, `TurnTrace` 等核心嵌套 Pydantic 响应模型，替换了原有的宽松 Dict 声明，实现了端点的全量数据校验，并在 `/docs` 提供完备、高精度的 OpenAPI 接口定义。
+
 ## V2.2.0
 ### 功能升级
 - **集成正统向量数据库 ChromaDB**：废弃了原有的 JSON 文件索引（`retrieval_index.json`），改为采用嵌入式向量数据库 ChromaDB 进行向量和文档的持久化存储，支持工业级余弦相似度检索。
