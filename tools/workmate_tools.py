@@ -6,6 +6,21 @@ from .registry import ToolRegistry
 
 
 VALID_TASK_STATUSES = {"inbox", "planned", "active", "blocked", "done", "abandoned"}
+SEVERITY_LEVELS = {"low", "medium", "high"}
+REMINDER_STRENGTHS = {"soft", "gentle", "firm"}
+ALLOWED_SUPERVISION_PREFERENCE_KEYS = {
+    "enabled",
+    "reminder_strength",
+    "page_min_severity",
+    "browser_min_severity",
+    "background_min_severity",
+    "voice_min_severity",
+    "notify_focus",
+    "notify_commitments",
+    "notify_tasks",
+    "default_snooze_minutes",
+    "screen_force_message",
+}
 
 
 def build_workmate_tool_registry(memory_manager: Any) -> ToolRegistry:
@@ -112,6 +127,49 @@ def build_workmate_tool_registry(memory_manager: Any) -> ToolRegistry:
         },
         side_effects=[],
         read_only=True,
+    )
+
+    registry.register(
+        "get_supervision_preferences",
+        "读取监督提醒偏好。只读，不修改状态。",
+        {"type": "object", "properties": {}, "required": []},
+        lambda args: {"preferences": memory_manager.get_supervision_preferences()},
+        output_schema={
+            "type": "object",
+            "properties": {"preferences": {"type": "object"}},
+            "required": ["preferences"],
+        },
+        side_effects=[],
+        read_only=True,
+    )
+
+    registry.register(
+        "update_supervision_preferences",
+        "更新监督提醒偏好。只在用户明确要求调整提醒、通知、语音或屏幕监督偏好时调用。",
+        {
+            "type": "object",
+            "properties": {
+                "updates": {
+                    "type": "object",
+                    "description": "仅允许 enabled/reminder_strength/*_min_severity/notify_*/default_snooze_minutes/screen_force_message 等偏好字段",
+                },
+                "reason": {"type": "string"},
+            },
+            "required": ["updates", "reason"],
+        },
+        lambda args: _update_supervision_preferences(memory_manager, args),
+        output_schema={
+            "type": "object",
+            "properties": {
+                "updated": {"type": "boolean"},
+                "applied_updates": {"type": "object"},
+                "preferences": {"type": "object"},
+                "reason": {"type": "string"},
+            },
+            "required": ["updated", "applied_updates", "preferences"],
+        },
+        side_effects=["updates supervision_preferences.json"],
+        read_only=False,
     )
 
     registry.register(
@@ -357,6 +415,45 @@ def _add_memory_note(memory_manager: Any, args: Dict[str, Any]) -> Dict[str, Any
         "created": created,
         "note": item,
     }
+
+
+def _update_supervision_preferences(memory_manager: Any, args: Dict[str, Any]) -> Dict[str, Any]:
+    updates = args.get("updates", {})
+    if not isinstance(updates, dict) or not updates:
+        raise ValueError("updates object is required")
+    reason = _compact(args.get("reason", ""), 180)
+    if not reason:
+        raise ValueError("reason is required")
+    safe_updates = _safe_supervision_preference_updates(updates)
+    if not safe_updates:
+        raise ValueError("no supported supervision preference updates")
+    preferences = memory_manager.update_supervision_preferences(safe_updates)
+    return {
+        "updated": True,
+        "applied_updates": safe_updates,
+        "preferences": preferences,
+        "reason": reason,
+    }
+
+
+def _safe_supervision_preference_updates(updates: Dict[str, Any]) -> Dict[str, Any]:
+    safe: Dict[str, Any] = {}
+    for key, value in updates.items():
+        if key not in ALLOWED_SUPERVISION_PREFERENCE_KEYS:
+            continue
+        if key in {"enabled", "notify_focus", "notify_commitments", "notify_tasks", "screen_force_message"}:
+            safe[key] = bool(value)
+        elif key == "reminder_strength":
+            text = str(value or "").strip().lower()
+            if text in REMINDER_STRENGTHS:
+                safe[key] = text
+        elif key in {"page_min_severity", "browser_min_severity", "background_min_severity", "voice_min_severity"}:
+            text = str(value or "").strip().lower()
+            if text in SEVERITY_LEVELS:
+                safe[key] = text
+        elif key == "default_snooze_minutes":
+            safe[key] = _bounded_int(value, 5, 1440)
+    return safe
 
 
 def _bounded_int(value: Any, minimum: int, maximum: int) -> int:

@@ -2276,6 +2276,163 @@
       const messages = context.messages || [];
       const retrieval = context.retrieval_plan || {};
       const toolTrace = ((context.turn_trace || {}).tool_calls || context.tool_calls || []);
+      const observability = context.observability || (context.turn_trace || {}).observability || {};
+      const observabilityLines = [];
+      if (observability && Object.keys(observability).length) {
+        const slowest = observability.slowest_stage || {};
+        const calls = observability.model_calls || {};
+        const tools = observability.tools || {};
+        const toolTraceSummary = observability.tool_trace || {};
+        const rag = observability.rag || {};
+        const ragExplainability = observability.rag_explainability || {};
+        const memory = observability.memory || {};
+        const providerTrace = observability.provider_trace || context.provider_trace_recent || {};
+        const providerDetail = observability.provider_detail || {};
+        const providerKinds = providerTrace.by_kind || {};
+        const usage = observability.usage || providerTrace.usage || {};
+        observabilityLines.push("## OBSERVABILITY SUMMARY");
+        observabilityLines.push(
+          `turn=${String(observability.turn_id || "").slice(0, 8) || "--"} ` +
+          `status=${observability.status || "unknown"} duration=${observability.duration_ms || 0}ms`
+        );
+        observabilityLines.push(
+          `slowest_stage=${slowest.name || "none"}:${slowest.duration_ms || 0}ms ` +
+          `stages=${observability.stage_count || 0}`
+        );
+        observabilityLines.push(
+          `model_calls llm=${calls.llm_generate || 0} planner=${calls.tool_planner || 0} ` +
+          `vision=${calls.vision || 0} tts=${calls.tts || 0} embedding=${calls.embedding || 0}`
+        );
+        observabilityLines.push(
+          `providers total=${providerTrace.total || 0} duration=${providerTrace.duration_ms || 0}ms ` +
+          `fallbacks=${(providerTrace.fallbacks || []).length} errors=${(providerTrace.errors || []).length}`
+        );
+        if (providerDetail && Object.keys(providerDetail).length) {
+          const slowestCall = providerDetail.slowest_call || {};
+          observabilityLines.push(
+            `provider_detail slowest=${slowestCall.kind || "none"}/${slowestCall.operation || "none"}:` +
+            `${slowestCall.duration_ms || 0}ms truncated=${providerDetail.truncated || false}`
+          );
+          const providerCounts = providerDetail.by_provider || {};
+          const providerParts = Object.keys(providerCounts).sort().map((name) => `${name}:${providerCounts[name]}`);
+          if (providerParts.length) {
+            observabilityLines.push(`provider_counts ${providerParts.join(" ")}`);
+          }
+          (providerDetail.sequence || []).slice(0, 5).forEach((item) => {
+            const itemUsage = item.usage || {};
+            observabilityLines.push(
+              `provider_call ${item.index || ""}. ${item.kind || "provider"} ${item.status || "unknown"} ` +
+              `${item.provider || ""}/${item.operation || ""} ${item.duration_ms || 0}ms model=${item.model || ""}`
+            );
+            observabilityLines.push(
+              `  metadata=${(item.metadata_keys || []).join(",") || "none"} ` +
+              `tokens=${itemUsage.total_tokens || 0}/${itemUsage.estimated_tokens || 0}`
+            );
+            if (item.fallback) observabilityLines.push(`  fallback=${item.fallback}`);
+            if (item.error) observabilityLines.push(`  error=${item.error}`);
+          });
+        }
+        observabilityLines.push(
+          `usage tokens=${usage.total_tokens || 0} estimated=${usage.estimated_tokens || 0} ` +
+          `chars=${(usage.input_chars || 0) + (usage.response_chars || 0) + (usage.text_chars || 0)} ` +
+          `images=${usage.image_count || 0} audio=${usage.audio_bytes || 0}B`
+        );
+        observabilityLines.push(
+          `rag needs=${rag.needs_retrieval ?? "unknown"} hits=${rag.hit_count || 0} ` +
+          `vector=${rag.vector_status || "disabled"} sufficiency=${rag.sufficiency || "unknown"}`
+        );
+        if (ragExplainability && Object.keys(ragExplainability).length) {
+          observabilityLines.push(
+            `rag_explain decision=${ragExplainability.injection_decision || "unknown"} ` +
+            `types=${(ragExplainability.hit_types || []).join(",") || "none"} ` +
+            `top_score=${ragExplainability.top_score || 0}`
+          );
+          const scoreCoverage = ragExplainability.score_coverage || {};
+          const scoreParts = Object.keys(scoreCoverage).sort().map((key) => {
+            const item = scoreCoverage[key] || {};
+            return `${key}:${item.avg ?? 0}/${item.max ?? 0}`;
+          });
+          if (scoreParts.length) {
+            observabilityLines.push(`rag_scores avg/max ${scoreParts.join(" ")}`);
+          }
+          (ragExplainability.top_sources || []).slice(0, 3).forEach((item, index) => {
+            const breakdown = item.score_breakdown || {};
+            const parts = Object.keys(breakdown).sort().map((key) => `${key}=${breakdown[key]}`);
+            observabilityLines.push(
+              `rag_source ${index + 1}. [${item.source_type || "memory"}] ${item.source_id || ""} ` +
+              `score=${item.score || 0} ${item.reason || ""}`
+            );
+            if (parts.length) observabilityLines.push(`  breakdown ${parts.join(" ")}`);
+            if (item.text_preview) observabilityLines.push(`  preview ${item.text_preview}`);
+          });
+        }
+        observabilityLines.push(
+          `tools total=${tools.total || 0} read=${tools.read || 0} write=${tools.write || 0} ` +
+          `errors=${tools.error || 0} side_effects=${tools.side_effect_count || 0}`
+        );
+        if (toolTraceSummary && Object.keys(toolTraceSummary).length) {
+          const planner = toolTraceSummary.planner || {};
+          observabilityLines.push(
+            `tool_planner source=${planner.decision_source || "unknown"} ` +
+            `parsed=${planner.parsed_count || 0} selected=${planner.selected_count || 0} ` +
+            `executed=${planner.executed_count || 0} max=${planner.max_calls || 0} truncated=${planner.truncated || false}`
+          );
+          if (planner.error) observabilityLines.push(`tool_planner error=${planner.error}`);
+          observabilityLines.push(
+            `tool_trace reads=${(toolTraceSummary.read_tools || []).join(",") || "none"} ` +
+            `writes=${(toolTraceSummary.write_tools || []).join(",") || "none"} ` +
+            `errors=${(toolTraceSummary.error_tools || []).join(",") || "none"}`
+          );
+          if ((toolTraceSummary.audit_records || []).length) {
+            observabilityLines.push(`tool_audit records=${(toolTraceSummary.audit_records || []).length}`);
+          }
+          (toolTraceSummary.sequence || []).slice(0, 5).forEach((item) => {
+            observabilityLines.push(
+              `tool_call ${item.index || ""}. ${item.tool || "tool"} ${item.status || "unknown"} ` +
+              `${item.mode || "read"} ${item.duration_ms || 0}ms reason=${item.reason || ""}`
+            );
+            observabilityLines.push(
+              `  args=${(item.argument_keys || []).join(",") || "none"} ` +
+              `obs=${(item.observation_keys || []).join(",") || "none"}`
+            );
+            if (item.side_effects && item.side_effects.length) {
+              observabilityLines.push(`  side_effects=${item.side_effects.join("; ")}`);
+            }
+            if (item.audit_record && item.audit_record.audit_id) {
+              observabilityLines.push(`  audit=${String(item.audit_record.audit_id).slice(0, 8)} status=${item.audit_record.status || ""}`);
+            }
+            if (item.error) {
+              observabilityLines.push(`  error=${item.error}`);
+            }
+            if (item.recoverable || item.recovery_hint) {
+              observabilityLines.push(`  recoverable=${item.recoverable || false} hint=${item.recovery_hint || ""}`);
+            }
+          });
+        }
+        observabilityLines.push(
+          `memory status=${memory.status || "unknown"} stages=${memory.stage_count || 0} errors=${memory.error_count || 0}`
+        );
+        (observability.stage_timeline || []).slice(0, 8).forEach((stage, index) => {
+          observabilityLines.push(
+            `${index + 1}. ${stage.name || "stage"} ${stage.status || "unknown"} ${stage.duration_ms || 0}ms`
+          );
+        });
+        Object.keys(providerKinds).sort().forEach((kind) => {
+          const item = providerKinds[kind] || {};
+          const itemUsage = item.usage || {};
+          observabilityLines.push(
+            `provider ${kind}: total=${item.total || 0} success=${item.success || 0} ` +
+            `error=${item.error || 0} fallback=${item.fallback || 0} duration=${item.duration_ms || 0}ms ` +
+            `tokens=${itemUsage.total_tokens || 0}/${itemUsage.estimated_tokens || 0}`
+          );
+        });
+        (observability.errors || []).slice(0, 3).forEach((item) => {
+          observabilityLines.push(`error ${item.stage || "turn"}: ${item.error || ""}`);
+        });
+        (providerTrace.errors || []).slice(0, 3).forEach((item) => {
+          observabilityLines.push(`provider error ${item.kind || ""}/${item.operation || ""}: ${item.error || ""}`);
+        });
+      }
       const retrievalLines = [];
       if (retrieval && Object.keys(retrieval).length) {
         retrievalLines.push("## RAG RETRIEVAL PLAN");
@@ -2299,22 +2456,35 @@
         toolTrace.slice(0, 8).forEach((item, index) => {
           const mode = item.read_only === false ? "write" : "read";
           toolLines.push(
-            `${index + 1}. ${item.tool || "tool"} status=${item.status || "unknown"} mode=${mode} duration=${item.duration_ms || 0}ms reason=${item.reason || ""}`
+            `${index + 1}. ${item.tool || "tool"} status=${item.status || "unknown"} mode=${mode} ` +
+            `source=${item.decision_source || "unknown"} duration=${item.duration_ms || 0}ms reason=${item.reason || ""}`
           );
           if ((item.side_effects || []).length) {
             toolLines.push(`   side_effects: ${(item.side_effects || []).join("; ")}`);
           }
+          const argumentKeys = Object.keys(item.arguments || {});
+          const observationKeys = Object.keys(item.observation || {});
+          if (argumentKeys.length || observationKeys.length) {
+            toolLines.push(
+              `   args: ${argumentKeys.join(",") || "none"} · observation: ${observationKeys.join(",") || "none"}`
+            );
+          }
           if (item.error) {
             toolLines.push(`   error: ${item.error}`);
+          }
+          if (item.recoverable || item.recovery_hint) {
+            toolLines.push(`   recoverable: ${item.recoverable || false} · hint: ${item.recovery_hint || ""}`);
           }
         });
       }
       if (!messages.length) {
         contextPreview.textContent = [
+          ...observabilityLines,
+          observabilityLines.length && (retrievalLines.length || toolLines.length) ? "" : "",
           ...retrievalLines,
           retrievalLines.length && toolLines.length ? "" : "",
           ...toolLines,
-          retrievalLines.length || toolLines.length ? "\n---\n" : "",
+          observabilityLines.length || retrievalLines.length || toolLines.length ? "\n---\n" : "",
           "暂无上下文。发送第一条消息后，这里会显示实际传给模型的 messages。"
         ].filter(Boolean).join("\n");
         return;
@@ -2324,10 +2494,12 @@
         return `#${index + 1} ${message.role}\n${message.content}`;
       }).join("\n\n---\n\n");
       contextPreview.textContent = [
+        ...observabilityLines,
+        observabilityLines.length && (retrievalLines.length || toolLines.length) ? "" : "",
         ...retrievalLines,
         retrievalLines.length && toolLines.length ? "" : "",
         ...toolLines,
-        retrievalLines.length || toolLines.length ? "\n---\n" : "",
+        observabilityLines.length || retrievalLines.length || toolLines.length ? "\n---\n" : "",
         messageLines
       ].filter(Boolean).join("\n");
     }
@@ -2638,7 +2810,9 @@
       const shortId = String(trace.turn_id).slice(0, 8);
       const duration = Number.isFinite(Number(trace.duration_ms)) ? `${trace.duration_ms}ms` : "--";
       const messageCount = trace.message_count_after_tools || trace.message_count_before_tools || 0;
-      turnTrace.textContent = `${shortId} · ${trace.status || "unknown"} · ${duration} · ${messageCount} messages${stages ? " · " + stages : ""}`;
+      const slowest = (trace.observability || {}).slowest_stage || {};
+      const slowestText = slowest.name ? ` · slowest ${slowest.name}:${slowest.duration_ms || 0}ms` : "";
+      turnTrace.textContent = `${shortId} · ${trace.status || "unknown"} · ${duration} · ${messageCount} messages${slowestText}${stages ? " · " + stages : ""}`;
     }
 
     function renderMemory(memory, options = {}) {

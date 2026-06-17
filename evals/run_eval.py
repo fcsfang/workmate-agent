@@ -1,5 +1,7 @@
 import argparse
+import importlib
 import json
+import os
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -12,6 +14,8 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from memory import CommitmentManager, ContextPlanner, IntentManager, MemoryRetriever, SupervisionEventManager
+from agent import AgentRuntime
+from observability import record_provider_call
 from tools import ToolExecutor, ToolRegistry, build_workmate_tool_registry
 
 
@@ -26,6 +30,49 @@ class EvalResult:
     error: str = ""
 
 
+CATEGORY_NOTES = {
+    "intent_accuracy": "Intent routing selects the right context and downstream agent path.",
+    "memory_recall": "Hybrid memory retrieval returns the expected long-term memory source.",
+    "task_tracking": "Internal state tools update task lifecycle state correctly.",
+    "commitment_extraction": "Commitment state is opened, closed, and assigned deadlines.",
+    "reminder_control": "Natural-language reminder preferences map to supervision policy updates.",
+    "tool_calling": "Schema-driven tools execute with bounded calls, read/write flags, and traces.",
+    "context_planning": "Context planner injects the right memory, task, and support blocks.",
+    "supervision_lifecycle": "Proactive supervision events move through auditable lifecycle states.",
+    "observability_trace": "Runtime trace summarizes stages, provider calls, RAG, tools, memory writeback, and supervision updates.",
+    "api_schema_smoke": "FastAPI OpenAPI schema exposes the agent context, memory, chat, and observability contracts.",
+}
+
+
+COVERAGE_AREAS = [
+    {
+        "area": "Intent and context routing",
+        "categories": ["intent_accuracy", "context_planning"],
+        "resume_signal": "agent planning",
+    },
+    {
+        "area": "Long-term memory RAG",
+        "categories": ["memory_recall"],
+        "resume_signal": "hybrid retrieval",
+    },
+    {
+        "area": "Internal action layer",
+        "categories": ["tool_calling", "task_tracking", "commitment_extraction"],
+        "resume_signal": "tool use and state mutation",
+    },
+    {
+        "area": "Proactive supervision loop",
+        "categories": ["reminder_control", "supervision_lifecycle"],
+        "resume_signal": "closed-loop supervision",
+    },
+    {
+        "area": "Runtime observability",
+        "categories": ["observability_trace", "api_schema_smoke"],
+        "resume_signal": "traceability and evaluation",
+    },
+]
+
+
 class EvaluationSuite:
     def __init__(self, cases: List[Dict[str, Any]]):
         self.cases = cases
@@ -38,6 +85,8 @@ class EvaluationSuite:
             "tool_calling": self.eval_tool_calling,
             "context_planning": self.eval_context_planning,
             "supervision_lifecycle": self.eval_supervision_lifecycle,
+            "observability_trace": self.eval_observability_trace,
+            "api_schema_smoke": self.eval_api_schema_smoke,
         }
 
     def run(self) -> Dict[str, Any]:
@@ -165,6 +214,7 @@ class EvaluationSuite:
             "read_only": result.get("read_only"),
             "duration_ms": result.get("duration_ms", 0),
             "has_output_schema": bool(result.get("output_schema")),
+            "has_audit_record": bool(result.get("audit_record")),
         }
         expected = case.get("expected", {})
         passed = all(actual.get(key) == value for key, value in expected.items())
@@ -233,6 +283,88 @@ class EvaluationSuite:
             passed = all(actual.get(key) == value for key, value in expected.items())
             return self._result(case, passed, actual)
 
+    def eval_observability_trace(self, case: Dict[str, Any]) -> EvalResult:
+        runtime = AgentRuntime(
+            EvalLLM(),
+            EvalRuntimeMemoryManager(),
+            EvalRuntimeToolExecutor(fail_tool=bool(case.get("fail_tool"))),
+        )
+        runtime.run(case.get("input", "eval observability"))
+        trace = runtime.get_last_turn_trace()
+        observability = trace.get("observability", {})
+        tools = observability.get("tools", {})
+        tool_trace = observability.get("tool_trace", {})
+        tool_planner = tool_trace.get("planner", {}) if isinstance(tool_trace, dict) else {}
+        tool_sequence = tool_trace.get("sequence", []) if isinstance(tool_trace, dict) else []
+        first_tool_call = tool_sequence[0] if tool_sequence else {}
+        rag = observability.get("rag", {})
+        rag_explainability = observability.get("rag_explainability", {})
+        rag_top_sources = rag_explainability.get("top_sources", []) if isinstance(rag_explainability, dict) else []
+        first_rag_source = rag_top_sources[0] if rag_top_sources else {}
+        provider_detail = observability.get("provider_detail", {})
+        provider_sequence = provider_detail.get("sequence", []) if isinstance(provider_detail, dict) else []
+        first_provider_call = provider_sequence[0] if provider_sequence else {}
+        usage = observability.get("usage", {})
+        actual = {
+            "status": observability.get("status"),
+            "has_timeline": bool(observability.get("stage_timeline")),
+            "has_slowest_stage": bool((observability.get("slowest_stage") or {}).get("name")),
+            "llm_generate": (observability.get("model_calls") or {}).get("llm_generate"),
+            "provider_total": (observability.get("provider_trace") or {}).get("total"),
+            "provider_detail_has_sequence": bool(provider_sequence),
+            "provider_detail_has_metadata_keys": bool(first_provider_call.get("metadata_keys")),
+            "estimated_tokens_positive": int(usage.get("estimated_tokens", 0) or 0) > 0,
+            "tool_total": tools.get("total"),
+            "tool_errors": tools.get("error"),
+            "tool_trace_has_sequence": bool(tool_sequence),
+            "tool_trace_has_io_summary": bool(first_tool_call.get("argument_keys")) and bool(first_tool_call.get("observation_keys")),
+            "tool_planner_source": tool_planner.get("decision_source", ""),
+            "tool_planner_selected": tool_planner.get("selected_count"),
+            "rag_hit_count": rag.get("hit_count"),
+            "rag_explainability": bool(rag_explainability),
+            "rag_score_breakdown": bool(first_rag_source.get("score_breakdown")),
+            "rag_injection_decision": rag_explainability.get("injection_decision", "") if isinstance(rag_explainability, dict) else "",
+            "memory_status": (observability.get("memory") or {}).get("status"),
+            "supervision_event_count": (observability.get("supervision") or {}).get("event_count"),
+        }
+        expected = case.get("expected", {})
+        passed = all(actual.get(key) == value for key, value in expected.items())
+        return self._result(case, passed, actual)
+
+    def eval_api_schema_smoke(self, case: Dict[str, Any]) -> EvalResult:
+        previous_scheduler = os.environ.get("WORKMATE_DISABLE_SCHEDULER")
+        os.environ["WORKMATE_DISABLE_SCHEDULER"] = "1"
+        try:
+            web = importlib.import_module("src.web")
+            schema = web.app.openapi()
+        finally:
+            if previous_scheduler is None:
+                os.environ.pop("WORKMATE_DISABLE_SCHEDULER", None)
+            else:
+                os.environ["WORKMATE_DISABLE_SCHEDULER"] = previous_scheduler
+
+        paths = schema.get("paths", {})
+        components = schema.get("components", {}).get("schemas", {})
+        expected = case.get("expected", {})
+        missing_paths = [path for path in expected.get("paths", []) if path not in paths]
+        missing_schemas = [name for name in expected.get("schemas", []) if name not in components]
+        missing_properties = {}
+        for schema_name, properties in (expected.get("properties") or {}).items():
+            schema_properties = (components.get(schema_name, {}) or {}).get("properties", {})
+            missing = [prop for prop in properties if prop not in schema_properties]
+            if missing:
+                missing_properties[schema_name] = missing
+
+        actual = {
+            "path_count": len(paths),
+            "schema_count": len(components),
+            "missing_paths": missing_paths,
+            "missing_schemas": missing_schemas,
+            "missing_properties": missing_properties,
+        }
+        passed = not missing_paths and not missing_schemas and not missing_properties
+        return self._result(case, passed, actual)
+
     def _result(self, case: Dict[str, Any], passed: bool, actual: Dict[str, Any], error: str = "") -> EvalResult:
         return EvalResult(
             case_id=case.get("id", ""),
@@ -267,8 +399,31 @@ class EvaluationSuite:
                 "score": round(sum(1 for item in results if item.passed) / max(len(results), 1), 4),
             },
             "metrics": metrics,
+            "category_notes": {
+                category: CATEGORY_NOTES.get(category, "")
+                for category in sorted(metrics)
+            },
+            "coverage": self._coverage_snapshot(metrics),
             "results": [item.__dict__ for item in results],
         }
+
+    def _coverage_snapshot(self, metrics: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+        snapshot = []
+        for item in COVERAGE_AREAS:
+            categories = item["categories"]
+            covered = [category for category in categories if category in metrics]
+            passed = sum(metrics.get(category, {}).get("passed", 0) for category in categories)
+            total = sum(metrics.get(category, {}).get("total", 0) for category in categories)
+            snapshot.append({
+                "area": item["area"],
+                "categories": categories,
+                "resume_signal": item["resume_signal"],
+                "status": "covered" if len(covered) == len(categories) else "partial" if covered else "missing",
+                "passed": passed,
+                "total": total,
+                "score": round(passed / max(total, 1), 4) if total else 0,
+            })
+        return snapshot
 
 
 class PlannedToolLLM:
@@ -277,6 +432,126 @@ class PlannedToolLLM:
 
     def invoke_raw(self, messages):
         return json.dumps({"tool_calls": self.plan}, ensure_ascii=False)
+
+
+class EvalLLM:
+    def invoke(self, messages):
+        record_provider_call(
+            "llm",
+            provider="fake",
+            operation="chat.completions.create",
+            model="fake-eval-model",
+            metadata={
+                "message_count": len(messages),
+                "input_chars": sum(len(item.get("content", "")) for item in messages),
+                "response_chars": len("eval response"),
+            },
+        )
+        return "eval response"
+
+
+class EvalRuntimeContextCompressor:
+    def estimate_context(self, messages):
+        return {
+            "message_count": len(messages),
+            "approx_chars": sum(len(item.get("content", "")) for item in messages),
+        }
+
+
+class EvalRuntimeContextEngine:
+    def build_retrieval_plan(self, query, results):
+        return {
+            "needs_retrieval": True,
+            "mode": "hybrid",
+            "vector_status": "disabled",
+            "hit_count": len(results),
+            "top_score": 0.8 if results else 0,
+            "sufficiency": "enough" if results else "low",
+            "top_results": [
+                {
+                    "source_type": "memory_item",
+                    "source_id": "eval-memory",
+                    "score": 0.8,
+                    "reason": "eval retrieval hit",
+                    "score_breakdown": {
+                        "keyword": 0.75,
+                        "recency": 0.2,
+                        "salience": 0.7,
+                        "type_weight": 1.2,
+                        "vector": 0,
+                    },
+                    "text": "eval memory explains observability retrieval",
+                }
+            ],
+        }
+
+
+class EvalRuntimeMemoryManager:
+    context_compressor = EvalRuntimeContextCompressor()
+    context_engine = EvalRuntimeContextEngine()
+    last_reminder_control = {"applied_updates": []}
+
+    def apply_reminder_control_from_text(self, prompt):
+        return None
+
+    def build_context_messages(self, prompt):
+        return [
+            {"role": "system", "content": "eval memory context"},
+            {"role": "user", "content": prompt},
+        ]
+
+    def search_related_memories(self, prompt, limit=5):
+        return [{"source_type": "memory_item", "source_id": "eval-memory", "score": 0.8}][:limit]
+
+    def process_turn(self, prompt, response):
+        return {"status": "success", "stages": [{"name": "save_record"}], "errors": []}
+
+    def refresh_supervision_events(self):
+        return [{"id": "eval-event"}]
+
+
+class EvalRuntimeToolExecutor:
+    registry = object()
+
+    def __init__(self, fail_tool: bool = False):
+        self.fail_tool = fail_tool
+        self.last_plan_trace = {}
+
+    def plan_and_execute(self, llm_client, messages, prompt):
+        status = "error" if self.fail_tool else "success"
+        self.last_plan_trace = {
+            "decision_source": "llm_plan",
+            "available_tools": ["search_memory"],
+            "max_calls": 3,
+            "parsed_count": 1,
+            "selected_count": 1,
+            "executed_count": 1,
+            "truncated": False,
+            "error": "",
+        }
+        return [
+            {
+                "tool": "search_memory",
+                "status": status,
+                "read_only": True,
+                "duration_ms": 1,
+                "arguments": {"query": "eval observability"},
+                "observation": {"results": [{"source_id": "eval-memory"}]},
+                "input_schema": {"type": "object", "properties": {"query": {"type": "string"}}},
+                "output_schema": {"type": "object", "properties": {"results": {"type": "array"}}},
+                "side_effects": [],
+                "decision_source": "llm_plan",
+                "planner_call_index": 1,
+                "error": "eval tool failed" if self.fail_tool else "",
+                "reason": "eval observability",
+            }
+        ]
+
+    def format_observations(self, results):
+        return "eval tool observation"
+
+    def get_last_plan_trace(self):
+        return self.last_plan_trace
 
 
 class FakeTaskManager:
@@ -325,6 +600,12 @@ class FakeTaskState:
 class FakeMemoryManager:
     def __init__(self, task: Dict[str, Any] = None):
         self.task_state = FakeTaskState(task=task)
+        self.supervision_preferences = {
+            "enabled": True,
+            "reminder_strength": "gentle",
+            "browser_min_severity": "medium",
+            "notify_focus": True,
+        }
 
     def get_task_view(self, limit=8):
         tasks = self.task_state.task_manager.tasks
@@ -353,6 +634,13 @@ class FakeMemoryManager:
 
     def abandon_focus_session(self, outcome=""):
         return {"goal": "eval", "elapsed_minutes": 5, "outcome": outcome}
+
+    def get_supervision_preferences(self):
+        return dict(self.supervision_preferences)
+
+    def update_supervision_preferences(self, updates):
+        self.supervision_preferences.update(updates)
+        return dict(self.supervision_preferences)
 
 
 def load_cases(path: Path) -> List[Dict[str, Any]]:
@@ -397,6 +685,67 @@ def format_markdown(report: Dict[str, Any]) -> str:
     ]
     for category, metric in sorted((report.get("metrics") or {}).items()):
         lines.append(f"| {category} | {metric.get('passed', 0)} | {metric.get('total', 0)} | {metric.get('score', 0)} |")
+
+    lines.extend(["", "## Coverage Map", ""])
+    lines.extend([
+        "| area | status | passed | total | resume signal |",
+        "| --- | --- | ---: | ---: | --- |",
+    ])
+    for item in report.get("coverage", []) or []:
+        lines.append(
+            f"| {item.get('area', '')} | {item.get('status', '')} | "
+            f"{item.get('passed', 0)} | {item.get('total', 0)} | {item.get('resume_signal', '')} |"
+        )
+
+    category_notes = report.get("category_notes") or {}
+    if category_notes:
+        lines.extend(["", "## Category Notes", ""])
+        for category in sorted(category_notes):
+            metric = (report.get("metrics") or {}).get(category, {})
+            lines.append(
+                f"- `{category}`: {metric.get('passed', 0)}/{metric.get('total', 0)}. "
+                f"{category_notes.get(category, '')}"
+            )
+
+    observability_cases = [
+        item for item in report.get("results", [])
+        if item.get("category") == "observability_trace"
+    ]
+    if observability_cases:
+        lines.extend(["", "## Observability Trace Cases", ""])
+        lines.extend([
+            "| case | passed | status | timeline | provider calls | provider detail | estimated tokens | rag hits | rag explain | tool trace | planner | tool errors | memory | supervision events |",
+            "| --- | --- | --- | --- | ---: | --- | ---: | ---: | --- | --- | --- | ---: | --- | ---: |",
+        ])
+        for item in observability_cases:
+            actual = item.get("actual") or {}
+            lines.append(
+                f"| `{item.get('case_id', '')}` | {item.get('passed')} | {actual.get('status', '')} | "
+                f"{actual.get('has_timeline')} | {actual.get('provider_total', 0)} | {actual.get('provider_detail_has_sequence')} | {actual.get('estimated_tokens_positive')} | {actual.get('rag_hit_count', 0)} | "
+                f"{actual.get('rag_explainability')} | {actual.get('tool_trace_has_sequence')} | {actual.get('tool_planner_source', '')}:{actual.get('tool_planner_selected', 0)} | {actual.get('tool_errors', 0)} | {actual.get('memory_status', '')} | "
+                f"{actual.get('supervision_event_count', '')} |"
+            )
+
+    api_schema_cases = [
+        item for item in report.get("results", [])
+        if item.get("category") == "api_schema_smoke"
+    ]
+    if api_schema_cases:
+        lines.extend(["", "## API Schema Smoke Cases", ""])
+        lines.extend([
+            "| case | passed | paths | schemas | missing paths | missing schemas | missing properties |",
+            "| --- | --- | ---: | ---: | --- | --- | --- |",
+        ])
+        for item in api_schema_cases:
+            actual = item.get("actual") or {}
+            lines.append(
+                f"| `{item.get('case_id', '')}` | {item.get('passed')} | "
+                f"{actual.get('path_count', 0)} | {actual.get('schema_count', 0)} | "
+                f"{', '.join(actual.get('missing_paths') or []) or 'none'} | "
+                f"{', '.join(actual.get('missing_schemas') or []) or 'none'} | "
+                f"{json.dumps(actual.get('missing_properties') or {}, ensure_ascii=False)} |"
+            )
+
     lines.extend(["", "## Failed Cases", ""])
     failed = [item for item in report.get("results", []) if not item.get("passed")]
     if not failed:
@@ -404,6 +753,9 @@ def format_markdown(report: Dict[str, Any]) -> str:
     else:
         for item in failed:
             lines.append(f"- `{item.get('case_id')}` ({item.get('category')}): {item.get('error') or item.get('actual')}")
+
+    lines.extend(["", "## Report Use", ""])
+    lines.append("Use this report as a lightweight regression artifact for the agent loop, memory RAG, tool layer, proactive supervision, provider trace, and observability trace.")
     return "\n".join(lines) + "\n"
 
 

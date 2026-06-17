@@ -18,6 +18,7 @@ except ImportError:
     from core import WorkmateAgent
 
 from memory import MemoryManager, Notifier
+from observability import get_provider_trace_summary
 from tts import synthesize_speech
 
 WEB_ROOT = PROJECT_ROOT / "web"
@@ -210,19 +211,60 @@ class FocusSession(BaseModel):
 
 
 class ToolCallTrace(BaseModel):
+    call_id: Optional[str] = ""
     tool: Optional[str] = ""
     status: Optional[str] = ""
     read_only: Optional[bool] = True
     duration_ms: Optional[float] = 0.0
     reason: Optional[str] = ""
+    arguments: Dict[str, Any] = {}
+    observation: Dict[str, Any] = {}
+    input_schema: Dict[str, Any] = {}
+    output_schema: Dict[str, Any] = {}
     side_effects: List[str] = []
+    decision_source: Optional[str] = ""
+    planner_call_index: Optional[int] = 0
+    audit_record: Dict[str, Any] = {}
+    recoverable: Optional[bool] = False
+    recovery_hint: Optional[str] = ""
     error: Optional[str] = None
+    started_at: Optional[str] = ""
+    completed_at: Optional[str] = ""
+
+
+class ObservabilitySummary(BaseModel):
+    turn_id: Optional[str] = ""
+    status: Optional[str] = ""
+    duration_ms: Optional[int] = 0
+    started_at: Optional[str] = ""
+    completed_at: Optional[str] = ""
+    stage_count: Optional[int] = 0
+    slowest_stage: Dict[str, Any] = {}
+    stage_timeline: List[Dict[str, Any]] = []
+    errors: List[Dict[str, Any]] = []
+    model_calls: Dict[str, Any] = {}
+    provider_trace: Dict[str, Any] = {}
+    provider_detail: Dict[str, Any] = {}
+    usage: Dict[str, Any] = {}
+    rag: Dict[str, Any] = {}
+    rag_explainability: Dict[str, Any] = {}
+    tools: Dict[str, Any] = {}
+    tool_trace: Dict[str, Any] = {}
+    memory: Dict[str, Any] = {}
+    supervision: Dict[str, Any] = {}
+    context: Dict[str, Any] = {}
 
 
 class TurnTrace(BaseModel):
     turn_id: Optional[str] = ""
+    status: Optional[str] = ""
+    duration_ms: Optional[int] = 0
     stages: List[Dict[str, Any]] = []
     tool_calls: List[ToolCallTrace] = []
+    tool_plan: Dict[str, Any] = {}
+    retrieval_plan: Dict[str, Any] = {}
+    provider_trace: Dict[str, Any] = {}
+    observability: Optional[ObservabilitySummary] = None
 
 
 class MemoryStateResponse(BaseModel):
@@ -252,6 +294,8 @@ class MemoryStateResponse(BaseModel):
     tool_calls: List[Dict[str, Any]] = []
     tool_schemas: List[Dict[str, Any]] = []
     turn_trace: Optional[TurnTrace] = None
+    observability: Optional[ObservabilitySummary] = None
+    provider_trace_recent: Dict[str, Any] = {}
     last_reminder_control: Dict[str, Any] = {}
     memory_pipeline: Dict[str, Any] = {}
     last_pipeline_result: Dict[str, Any] = {}
@@ -283,6 +327,8 @@ class ContextStateResponse(BaseModel):
     tool_calls: List[Dict[str, Any]] = []
     tool_schemas: List[Dict[str, Any]] = []
     turn_trace: Optional[TurnTrace] = None
+    observability: Optional[ObservabilitySummary] = None
+    provider_trace_recent: Dict[str, Any] = {}
     last_pipeline_result: Dict[str, Any] = {}
 
 
@@ -394,6 +440,7 @@ class ChatStreamDoneEvent(BaseModel):
     tool_calls: List[Dict[str, Any]] = []
     tool_schemas: List[Dict[str, Any]] = []
     turn_trace: Optional[TurnTrace] = None
+    observability: Optional[ObservabilitySummary] = None
 
 
 
@@ -424,6 +471,7 @@ class WorkmateWebApp:
             "tool_calls": self.tool_state(),
             "tool_schemas": self.tool_schema_state(),
             "turn_trace": self.turn_trace_state(),
+            "observability": self.observability_state(),
         }
 
     def chat_stream(self, prompt):
@@ -436,6 +484,7 @@ class WorkmateWebApp:
             "tool_calls": self.tool_state(),
             "tool_schemas": self.tool_schema_state(),
             "turn_trace": self.turn_trace_state(),
+            "observability": self.observability_state(),
         }
 
     def memory_state(self, current_prompt=""):
@@ -472,6 +521,8 @@ class WorkmateWebApp:
             "tool_calls": self.tool_state(),
             "tool_schemas": self.tool_schema_state(),
             "turn_trace": self.turn_trace_state(),
+            "observability": self.observability_state(),
+            "provider_trace_recent": self.provider_trace_state(),
             "last_reminder_control": self.memory_manager.last_reminder_control,
             "memory_pipeline": context_debug.get("memory_pipeline", {}),
             "last_pipeline_result": context_debug.get("last_pipeline_result", {}),
@@ -509,6 +560,8 @@ class WorkmateWebApp:
             "tool_calls": self.tool_state(),
             "tool_schemas": self.tool_schema_state(),
             "turn_trace": self.turn_trace_state(),
+            "observability": self.observability_state(),
+            "provider_trace_recent": self.provider_trace_state(),
             "last_reminder_control": self.memory_manager.last_reminder_control,
             "last_pipeline_result": self.memory_manager.last_pipeline_result,
         }
@@ -547,6 +600,15 @@ class WorkmateWebApp:
         if not self.agent:
             return {}
         return self.agent.get_last_turn_trace()
+
+    def observability_state(self):
+        trace = self.turn_trace_state()
+        if not isinstance(trace, dict):
+            return {}
+        return trace.get("observability", {})
+
+    def provider_trace_state(self):
+        return get_provider_trace_summary(limit=20)
 
     def dashboard_state(self):
         self.memory_manager.refresh_supervision_events()
@@ -620,7 +682,7 @@ APP = WorkmateWebApp()
 app = FastAPI(
     title="Workmate Agent API",
     description="Local API for chat, memory, focus sessions, supervision events, and runtime observability.",
-    version="2.2.1",
+    version="2.4.3",
 )
 
 

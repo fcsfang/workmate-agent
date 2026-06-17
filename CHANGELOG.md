@@ -1,3 +1,93 @@
+## V2.4.3
+### Supervision Preference Tools
+- Tool Registry 新增 `get_supervision_preferences` 与 `update_supervision_preferences`，把监督提醒偏好纳入标准 Agent action layer。
+- `update_supervision_preferences` 只允许受控字段更新，包括 enabled、reminder_strength、各渠道 min severity、notify flags、default_snooze_minutes 和 screen_force_message，未知字段会被忽略。
+- 监督偏好写工具声明 `side_effects=["updates supervision_preferences.json"]`，并自动获得 V2.4.1 的结构化 audit record。
+- 工具执行单测和 Evaluation Suite 新增监督偏好工具覆盖，使 V2.4 验收标准中的任务、记忆、专注、监督偏好四类工具都进入固定用例。
+
+## V2.4.2
+### Recoverable Tool Failure Trace
+- `ToolExecutor` 为工具执行失败补充 `recoverable=True` 与 `recovery_hint`，明确失败后应继续用已有上下文回复，避免内部状态工具故障中断普通对话。
+- `__tool_planning__` 规划失败 trace 新增 recovery hint，提示本轮跳过工具调用并用已有对话上下文降级。
+- FastAPI `ToolCallTrace` schema 新增 `recoverable` 与 `recovery_hint` 字段；前端 `OBSERVABILITY SUMMARY` 和 `TOOL TRACE` 会在工具错误下显示可恢复状态与降级建议。
+- 工具执行单测补充 planner failure 的 recoverable/recovery hint 断言；OpenAPI schema smoke case 补充字段检查。
+
+## V2.4.1
+### Write Tool Audit Records
+- `ToolExecutor` 为 `read_only=False` 的状态写入工具生成结构化 `audit_record`，记录 audit id、工具名、状态、决策来源、planner 序号、耗时、side effects、参数键、输出键和错误摘要。
+- 直接执行工具默认标记为 `decision_source=direct_execute`；经 planner 执行的工具会在覆写 `decision_source=llm_plan` 后重新生成 audit record，确保审计来源准确。
+- `AgentRuntime` 将写工具 audit records 聚合进 `observability.tool_trace.audit_records`，前端 `OBSERVABILITY SUMMARY` 显示 audit record 数量与单条工具调用的 audit id。
+- FastAPI `ToolCallTrace` schema 新增 `audit_record` 字段；Evaluation Suite 的写工具用例新增 `has_audit_record` 断言。
+- 工具执行单测补充读工具无 audit、写工具有 audit、专注会话写入 side effects 被审计记录捕获的覆盖。
+
+## V2.4.0
+### Tool Planner Trace
+- `ToolExecutor` 新增 `last_plan_trace`，记录工具规划来源、可用工具数、max calls、解析数量、选择数量、执行数量、截断状态、planner 错误和 raw plan 预览。
+- 每条工具执行结果新增 `decision_source` 与 `planner_call_index`，区分模型规划、planner 错误、无 registry 等来源，为后续规则兜底/系统固定流程预留统一标记。
+- `AgentRuntime` 将 `tool_plan` 写入 `turn_trace`，并把 planner 摘要合入 `observability.tool_trace.planner`。
+- 前端 `OBSERVABILITY SUMMARY` 新增 `tool_planner` 行，展示 source、parsed、selected、executed、max calls 与 truncated；`TOOL TRACE` 单条调用显示 decision source。
+- FastAPI schema、`observability_trace` eval 和工具执行单测同步覆盖 `tool_plan`、`decision_source`、`planner_call_index`、planner selected count 和截断状态。
+
+## V2.3.6
+### Provider Detail Snapshot
+- `AgentRuntime` 新增 `provider_detail` observability 摘要，从 provider trace 的单条调用中派生调用序列、provider/model/operation、metadata keys、usage、慢调用、fallback 时间线和错误摘要。
+- 前端 `OBSERVABILITY SUMMARY` 新增 provider detail 展示，除 provider totals 外，还能看到 provider_counts、slowest provider call、前 5 条 provider call 的 metadata keys 与 token/estimated token。
+- `observability_trace` eval 新增 `provider_detail_has_sequence` 与 `provider_detail_has_metadata_keys` 断言，避免 provider trace 退化成只有总数。
+- OpenAPI schema smoke case 新增 `ObservabilitySummary.provider_detail` 检查，让 FastAPI 合同暴露更完整的运行观测结构。
+- Provider detail 继续复用已脱敏的 provider trace，不保存 API Key、完整 prompt 或图片内容。
+
+## V2.3.5
+### Tool Trace Detail Snapshot
+- `AgentRuntime` 新增 `tool_trace` observability 摘要，从已有工具调用结果中派生调用序列、读写模式、参数键、observation 键、输入/输出 schema 键、耗时、错误和副作用摘要。
+- FastAPI `ToolCallTrace` 响应模型补齐 `call_id`、`arguments`、`observation`、`input_schema`、`output_schema`、`started_at`、`completed_at` 等字段，OpenAPI schema 能更完整展示内部状态工具契约。
+- 前端 `OBSERVABILITY SUMMARY` 新增工具调用审计行，展示 read/write/error 工具列表和前 5 个工具调用的原因、参数摘要、输出摘要、副作用与错误。
+- 前端原有 `TOOL TRACE` 区块补充 `args` 与 `observation` 键名，方便在不展开完整 JSON 的情况下快速判断工具输入输出形态。
+- `observability_trace` eval 新增 `tool_trace_has_sequence` 与 `tool_trace_has_io_summary` 断言；OpenAPI schema smoke case 新增 `ToolCallTrace` 与 `ObservabilitySummary.tool_trace` 检查。
+
+## V2.3.4
+### RAG Explainability Snapshot
+- `AgentRuntime` 新增 `rag_explainability` 摘要，从现有 `retrieval_plan` 派生出检索必要性、命中类型、top score、sufficiency、注入决策、score coverage、top sources、分数拆解和文本预览。
+- `observability` 顶层新增 `rag_explainability` 字段，保留原有 `rag` 轻量摘要，同时为 Web 面板、FastAPI schema 和 eval 提供更完整的 RAG 审计信息。
+- 前端 `MODEL CONTEXT` 的 `OBSERVABILITY SUMMARY` 新增 RAG 注入决策、命中类型、score avg/max、top source、score breakdown 和 preview，方便快速判断为什么某些记忆被带入上下文。
+- `observability_trace` eval 用例新增 `rag_explainability`、`rag_score_breakdown` 和 `rag_injection_decision` 断言，Markdown 报告的 Observability Trace 表格新增 RAG explain 覆盖列。
+- OpenAPI schema smoke case 补充检查 `ObservabilitySummary.rag_explainability`，避免后续接口重构时遗漏 RAG 可解释性字段。
+
+## V2.3.3
+### OpenAPI Contract Eval
+- Evaluation Suite 新增 `api_schema_smoke` 类别，直接读取 FastAPI `app.openapi()`，检查关键 API 路径、响应模型和 observability/provider 字段是否存在，不需要启动 Web 服务。
+- 新增 `api_schema_observability_001` 固定用例，覆盖 `/api/chat`、`/api/memory`、`/api/context`、`/api/supervision/events`、`/api/tts/speech`，以及 `ObservabilitySummary`、`TurnTrace`、`MemoryStateResponse`、`ContextStateResponse`、`ChatStreamDoneEvent` 等 schema。
+- Evaluation Markdown 报告新增 `API Schema Smoke Cases` 区块，展示 OpenAPI path/schema 数量、缺失路径、缺失 schema 和缺失字段。
+- Coverage Map 将 `api_schema_smoke` 纳入 Runtime observability 区域，用于证明 FastAPI/OpenAPI 合同与运行轨迹结构可被自动审计。
+
+## V2.3.2
+### Provider Usage Snapshot
+- Provider trace 新增 `usage` 聚合，汇总 `prompt_tokens`、`completion_tokens`、`total_tokens`、`estimated_tokens`、输入/输出字符数、图片数量、图片 base64 字节、音频字节和 embedding 维度。
+- `LLMClient` 在非流式、流式、raw 和 Vision 调用中记录 provider 返回的 usage tokens；当 provider 不返回 usage 时，基于输入/输出字符数提供 provider-neutral 的估算 token。
+- `observability` 顶层新增 `usage` 字段，前端 `OBSERVABILITY SUMMARY` 展示 tokens、估算 tokens、字符规模、图片数和音频字节数。
+- `observability_trace` eval 用例新增 `estimated_tokens_positive` 断言，Markdown 报告的 Observability Trace 表格展示 estimated tokens 覆盖情况。
+- Provider trace 的单条 call 现在同时保留 sanitized `metadata` 与单条 `usage` 小结，为后续更细粒度调用详情面板预留数据基础。
+
+## V2.3.1
+### Provider Trace
+- 新增 `observability/provider_trace.py`，使用轻量上下文变量记录当前 turn 内的 provider 调用摘要，不记录 API Key、完整 prompt 或图片内容。
+- `LLMClient` 接入 LLM 与 Vision 调用追踪，记录 provider、operation、model、耗时、状态、错误摘要和 fallback；流式输出失败后回退到非流式的路径现在也会进入 trace。
+- Embedding provider 接入调用追踪，覆盖 `NullEmbeddingClient`、Ollama `/api/embeddings -> /api/embed` fallback、OpenAI compatible embeddings 和本地 sentence-transformers。
+- TTS provider 接入调用追踪，记录讯飞 TTS 合成耗时、音频字节数和错误摘要。
+- `AgentRuntime` 在每轮开始时开启 provider trace，在结束时汇总到 `turn_trace.provider_trace` 与 `observability.provider_trace`，并把 LLM、Vision、Embedding、TTS 调用次数汇入 `observability.model_calls`。
+- `/api/memory` 与 `/api/context` 新增 `provider_trace_recent`，用于查看 TTS 等不绑定单轮对话的最近 provider 调用。
+- 前端 `OBSERVABILITY SUMMARY` 新增 provider 总调用、总耗时、fallback、错误和按 provider kind 聚合的调用统计。
+- `observability_trace` eval 用例新增 `provider_total` 断言，Markdown 报告的 Observability Trace 表格新增 provider calls 列。
+
+## V2.3.0
+### Agent Observability
+- 新增每轮对话的 `observability` 摘要层，基于 `turn_trace` 汇总阶段时间线、最慢阶段、模型调用概览、RAG 召回摘要、工具读写统计、记忆写回状态、监督事件更新和错误列表。
+- `AgentRuntime` 在上下文规划阶段同步记录 `retrieval_plan`，让 RAG 决策不只出现在 `MODEL CONTEXT` 文本里，也能进入结构化 trace。
+- FastAPI 响应模型新增 `ObservabilitySummary`，`/api/memory`、`/api/context`、`/api/chat` 流式 done 事件均会返回顶层 `observability`，同时保留 `turn_trace.observability` 供调试。
+- 前端 `MODEL CONTEXT` 顶部新增 `OBSERVABILITY SUMMARY`，展示 turn 状态、耗时、慢阶段、模型调用、RAG 命中、工具读写、副作用数量、记忆写回和阶段时间线。
+- 侧栏 `runtime` 摘要补充最慢阶段信息，方便演示时快速说明 Agent Loop 的运行瓶颈。
+- Evaluation Suite 新增 `observability_trace` 类别和 2 条固定用例，检查 trace 摘要是否暴露阶段时间线、最慢阶段、RAG 命中、工具错误、记忆写回和监督事件更新。
+- Evaluation 报告新增 Coverage Map、Category Notes、Observability Trace Cases 和 Report Use 区块，把意图路由、Memory RAG、工具调用、主动监督和运行轨迹映射为更适合简历展示的评估证据。
+
 ## V2.2.1
 ### 功能升级
 - **FastAPI 嵌套响应模型重构与 Schema 强类型校验**：定义了 `Task`, `SubTask`, `TaskView`, `TaskState`, `Commitment`, `SupervisionEvent`, `SupervisionEventsState`, `MemoryItem`, `MemoryCategory`, `BehaviorPatterns`, `FocusSession`, `ToolCallTrace`, `TurnTrace` 等核心嵌套 Pydantic 响应模型，替换了原有的宽松 Dict 声明，实现了端点的全量数据校验，并在 `/docs` 提供完备、高精度的 OpenAPI 接口定义。

@@ -1,8 +1,11 @@
 import os
 import json
+import time
 import urllib.request
 import urllib.error
 from typing import Any, List, Optional
+
+from observability import record_provider_call
 
 
 class BaseEmbeddingClient:
@@ -13,6 +16,13 @@ class BaseEmbeddingClient:
 class NullEmbeddingClient(BaseEmbeddingClient):
     def embed(self, text: str) -> List[float]:
         # Return empty list, retriever will score it as 0.0 safely
+        record_provider_call(
+            "embedding",
+            provider="none",
+            operation="embed.disabled",
+            model="",
+            metadata={"text_chars": len(text or "")},
+        )
         return []
 
 
@@ -25,6 +35,7 @@ class OllamaEmbeddingClient(BaseEmbeddingClient):
         # Try /api/embeddings first, fallback to /api/embed
         url = f"{self.host}/api/embeddings"
         data = json.dumps({"model": self.model, "prompt": text}).encode("utf-8")
+        started = time.perf_counter()
         
         try:
             req = urllib.request.Request(
@@ -35,11 +46,32 @@ class OllamaEmbeddingClient(BaseEmbeddingClient):
             )
             with urllib.request.urlopen(req, timeout=5) as resp:
                 result = json.loads(resp.read().decode("utf-8"))
-                return result.get("embedding", [])
-        except Exception:
+                embedding = result.get("embedding", [])
+                record_provider_call(
+                    "embedding",
+                    provider="ollama",
+                    operation="/api/embeddings",
+                    model=self.model,
+                    started_perf=started,
+                    metadata={"text_chars": len(text or ""), "embedding_dimensions": len(embedding)},
+                )
+                return embedding
+        except Exception as exc:
+            record_provider_call(
+                "embedding",
+                provider="ollama",
+                operation="/api/embeddings",
+                model=self.model,
+                status="fallback",
+                started_perf=started,
+                error=exc,
+                fallback="/api/embed",
+                metadata={"text_chars": len(text or "")},
+            )
             # Fallback to /api/embed
             url = f"{self.host}/api/embed"
             data = json.dumps({"model": self.model, "input": text}).encode("utf-8")
+            fallback_started = time.perf_counter()
             try:
                 req = urllib.request.Request(
                     url,
@@ -52,8 +84,27 @@ class OllamaEmbeddingClient(BaseEmbeddingClient):
                     # /api/embed returns "embeddings" which is a list of lists (one per input)
                     embeddings = result.get("embeddings", [])
                     if embeddings and isinstance(embeddings, list):
-                        return embeddings[0]
+                        embedding = embeddings[0]
+                        record_provider_call(
+                            "embedding",
+                            provider="ollama",
+                            operation="/api/embed",
+                            model=self.model,
+                            started_perf=fallback_started,
+                            metadata={"text_chars": len(text or ""), "embedding_dimensions": len(embedding)},
+                        )
+                        return embedding
             except Exception as e:
+                record_provider_call(
+                    "embedding",
+                    provider="ollama",
+                    operation="/api/embed",
+                    model=self.model,
+                    status="error",
+                    started_perf=fallback_started,
+                    error=e,
+                    metadata={"text_chars": len(text or "")},
+                )
                 print(f"[OllamaEmbeddingClient] Failed to get embedding: {e}")
         return []
 
@@ -72,6 +123,7 @@ class OpenAIEmbeddingClient(BaseEmbeddingClient):
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_key}"
         }
+        started = time.perf_counter()
         try:
             req = urllib.request.Request(
                 url,
@@ -83,10 +135,37 @@ class OpenAIEmbeddingClient(BaseEmbeddingClient):
                 result = json.loads(resp.read().decode("utf-8"))
                 data_list = result.get("data", [])
                 if data_list:
-                    return data_list[0].get("embedding", [])
+                    embedding = data_list[0].get("embedding", [])
+                    record_provider_call(
+                        "embedding",
+                        provider=self._provider_label(),
+                        operation="/embeddings",
+                        model=self.model,
+                        started_perf=started,
+                        metadata={"text_chars": len(text or ""), "embedding_dimensions": len(embedding)},
+                    )
+                    return embedding
         except Exception as e:
+            record_provider_call(
+                "embedding",
+                provider=self._provider_label(),
+                operation="/embeddings",
+                model=self.model,
+                status="error",
+                started_perf=started,
+                error=e,
+                metadata={"text_chars": len(text or "")},
+            )
             print(f"[OpenAIEmbeddingClient] Failed to get embedding: {e}")
         return []
+
+    def _provider_label(self) -> str:
+        value = str(self.base_url or "").lower()
+        if "openrouter" in value:
+            return "openrouter"
+        if "openai" in value:
+            return "openai"
+        return "custom" if value else "unknown"
 
 
 class LocalEmbeddingClient(BaseEmbeddingClient):
@@ -107,15 +186,36 @@ class LocalEmbeddingClient(BaseEmbeddingClient):
             raise e
 
     def embed(self, text: str) -> List[float]:
+        started = time.perf_counter()
         try:
             self._init_model()
             if self.model:
                 vector = self.model.encode(text)
                 # Convert numpy array to standard list of floats
                 if hasattr(vector, "tolist"):
-                    return vector.tolist()
-                return list(vector)
+                    embedding = vector.tolist()
+                else:
+                    embedding = list(vector)
+                record_provider_call(
+                    "embedding",
+                    provider="local",
+                    operation="sentence_transformers.encode",
+                    model=self.model_name,
+                    started_perf=started,
+                    metadata={"text_chars": len(text or ""), "embedding_dimensions": len(embedding)},
+                )
+                return embedding
         except Exception as e:
+            record_provider_call(
+                "embedding",
+                provider="local",
+                operation="sentence_transformers.encode",
+                model=self.model_name,
+                status="error",
+                started_perf=started,
+                error=e,
+                metadata={"text_chars": len(text or "")},
+            )
             print(f"[LocalEmbeddingClient] Failed to get embedding locally: {e}")
         return []
 

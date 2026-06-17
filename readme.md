@@ -39,7 +39,7 @@ Workmate Agent 的长期愿景，是成为一个能陪用户持续行动的个�
 - 上下文规划：根据用户输入选择注入任务、摘要、承诺、统一记忆项或相关历史，减少每轮全量上下文
 - 上下文压缩：系统记忆和最近对话分别控制预算，避免长对话让模型上下文膨胀
 - Hybrid Memory RAG：V1.5 起用 `MemoryRetriever` 对长期记忆进行可解释召回，综合关键词、近期性、重要性、记忆类型权重和可选向量相似度，并输出召回来源和评分原因。**V2.2 起正式集成嵌入式向量数据库 ChromaDB**，提供端云协同、双路降级容灾的生产级语义检索与增量向量哈希缓存。
-- Evaluation Suite：V1.7 起提供不依赖真实 API Key 的固定评估集，覆盖记忆召回、任务状态、承诺、提醒控制、工具调用、上下文规划和监督事件生命周期
+- Evaluation Suite：V1.7 起提供不依赖真实 API Key 的固定评估集，覆盖记忆召回、任务状态、承诺、提醒控制、工具调用、上下文规划和监督事件生命周期；V2.3 起补充 `observability_trace`，检查运行轨迹摘要是否暴露阶段、RAG、工具错误、记忆写回和监督更新；V2.3.3 起补充 `api_schema_smoke`，检查 FastAPI OpenAPI 路径、响应模型和 observability/provider 字段；V2.3.4 起补充 RAG explainability 断言，检查检索注入决策和 score breakdown 是否进入观测摘要；V2.3.5 起补充 tool trace detail 断言，检查工具调用序列和输入输出摘要；V2.3.6 起补充 provider detail 断言，检查 provider 单条调用序列和 metadata keys
 - 自动化测试与 CI：V1.8 起引入 pytest 与 GitHub Actions，自动运行语法检查、单元测试和 eval smoke test
 - 智能陪伴与屏幕双向状态流转监测：V1.9 起引入 `screen_accompaniment` 陪伴鼓励事件与配套本地规则和 Vision 鼓励文案生成，支持专注工作与娱乐偏航状态转换时自动解决（resolve）旧事件并注入陪伴提醒/警报，支持多模态分离 API 配置、免控制权限频繁弹窗、自定义黑白名单预过滤绕过 Vision、中转 API 防火墙 (Cloudflare WAF) 浏览器 User-Agent 伪装绕过，大模型配置下优先调用 Vision 分析并以本地黑白名单规则作为无缝降级兜底方案，以及前端 Preferences 面板配置折叠交互可视化。
 - FastAPI + OpenAPI：V1.10 起 Web 后端切换为 FastAPI，保留原有前端 `/api/...` 契约和 SSE 流式响应，同时自动提供 `/docs`、`/redoc` 和 `/openapi.json`，方便展示、调试和后续接入客户端
@@ -48,7 +48,8 @@ Workmate Agent 的长期愿景，是成为一个能陪用户持续行动的个�
 - 支持性知识层：V0.6 起在用户焦虑、分散、拖延、疲惫、卡住或准备执行学习任务时，按需注入轻量方法论卡片
 - 内部状态工具层：V0.7 起支持受控工具调用，用于读取和更新任务、承诺、记忆等 Workmate 内部状态
 - Agent Runtime 与运行轨迹：V1.4 起把每轮对话显式拆成提醒控制、上下文规划、工具执行、模型回复和记忆写回，并生成 `turn_trace` 用于 Web/API 调试
-- 工具调用工程化：V1.6 起为内部工具补齐输入输出 schema、读写边界、副作用标注和执行耗时，`MODEL CONTEXT` 可展示本轮 `TOOL TRACE`
+- 工具调用工程化：V1.6 起为内部工具补齐输入输出 schema、读写边界、副作用标注和执行耗时，`MODEL CONTEXT` 可展示本轮 `TOOL TRACE`；V2.4 起补充 `tool_plan`，记录工具规划来源、解析数量、选择数量、执行数量、max calls 和截断状态；V2.4.1 起为写状态工具生成结构化 `audit_record`；V2.4.2 起为工具失败补充 recoverable 与 recovery hint；V2.4.3 起将监督提醒偏好纳入受控工具层
+- Agent Observability：V2.3 起在 `turn_trace` 之上生成 `observability` 摘要，集中展示阶段时间线、最慢阶段、模型调用概览、RAG 命中、工具读写统计、记忆写回状态和错误列表，方便在 Web 面板与 FastAPI schema 中审计一轮 Agent 执行链路；V2.3.1 起补充 provider trace，记录 LLM、Vision、Embedding、TTS 的调用次数、耗时、错误摘要和 fallback 路径，并通过 `provider_trace_recent` 查看独立 TTS 等最近调用；V2.3.2 起补充 provider usage snapshot，展示真实 usage tokens 或基于字符/图片/音频规模的估算 token；V2.3.4 起补充 RAG explainability snapshot，展示检索注入决策、命中类型、score coverage、top sources、score breakdown 和文本预览；V2.3.5 起补充 tool trace detail snapshot，展示工具调用序列、读写模式、参数键、输出键、schema 键、错误和副作用；V2.3.6 起补充 provider detail snapshot，展示 provider 调用序列、metadata keys、usage、慢调用、fallback 时间线和错误摘要
 - 专注会话：V0.8 起支持记录用户“离开对话后要执行的一段任务”，追踪当前专注、计划时长、实际经过时间和最近会话间隔
 - 承诺 deadline：V0.8.1 起自动识别承诺中的时间词（今天/明天/这周等），标注逾期和今日到期的承诺，监督信号优先提醒时效性最高的未关闭事项
 - 行为统计：V0.8.1 起聚合专注会话完成率、累计专注时长、承诺履行率、连续活跃天数等量化指标，注入 AI 上下文以支持更具体的进度感知
@@ -238,7 +239,7 @@ http://127.0.0.1:7860/openapi.json
 
 如果要启用 V2.1 语音提醒，在页面左侧 `SUPERVISION EVENTS` 区域点击 `配置`，打开 `voice` 开关，在 `provider` 中选择 `browser` 或 `xfyun`，按需要调整 `voice min`、`volume` 和 `rate`，再点击 `TEST VOICE` 试播。语音提醒只会播报监督事件短文案，默认不读普通聊天回复，也不会播报低等级陪伴事件，除非手动打开 `companions`。使用讯飞时需要在 `.env` 中配置 `TTS_PROVIDER=xfyun` 以及 `XFYUN_TTS_APP_ID`、`XFYUN_TTS_API_KEY`、`XFYUN_TTS_API_SECRET`。
 
-0.5.2+ 版本还会在页面左侧显示当前任务生命周期、子任务、最近 7 天摘要、未关闭承诺、长期用户画像、统一记忆项、记忆分类、高阶洞察、语义压缩和主动监督信号，并提供 `MODEL CONTEXT` 调试区。V0.8 起，左侧还可以直接开始、完成或停止一段专注会话，用来记录用户离开聊天后实际去做的那段任务；该状态会进入上下文，但不会作为强制考核。V0.9.0 起，左侧新增了可视化待办列表（TODO LIST），将模型在对话中提炼的任务进行集中可视化展示，并支持点击直接同步状态（如打勾完成）。V1.0 起，`SUPERVISION EVENTS` 会把专注超时、承诺到期和任务停滞变成可确认、可稍后提醒、可静音、可关闭的事件；当用户点击 `DONE` 时，会尝试同步收束关联的专注会话、承诺或任务，并保留反馈统计。V1.1 起，`MEMORY` 面板会展示行为模式摘要，例如任务分散、承诺积压、专注超时或提醒摩擦，帮助 Agent 逐步从单次提醒走向长期节奏观察。V1.2 起，`EXECUTION` 顶部新增 `TODAY DASHBOARD`，集中展示今日专注、今日完成、未关闭承诺、当前主线、本周节奏和一条轻量建议，并提供快速开启专注、完成当前任务和查看提醒的入口。V1.3 起，提醒偏好区会根据用户对提醒的反馈生成自适应策略建议，例如更安静地推送或延长默认稍后提醒间隔；如果当前输入透露出焦虑、疲惫、分散、卡住，或系统处在深夜/清晨休息时段，策略卡片会显示 `tone_policy`，建议模型和推送一起放轻；如果长期用户画像里记录了沟通偏好，策略卡片会显示 `copy_policy`，事件卡片和通知会优先使用更自然的 `display_message`；页面内列表、浏览器通知、后台/手机推送分别使用 `page_min_severity`、`browser_min_severity`、`background_min_severity`，避免所有渠道同频打扰；如果某类事件经常被稍后或静音，策略卡片会显示 `type_preference_signals`，并通过 `event_type_min_severity` 只调整这一类提醒。V1.4 起，`MEMORY` 面板会展示最近一轮 `runtime` 摘要，`/api/memory` 和 `/api/context` 也会返回完整 `turn_trace`，用于观察 Agent Loop 的阶段、耗时、上下文规模、工具调用和记忆写回状态。V1.5 起，`MODEL CONTEXT` 顶部会展示本轮 Hybrid Memory RAG 的召回计划、top results、分数拆解和原因，方便检查长期记忆为什么被带入模型上下文。V1.6 起，`MODEL CONTEXT` 也会展示本轮 `TOOL TRACE`，包括工具读写模式、调用原因、耗时、错误和副作用；`/api/context` 同时返回 `tool_schemas`，可用于审阅内部工具边界。所有建议需要用户点击 `APPLY STRATEGY` 后才会写入偏好。用户也可以直接说“今天安静一点”“只提醒承诺”“恢复提醒”等短句来调整提醒边界；当表达不完全匹配固定短语但明显在谈提醒/通知/推送时，系统会先用 LLM 分类，再用规则兜底。每日摘要会优先调用模型生成 JSON 记忆，失败时退回规则摘要；`MODEL CONTEXT` 会展示上一轮实际发送给模型的 messages、上下文规模、检索计划和流水线状态，方便检查 Agent 到底带入了哪些记忆。
+0.5.2+ 版本还会在页面左侧显示当前任务生命周期、子任务、最近 7 天摘要、未关闭承诺、长期用户画像、统一记忆项、记忆分类、高阶洞察、语义压缩和主动监督信号，并提供 `MODEL CONTEXT` 调试区。V0.8 起，左侧还可以直接开始、完成或停止一段专注会话，用来记录用户离开聊天后实际去做的那段任务；该状态会进入上下文，但不会作为强制考核。V0.9.0 起，左侧新增了可视化待办列表（TODO LIST），将模型在对话中提炼的任务进行集中可视化展示，并支持点击直接同步状态（如打勾完成）。V1.0 起，`SUPERVISION EVENTS` 会把专注超时、承诺到期和任务停滞变成可确认、可稍后提醒、可静音、可关闭的事件；当用户点击 `DONE` 时，会尝试同步收束关联的专注会话、承诺或任务，并保留反馈统计。V1.1 起，`MEMORY` 面板会展示行为模式摘要，例如任务分散、承诺积压、专注超时或提醒摩擦，帮助 Agent 逐步从单次提醒走向长期节奏观察。V1.2 起，`EXECUTION` 顶部新增 `TODAY DASHBOARD`，集中展示今日专注、今日完成、未关闭承诺、当前主线、本周节奏和一条轻量建议，并提供快速开启专注、完成当前任务和查看提醒的入口。V1.3 起，提醒偏好区会根据用户对提醒的反馈生成自适应策略建议，例如更安静地推送或延长默认稍后提醒间隔；如果当前输入透露出焦虑、疲惫、分散、卡住，或系统处在深夜/清晨休息时段，策略卡片会显示 `tone_policy`，建议模型和推送一起放轻；如果长期用户画像里记录了沟通偏好，策略卡片会显示 `copy_policy`，事件卡片和通知会优先使用更自然的 `display_message`；页面内列表、浏览器通知、后台/手机推送分别使用 `page_min_severity`、`browser_min_severity`、`background_min_severity`，避免所有渠道同频打扰；如果某类事件经常被稍后或静音，策略卡片会显示 `type_preference_signals`，并通过 `event_type_min_severity` 只调整这一类提醒。V1.4 起，`MEMORY` 面板会展示最近一轮 `runtime` 摘要，`/api/memory` 和 `/api/context` 也会返回完整 `turn_trace`，用于观察 Agent Loop 的阶段、耗时、上下文规模、工具调用和记忆写回状态。V1.5 起，`MODEL CONTEXT` 顶部会展示本轮 Hybrid Memory RAG 的召回计划、top results、分数拆解和原因，方便检查长期记忆为什么被带入模型上下文。V1.6 起，`MODEL CONTEXT` 也会展示本轮 `TOOL TRACE`，包括工具读写模式、调用原因、耗时、错误和副作用；`/api/context` 同时返回 `tool_schemas`，可用于审阅内部工具边界。V2.3 起，`MODEL CONTEXT` 顶部新增 `OBSERVABILITY SUMMARY`，把阶段时间线、最慢阶段、模型调用、RAG 命中、工具读写、记忆写回和错误列表聚合成一段可审计摘要；V2.3.4 起，该摘要进一步展示 RAG 注入决策、命中类型、score coverage、top source、score breakdown 和文本预览；V2.3.5 起，该摘要也会展示内部工具调用序列、读写模式、参数/输出键、schema 键、错误和副作用；V2.3.6 起，该摘要还会展示 provider 调用序列、metadata keys、usage、慢调用、fallback 时间线和错误摘要；V2.4 起，该摘要会展示 tool planner 来源、解析数量、选择数量、执行数量、max calls 和截断状态；V2.4.1 起，该摘要会展示写状态工具的 audit record 数量与单条 audit id；V2.4.2 起，工具失败会展示 recoverable 和 recovery hint；`/api/memory`、`/api/context` 和 `/api/chat` 完成事件也会返回同名结构化字段。所有建议需要用户点击 `APPLY STRATEGY` 后才会写入偏好。用户也可以直接说“今天安静一点”“只提醒承诺”“恢复提醒”等短句来调整提醒边界；当表达不完全匹配固定短语但明显在谈提醒/通知/推送时，系统会先用 LLM 分类，再用规则兜底。每日摘要会优先调用模型生成 JSON 记忆，失败时退回规则摘要；`MODEL CONTEXT` 会展示上一轮实际发送给模型的 messages、上下文规模、检索计划和流水线状态，方便检查 Agent 到底带入了哪些记忆。
 
 只要这个命令所在的终端窗口保持运行，页面和 API 就会保持可用。需要停止时，在该终端按 `Ctrl+C`。
 
@@ -294,7 +295,7 @@ conda run -n agent python -m py_compile agent/*.py memory/*.py src/*.py tools/*.
 conda run -n agent python evals/run_eval.py
 ```
 
-评估会在 `evals/reports/` 下生成 JSON 和 Markdown 报告。报告文件默认被 `.gitignore` 忽略，避免每次运行都产生版本库噪音。
+评估会在 `evals/reports/` 下生成 JSON 和 Markdown 报告。报告会包含 Metrics、Coverage Map、Category Notes、Observability Trace Cases、API Schema Smoke Cases 和 Failed Cases，可用于说明当前 Agent 在意图路由、Memory RAG、工具调用、主动监督、运行轨迹和 OpenAPI 合同上的可验证覆盖。报告文件默认被 `.gitignore` 忽略，避免每次运行都产生版本库噪音。
 
 GitHub Actions 会在 push 和 pull request 时自动运行：
 

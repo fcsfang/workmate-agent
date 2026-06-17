@@ -1,5 +1,7 @@
 import os
+import time
 from dotenv import load_dotenv
+from observability import record_provider_call
 
 load_dotenv()
 
@@ -398,15 +400,46 @@ class LLMClient:
 
     def invoke(self, prompt=None, messages=None):
         messages = self._build_messages(prompt=prompt, messages=messages)
-        response = self.client.chat.completions.create(
-            model = self.model,
-            messages=messages
-        )
-        return response.choices[0].message.content.strip()
+        started = time.perf_counter()
+        try:
+            response = self.client.chat.completions.create(
+                model = self.model,
+                messages=messages
+            )
+            content = response.choices[0].message.content.strip()
+            record_provider_call(
+                "llm",
+                provider=self._provider_label(self.baseUrl),
+                operation="chat.completions.create",
+                model=self.model,
+                started_perf=started,
+                metadata={
+                    "message_count": len(messages),
+                    "stream": False,
+                    "input_chars": self._message_chars(messages),
+                    "response_chars": len(content),
+                    **self._usage_metadata(response),
+                },
+            )
+            return content
+        except Exception as exc:
+            record_provider_call(
+                "llm",
+                provider=self._provider_label(self.baseUrl),
+                operation="chat.completions.create",
+                model=self.model,
+                status="error",
+                started_perf=started,
+                error=exc,
+                metadata={"message_count": len(messages), "stream": False},
+            )
+            raise
 
     def invoke_stream(self, prompt=None, messages=None):
         messages = self._build_messages(prompt=prompt, messages=messages)
         yielded = False
+        output_chars = 0
+        started = time.perf_counter()
         try:
             stream = self.client.chat.completions.create(
                 model = self.model,
@@ -421,24 +454,131 @@ class LLMClient:
                 content = delta.get("content") if isinstance(delta, dict) else getattr(delta, "content", None)
                 if content:
                     yielded = True
+                    output_chars += len(content)
                     yield content
-        except Exception:
-            if yielded:
-                raise
-            response = self.client.chat.completions.create(
-                model = self.model,
-                messages=messages
+            record_provider_call(
+                "llm",
+                provider=self._provider_label(self.baseUrl),
+                operation="chat.completions.stream",
+                model=self.model,
+                started_perf=started,
+                metadata={
+                    "message_count": len(messages),
+                    "stream": True,
+                    "input_chars": self._message_chars(messages),
+                    "response_chars": output_chars,
+                },
             )
-            content = response.choices[0].message.content
+        except Exception as exc:
+            if yielded:
+                record_provider_call(
+                    "llm",
+                    provider=self._provider_label(self.baseUrl),
+                    operation="chat.completions.stream",
+                    model=self.model,
+                    status="error",
+                    started_perf=started,
+                    error=exc,
+                    metadata={
+                        "message_count": len(messages),
+                        "stream": True,
+                        "partial": True,
+                        "input_chars": self._message_chars(messages),
+                        "response_chars": output_chars,
+                    },
+                )
+                raise
+            record_provider_call(
+                "llm",
+                provider=self._provider_label(self.baseUrl),
+                operation="chat.completions.stream",
+                model=self.model,
+                status="fallback",
+                started_perf=started,
+                error=exc,
+                fallback="chat.completions.create",
+                metadata={
+                    "message_count": len(messages),
+                    "stream": True,
+                    "input_chars": self._message_chars(messages),
+                },
+            )
+            fallback_started = time.perf_counter()
+            try:
+                response = self.client.chat.completions.create(
+                    model = self.model,
+                    messages=messages
+                )
+                content = response.choices[0].message.content
+                record_provider_call(
+                    "llm",
+                    provider=self._provider_label(self.baseUrl),
+                    operation="chat.completions.create",
+                    model=self.model,
+                    started_perf=fallback_started,
+                    metadata={
+                        "message_count": len(messages),
+                        "stream": False,
+                        "fallback_from": "stream",
+                        "input_chars": self._message_chars(messages),
+                        "response_chars": len(content or ""),
+                        **self._usage_metadata(response),
+                    },
+                )
+            except Exception as fallback_exc:
+                record_provider_call(
+                    "llm",
+                    provider=self._provider_label(self.baseUrl),
+                    operation="chat.completions.create",
+                    model=self.model,
+                    status="error",
+                    started_perf=fallback_started,
+                    error=fallback_exc,
+                    metadata={
+                        "message_count": len(messages),
+                        "stream": False,
+                        "fallback_from": "stream",
+                        "input_chars": self._message_chars(messages),
+                    },
+                )
+                raise
             if content:
                 yield content
 
     def invoke_raw(self, messages):
-        response = self.client.chat.completions.create(
-            model = self.model,
-            messages=messages
-        )
-        return response.choices[0].message.content.strip()
+        started = time.perf_counter()
+        try:
+            response = self.client.chat.completions.create(
+                model = self.model,
+                messages=messages
+            )
+            content = response.choices[0].message.content.strip()
+            record_provider_call(
+                "llm",
+                provider=self._provider_label(self.baseUrl),
+                operation="chat.completions.raw",
+                model=self.model,
+                started_perf=started,
+                metadata={
+                    "message_count": len(messages),
+                    "input_chars": self._message_chars(messages),
+                    "response_chars": len(content),
+                    **self._usage_metadata(response),
+                },
+            )
+            return content
+        except Exception as exc:
+            record_provider_call(
+                "llm",
+                provider=self._provider_label(self.baseUrl),
+                operation="chat.completions.raw",
+                model=self.model,
+                status="error",
+                started_perf=started,
+                error=exc,
+                metadata={"message_count": len(messages), "input_chars": self._message_chars(messages)},
+            )
+            raise
 
     def invoke_vision(self, prompt: str, image_base64, json_mode: bool = False) -> str:
         """调用视觉/多模态模型分析 Base64 编码的图片（支持单张或多张）"""
@@ -470,13 +610,85 @@ class LLMClient:
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
 
-        response = self.vision_client.chat.completions.create(
-            model=self.vision_model,
-            messages=messages,
-            max_tokens=800,
-            **kwargs
-        )
-        return response.choices[0].message.content.strip()
+        started = time.perf_counter()
+        try:
+            response = self.vision_client.chat.completions.create(
+                model=self.vision_model,
+                messages=messages,
+                max_tokens=800,
+                **kwargs
+            )
+            content_text = response.choices[0].message.content.strip()
+            record_provider_call(
+                "vision",
+                provider=self._provider_label(self.vision_baseUrl),
+                operation="chat.completions.vision",
+                model=self.vision_model,
+                started_perf=started,
+                metadata={
+                    "image_count": len(image_base64) if isinstance(image_base64, list) else 1,
+                    "image_bytes": self._image_bytes(image_base64),
+                    "json_mode": json_mode,
+                    "input_chars": len(prompt or ""),
+                    "response_chars": len(content_text),
+                    **self._usage_metadata(response),
+                },
+            )
+            return content_text
+        except Exception as exc:
+            record_provider_call(
+                "vision",
+                provider=self._provider_label(self.vision_baseUrl),
+                operation="chat.completions.vision",
+                model=self.vision_model,
+                status="error",
+                started_perf=started,
+                error=exc,
+                metadata={
+                    "image_count": len(image_base64) if isinstance(image_base64, list) else 1,
+                    "image_bytes": self._image_bytes(image_base64),
+                    "json_mode": json_mode,
+                    "input_chars": len(prompt or ""),
+                },
+            )
+            raise
+
+    def _provider_label(self, base_url: str) -> str:
+        value = str(base_url or "").lower()
+        if "openrouter" in value:
+            return "openrouter"
+        if "openai" in value:
+            return "openai"
+        if "localhost" in value or "127.0.0.1" in value:
+            return "local"
+        return "custom" if value else "unknown"
+
+    def _usage_metadata(self, response) -> dict:
+        usage = getattr(response, "usage", None)
+        if not usage:
+            return {}
+        return {
+            "prompt_tokens": int(getattr(usage, "prompt_tokens", 0) or 0),
+            "completion_tokens": int(getattr(usage, "completion_tokens", 0) or 0),
+            "total_tokens": int(getattr(usage, "total_tokens", 0) or 0),
+        }
+
+    def _message_chars(self, messages) -> int:
+        total = 0
+        for message in messages or []:
+            content = message.get("content", "") if isinstance(message, dict) else ""
+            if isinstance(content, str):
+                total += len(content)
+            elif isinstance(content, list):
+                for item in content:
+                    if isinstance(item, dict) and item.get("type") == "text":
+                        total += len(str(item.get("text", "")))
+        return total
+
+    def _image_bytes(self, image_base64) -> int:
+        if isinstance(image_base64, list):
+            return sum(len(str(item or "")) for item in image_base64)
+        return len(str(image_base64 or ""))
 
     
 

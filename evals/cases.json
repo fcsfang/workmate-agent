@@ -123,7 +123,14 @@
     "category": "tool_calling",
     "tool": "update_task_status",
     "arguments": {"task_id": "task-1", "status": "done", "reason": "完成"},
-    "expected": {"status": "success", "read_only": false}
+    "expected": {"status": "success", "read_only": false, "has_audit_record": true}
+  },
+  {
+    "id": "tool_calling_supervision_preferences_001",
+    "category": "tool_calling",
+    "tool": "update_supervision_preferences",
+    "arguments": {"updates": {"browser_min_severity": "high", "notify_focus": false}, "reason": "用户要求降低提醒频率"},
+    "expected": {"status": "success", "read_only": false, "has_audit_record": true}
   },
   {
     "id": "tool_calling_max_calls_001",
@@ -167,5 +174,119 @@
     "category": "supervision_lifecycle",
     "scenario": "task_stale_snooze",
     "expected": {"detected_type": "task_stale", "final_status": "snoozed"}
+  },
+  {
+    "id": "observability_trace_success_001",
+    "category": "observability_trace",
+    "input": "我完成了 observability 摘要",
+    "expected": {
+      "status": "success",
+      "has_timeline": true,
+      "has_slowest_stage": true,
+      "llm_generate": 1,
+      "provider_total": 1,
+      "provider_detail_has_sequence": true,
+      "provider_detail_has_metadata_keys": true,
+      "estimated_tokens_positive": true,
+      "tool_total": 1,
+      "tool_errors": 0,
+      "tool_trace_has_sequence": true,
+      "tool_trace_has_io_summary": true,
+      "tool_planner_source": "llm_plan",
+      "tool_planner_selected": 1,
+      "rag_hit_count": 1,
+      "rag_explainability": true,
+      "rag_score_breakdown": true,
+      "rag_injection_decision": "inject_strong",
+      "memory_status": "success",
+      "supervision_event_count": 1
+    }
+  },
+  {
+    "id": "observability_trace_tool_error_001",
+    "category": "observability_trace",
+    "input": "我想检查工具失败时 trace 是否可见",
+    "fail_tool": true,
+    "expected": {
+      "status": "success",
+      "has_timeline": true,
+      "llm_generate": 1,
+      "provider_total": 1,
+      "provider_detail_has_sequence": true,
+      "provider_detail_has_metadata_keys": true,
+      "estimated_tokens_positive": true,
+      "tool_total": 1,
+      "tool_errors": 1,
+      "tool_trace_has_sequence": true,
+      "tool_trace_has_io_summary": true,
+      "tool_planner_source": "llm_plan",
+      "tool_planner_selected": 1,
+      "rag_hit_count": 1,
+      "rag_explainability": true,
+      "rag_score_breakdown": true,
+      "rag_injection_decision": "inject_strong"
+    }
+  },
+  {
+    "id": "api_schema_observability_001",
+    "category": "api_schema_smoke",
+    "expected": {
+      "paths": [
+        "/api/chat",
+        "/api/memory",
+        "/api/context",
+        "/api/supervision/events",
+        "/api/tts/speech"
+      ],
+      "schemas": [
+        "ObservabilitySummary",
+        "ToolCallTrace",
+        "TurnTrace",
+        "MemoryStateResponse",
+        "ContextStateResponse",
+        "ChatStreamDoneEvent"
+      ],
+      "properties": {
+        "ObservabilitySummary": [
+          "provider_trace",
+          "provider_detail",
+          "usage",
+          "model_calls",
+          "rag",
+          "rag_explainability",
+          "tool_trace",
+          "tools"
+        ],
+        "TurnTrace": [
+          "provider_trace",
+          "observability",
+          "tool_plan",
+          "retrieval_plan",
+          "tool_calls"
+        ],
+        "ToolCallTrace": [
+          "arguments",
+          "observation",
+          "input_schema",
+          "output_schema",
+          "decision_source",
+          "planner_call_index",
+          "audit_record",
+          "recoverable",
+          "recovery_hint",
+          "side_effects"
+        ],
+        "MemoryStateResponse": [
+          "observability",
+          "provider_trace_recent",
+          "turn_trace"
+        ],
+        "ContextStateResponse": [
+          "observability",
+          "provider_trace_recent",
+          "turn_trace"
+        ]
+      }
+    }
   }
 ]

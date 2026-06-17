@@ -11,6 +11,7 @@ class ToolExecutor:
     def __init__(self, registry: ToolRegistry, max_calls: int = 3):
         self.registry = registry
         self.max_calls = max_calls
+        self.last_plan_trace: Dict[str, Any] = {}
 
     def plan_and_execute(
         self,
@@ -19,17 +20,50 @@ class ToolExecutor:
         user_input: str,
     ) -> List[Dict[str, Any]]:
         if not self.registry.names():
+            self.last_plan_trace = self._new_plan_trace(
+                decision_source="no_registry",
+                raw_plan="",
+                parsed_count=0,
+                selected_count=0,
+                executed_count=0,
+                truncated=False,
+            )
             return []
 
         try:
             raw_plan = self._request_plan(llm_client, messages, user_input)
         except Exception as exc:
+            self.last_plan_trace = self._new_plan_trace(
+                decision_source="planner_error",
+                raw_plan="",
+                parsed_count=0,
+                selected_count=0,
+                executed_count=1,
+                truncated=False,
+                error=str(exc),
+            )
             return [self._planning_error(exc)]
         calls = self._parse_tool_calls(raw_plan)
+        selected = calls[:self.max_calls]
+        self.last_plan_trace = self._new_plan_trace(
+            decision_source="llm_plan",
+            raw_plan=raw_plan,
+            parsed_count=len(calls),
+            selected_count=len(selected),
+            executed_count=len(selected),
+            truncated=len(calls) > len(selected),
+        )
         results = []
-        for call in calls[:self.max_calls]:
-            results.append(self.execute(call))
+        for index, call in enumerate(selected):
+            result = self.execute(call)
+            result["decision_source"] = "llm_plan"
+            result["planner_call_index"] = index + 1
+            self._attach_audit_record(result)
+            results.append(result)
         return results
+
+    def get_last_plan_trace(self) -> Dict[str, Any]:
+        return dict(self.last_plan_trace or {})
 
     def execute(self, call: Dict[str, Any]) -> Dict[str, Any]:
         started_perf = time.perf_counter()
@@ -53,6 +87,11 @@ class ToolExecutor:
             "side_effects": [],
             "input_schema": {},
             "output_schema": {},
+            "decision_source": "direct_execute",
+            "planner_call_index": 0,
+            "audit_record": {},
+            "recoverable": False,
+            "recovery_hint": "",
         }
         try:
             tool = self.registry.get(name)
@@ -67,8 +106,11 @@ class ToolExecutor:
             result["observation"] = observation
         except Exception as exc:
             result["error"] = str(exc)
+            result["recoverable"] = True
+            result["recovery_hint"] = self._recovery_hint(name, exc)
         result["completed_at"] = datetime.now().isoformat(timespec="seconds")
         result["duration_ms"] = int((time.perf_counter() - started_perf) * 1000)
+        self._attach_audit_record(result)
         return result
 
     def format_observations(self, results: List[Dict[str, Any]]) -> str:
@@ -157,7 +199,7 @@ class ToolExecutor:
                 "arguments": arguments if isinstance(arguments, dict) else {},
                 "reason": str(call.get("reason", ""))[:180],
             })
-        return result[:self.max_calls]
+        return result
 
     def _parse_json_object(self, text: str) -> Dict[str, Any]:
         text = str(text or "").strip()
@@ -192,4 +234,58 @@ class ToolExecutor:
             "side_effects": [],
             "input_schema": {},
             "output_schema": {},
+            "decision_source": "planner_error",
+            "planner_call_index": 0,
+            "audit_record": {},
+            "recoverable": True,
+            "recovery_hint": "Skip tool use for this turn and continue with the available conversation context.",
         }
+
+    def _new_plan_trace(
+        self,
+        decision_source: str,
+        raw_plan: str,
+        parsed_count: int,
+        selected_count: int,
+        executed_count: int,
+        truncated: bool,
+        error: str = "",
+    ) -> Dict[str, Any]:
+        return {
+            "decision_source": decision_source,
+            "available_tools": self.registry.names(),
+            "max_calls": self.max_calls,
+            "raw_plan_preview": str(raw_plan or "").replace("\n", " ").strip()[:320],
+            "parsed_count": parsed_count,
+            "selected_count": selected_count,
+            "executed_count": executed_count,
+            "truncated": truncated,
+            "error": str(error or "")[:240],
+        }
+
+    def _attach_audit_record(self, result: Dict[str, Any]) -> None:
+        if result.get("read_only") is not False:
+            result["audit_record"] = {}
+            return
+        arguments = result.get("arguments", {}) if isinstance(result.get("arguments", {}), dict) else {}
+        observation = result.get("observation", {}) if isinstance(result.get("observation", {}), dict) else {}
+        result["audit_record"] = {
+            "audit_id": str(uuid.uuid4()),
+            "tool": result.get("tool", ""),
+            "status": result.get("status", ""),
+            "decision_source": result.get("decision_source", ""),
+            "planner_call_index": result.get("planner_call_index", 0),
+            "started_at": result.get("started_at", ""),
+            "completed_at": result.get("completed_at", ""),
+            "duration_ms": result.get("duration_ms", 0),
+            "side_effects": result.get("side_effects", []) or [],
+            "argument_keys": sorted(arguments.keys()),
+            "observation_keys": sorted(observation.keys()),
+            "error": str(result.get("error", "") or "")[:240],
+        }
+
+    def _recovery_hint(self, tool_name: str, exc: Exception) -> str:
+        message = str(exc or "")
+        if "unknown tool" in message.lower() or not tool_name:
+            return "Ignore the unavailable tool and continue without state mutation."
+        return "Continue the user-facing reply with available context and mention state update uncertainty only if relevant."
