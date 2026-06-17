@@ -491,7 +491,8 @@ class SupervisionEventManager:
                                 "  \"confidence\": 0.0 到 1.0 的数字,\n"
                                 "  \"deviation_reason\": \"如果是偏航，简述偏航原因；如果不是偏航，留空\",\n"
                                 "  \"deviation_level\": \"none|low|medium|high\",\n"
-                                "  \"intervention_hint\": \"none|watch_only|quiet_confirm|gentle_pullback|firm_pullback\"\n"
+                                "  \"intervention_hint\": \"none|watch_only|quiet_confirm|gentle_pullback|firm_pullback\",\n"
+                                "  \"direct_message\": \"如果你要直接对用户说话，会怎样自然提醒；不要解释 JSON，不要写标题，可以长可以短，可以温柔也可以明确\"\n"
                                 "}"
                             ).replace("{goal}", goal).replace("{task_title}", task_title).replace("{local_context}", local_rule_context).replace("{recent_context}", recent_context)
                             
@@ -553,6 +554,7 @@ class SupervisionEventManager:
                         "likely_intent": analysis.get("likely_intent", ""),
                         "visual_evidence": analysis.get("visual_evidence", ""),
                         "uncertainty": analysis.get("uncertainty", ""),
+                        "vision_direct_message": self._clean_screen_reminder(analysis.get("direct_message", "")),
                         "confidence": self._safe_float(analysis.get("confidence"), 0.0),
                         "deviation_reason": deviation_reason,
                         "deviation_level": analysis.get("deviation_level", ""),
@@ -589,6 +591,7 @@ class SupervisionEventManager:
                         "likely_intent": analysis.get("likely_intent", ""),
                         "visual_evidence": analysis.get("visual_evidence", ""),
                         "uncertainty": analysis.get("uncertainty", ""),
+                        "vision_direct_message": self._clean_screen_reminder(analysis.get("direct_message", "")),
                         "confidence": self._safe_float(analysis.get("confidence"), 0.0),
                         "deviation_level": analysis.get("deviation_level", ""),
                         "intervention_hint": analysis.get("intervention_hint", ""),
@@ -676,6 +679,7 @@ class SupervisionEventManager:
             "likely_intent": str(analysis.get("likely_intent", "") or ""),
             "visual_evidence": str(analysis.get("visual_evidence", "") or ""),
             "uncertainty": str(analysis.get("uncertainty", "") or ""),
+            "direct_message": self._clean_screen_reminder(analysis.get("direct_message", "")),
             "confidence": self._safe_float(analysis.get("confidence"), 0.0),
             "deviation_reason": str(analysis.get("deviation_reason", "") or ""),
             "deviation_level": str(analysis.get("deviation_level", "") or "none"),

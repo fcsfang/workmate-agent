@@ -26,7 +26,8 @@ def test_screen_deviation_detection_triggered(tmp_path):
         '"confidence": 0.93, '
         '"deviation_reason": "当前行为与学习 Python 目标无关", '
         '"deviation_level": "high", '
-        '"intervention_hint": "firm_pullback"}'
+        '"intervention_hint": "firm_pullback", '
+        '"direct_message": "我看到你现在在看 Bilibili，和学习 Python 这条线有点分开了。先回来吧。"}'
     )
     mock_llm.invoke_raw.return_value = "先把视频放一边，回到代码这一小步。"
     manager.set_llm_client(mock_llm)
@@ -92,6 +93,7 @@ def test_screen_deviation_detection_triggered(tmp_path):
         assert deviation_events[0]["severity"] == "high"
         assert "Bilibili" in deviation_events[0]["message"]
         assert deviation_events[0]["display_message"] == "先把视频放一边，回到代码这一小步。"
+        assert deviation_events[0]["metadata"]["vision_direct_message"] == "我看到你现在在看 Bilibili，和学习 Python 这条线有点分开了。先回来吧。"
         vision_prompt = mock_llm.invoke_vision.call_args.args[0]
         assert "这里只做观察和判断" in vision_prompt
         assert "不要写给用户看的提醒文案" in vision_prompt
@@ -120,7 +122,8 @@ def test_screen_deviation_detection_not_triggered_on_correct_behavior(tmp_path):
         '"confidence": 0.88, '
         '"deviation_reason": "", '
         '"deviation_level": "none", '
-        '"intervention_hint": "quiet_confirm"}'
+        '"intervention_hint": "quiet_confirm", '
+        '"direct_message": "你现在还在代码这条线上，继续处理眼前这个点就好。"}'
     )
     mock_llm.invoke_raw.return_value = "这段就在主线上，先把眼前这个点收住。"
     manager.set_llm_client(mock_llm)
@@ -388,6 +391,25 @@ def test_screen_deviation_chat_injection(tmp_memory_manager):
 
     records2 = tmp_memory_manager.load_records()
     assert len(records2) == 1  # Should still be 1, no duplicates!
+
+
+def test_screen_event_chat_body_shows_vision_and_processed_versions(tmp_memory_manager):
+    event = {
+        "type": "screen_deviation",
+        "display_message": "先把视频放一边，回到代码这一小步。",
+        "message": "监测到屏幕活动偏离目标：在看 Bilibili。",
+        "metadata": {
+            "triggered_by": "vision_llm",
+            "vision_direct_message": "我看到你在看 Bilibili，和当前目标已经分开了，先回来。",
+        },
+    }
+
+    body = tmp_memory_manager._format_screen_event_chat_body(event, "fallback")
+
+    assert "**Vision 直接提醒**" in body
+    assert "我看到你在看 Bilibili" in body
+    assert "**Agent 处理后提醒**" in body
+    assert "先把视频放一边" in body
 
 
 def test_custom_blacklist_keywords_intercept(tmp_path):

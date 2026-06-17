@@ -364,7 +364,7 @@ class MemoryManager:
                         if event.get("type") == "screen_deviation"
                         else "检测到屏幕活动，咱们一起加油哦。"
                     )
-                    body = event.get("display_message") or event.get("message") or fallback_msg
+                    body = self._format_screen_event_chat_body(event, fallback_msg)
                     self.persist_record(
                         user_input="",
                         assistant_output=body,
@@ -385,6 +385,21 @@ class MemoryManager:
             self.supervision_event_manager.save_events(all_events)
             
         return events
+
+    def _format_screen_event_chat_body(self, event: Dict[str, Any], fallback_msg: str) -> str:
+        metadata = event.get("metadata", {}) if isinstance(event.get("metadata", {}), dict) else {}
+        processed_message = event.get("display_message") or event.get("message") or fallback_msg
+        vision_message = metadata.get("vision_direct_message", "")
+        if not vision_message or metadata.get("triggered_by") != "vision_llm":
+            return processed_message
+        if vision_message.strip() == processed_message.strip():
+            return processed_message
+        return (
+            "**Vision 直接提醒**\n"
+            f"{vision_message.strip()}\n\n"
+            "**Agent 处理后提醒**\n"
+            f"{processed_message.strip()}"
+        )
 
     def get_supervision_event_state(self, current_prompt: str = "") -> Dict[str, Any]:
         support_state = self.get_support_knowledge_state(current_prompt) if current_prompt else {}

@@ -1,3 +1,10 @@
+## V2.1.7
+### 视觉监督实验
+- 新增 Vision 直接提醒对照：视觉模型在结构化观察中同时给出 `direct_message`，作为它不经过表达层处理时会直接对用户说的话
+- 屏幕监督事件会保存 `vision_direct_message` 到 metadata，便于比较 Vision 原始表达和 Agent 处理后提醒
+- 聊天框中的 Vision 触发屏幕事件现在会同时展示“Vision 直接提醒”和“Agent 处理后提醒”，帮助真实使用中判断哪种方案更适合工位搭子
+- 事件卡片、浏览器通知和语音播报暂时仍使用处理后的 `display_message`，避免实验影响正式提醒体验
+
 ## V2.1.6
 ### 视觉监督优化
 - 新增屏幕观察状态缓存 `screen_observations.json`，将每次 Vision 观察作为行为时间线保存，事件提醒不再只依赖单次截图
