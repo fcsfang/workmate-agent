@@ -450,22 +450,14 @@ class SupervisionEventManager:
                                 "【判定偏航的严格性与针对性要求】：\n"
                                 "1. 目标针对性：如果用户的具体目标/任务包含特定的框架或库（例如：学习 LangChain），而用户在屏幕上做其他看似技术相关但并非该目标的事情（例如：只在阅读/修改当前项目代码，而非学习/查阅外部框架 LangChain 的代码或文档），必须判定为【偏航】。\n"
                                 "2. 防范『元工具拖延』：如果用户目前正在调试、开发、查阅或配置当前这个 Workmate Agent 项目本身的代码（通常是在 IDE 如 VS Code 中编写或阅读本项目源码，或者在终端调试运行项目代码），且这与当前设定目标无关时，必须判定为【偏航】（偏航原因指出：『用户正在阅读/调试本监督系统/Agent项目代码，而非推进设定的目标 {goal}』）。但请特别注意：如果屏幕中仅仅是打开了 Workmate Agent 的网页控制台面板（Workmate Agent Console）或者聊天交互窗口，这属于正常的监督、汇报与交互行为，【绝对不要】将其判定为偏航（应视为正常无偏航状态）。\n"
-                                "【tone_suggestion 写作原则】：\n"
-                                "- tone_suggestion 是直接显示给用户、也可能被语音播报的提醒内容，不是诊断报告。\n"
-                                "- 结构上必须放在 JSON 字段里，方便程序读取；但文案风格不要被格式束缚。\n"
-                                "- 请根据截图里的真实活动、当前目标、偏航程度和用户当下可能的状态临场写，不要套固定模板。\n"
-                                "- 工位搭子的表达可以多样：可以很短，也可以稍长；可以温柔托住，也可以在明显偏航时稍微坚定一点。\n"
-                                "- 重点不是永远轻声、永远鼓励，而是像一个活人一样判断此刻需要什么提醒。\n"
-                                "- 可以偶尔使用'你'或'咱们'，但不要每句都用；绝对不要使用'师弟'、'师妹'、'学弟'、'学妹'等称谓。\n"
-                                "- 不要机械复述完整任务名；只有在用户可能忘了主线时才点一下。\n"
-                                "- 如果是偏航：指出该回到哪里，可以柔和，也可以明确，但不要羞辱或审判用户。\n"
-                                "- 如果没有偏航：可以安静确认，也可以不多说；不要为了提醒而提醒。\n"
+                                "这里只做观察和判断，不要写给用户看的提醒文案。提醒文案会由另一个语言模型步骤单独生成。\n"
                                 "请严格只输出一个合法的 JSON 对象，不要包含 Markdown 格式标记，不要包含其他前后解释。JSON 结构必须恰好如下：\n"
                                 "{\n"
                                 "  \"is_deviated\": true 或 false,\n"
                                 "  \"activity_summary\": \"简短描述用户正在做什么（例如：在 VS Code 中写 Python 代码，或者在看 Bilibili 视频）\",\n"
                                 "  \"deviation_reason\": \"如果是偏航，简述偏航原因；如果没有偏航，留空\",\n"
-                                "  \"tone_suggestion\": \"按上述原则临场生成的提醒内容\"\n"
+                                "  \"deviation_level\": \"none|low|medium|high\",\n"
+                                "  \"intervention_hint\": \"none|quiet_confirm|gentle_pullback|firm_pullback\"\n"
                                 "}"
                             ).replace("{goal}", goal).replace("{task_title}", task_title).replace("{local_context}", local_rule_context)
                             
@@ -486,10 +478,17 @@ class SupervisionEventManager:
         if vision_success:
             is_deviated = analysis.get("is_deviated", False)
             activity_summary = analysis.get("activity_summary", "")
-            tone_suggestion = analysis.get("tone_suggestion", "")
             
             if is_deviated:
                 deviation_reason = analysis.get("deviation_reason", "")
+                display_message = self._compose_screen_reminder(
+                    analysis=analysis,
+                    event_type="screen_deviation",
+                    goal=goal,
+                    subject_title=subject_title,
+                    app_name=app_name,
+                    window_title=window_title,
+                )
                 return {
                     "type": "screen_deviation",
                     "subject_type": subject_type,
@@ -498,15 +497,26 @@ class SupervisionEventManager:
                     "severity": "high",
                     "title": "工位偏航提醒 🔔",
                     "message": f"监测到屏幕活动偏离目标：{activity_summary}。原因：{deviation_reason}",
-                    "display_message": tone_suggestion or f"先回来一下，当前主线还是【{goal}】，把手头这一小步接上就好。",
+                    "display_message": display_message,
                     "metadata": {
                         "activity_summary": activity_summary,
                         "deviation_reason": deviation_reason,
+                        "deviation_level": analysis.get("deviation_level", ""),
+                        "intervention_hint": analysis.get("intervention_hint", ""),
                         "focus_goal": goal,
                         "triggered_by": "vision_llm",
+                        "reminder_generated_by": "language_llm" if display_message else "fallback",
                     },
                 }
             else:
+                display_message = self._compose_screen_reminder(
+                    analysis=analysis,
+                    event_type="screen_accompaniment",
+                    goal=goal,
+                    subject_title=subject_title,
+                    app_name=app_name,
+                    window_title=window_title,
+                )
                 return {
                     "type": "screen_accompaniment",
                     "subject_type": subject_type,
@@ -515,11 +525,14 @@ class SupervisionEventManager:
                     "severity": "low",
                     "title": "工位陪伴提醒 🌟",
                     "message": f"监测到屏幕活动正常：{activity_summary}",
-                    "display_message": tone_suggestion or f"嗯，这段还在【{goal}】这条线上，先把当前这个点收完。",
+                    "display_message": display_message,
                     "metadata": {
                         "activity_summary": activity_summary,
+                        "deviation_level": analysis.get("deviation_level", ""),
+                        "intervention_hint": analysis.get("intervention_hint", ""),
                         "focus_goal": goal,
                         "triggered_by": "vision_llm",
+                        "reminder_generated_by": "language_llm" if display_message else "fallback",
                     },
                 }
         else:
@@ -570,6 +583,76 @@ class SupervisionEventManager:
                         "triggered_by": "local_rules",
                     },
                 }
+
+    def _compose_screen_reminder(
+        self,
+        analysis: Dict[str, Any],
+        event_type: str,
+        goal: str,
+        subject_title: str,
+        app_name: str,
+        window_title: str,
+    ) -> str:
+        fallback = self._screen_fallback_message({
+            "type": event_type,
+            "subject_title": subject_title,
+            "metadata": {"focus_goal": goal},
+        })
+        if not self.llm_client:
+            return fallback
+
+        is_deviated = event_type == "screen_deviation"
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "你是 Workmate Agent 的工位搭子表达层。"
+                    "上一步视觉模型已经完成结构化观察和偏航判断；你只负责写最终展示给用户、也可能被语音播报的自然语言提醒。"
+                    "不要输出 JSON，不要解释你的判断过程，不要写标题。"
+                    "表达要像真实坐在旁边的人：可以短，也可以稍长；可以温柔，也可以在明显偏航时更坚定。"
+                    "不要套模板，不要每次都鼓励，不要羞辱或审判用户。"
+                    "绝对不要使用'师弟'、'师妹'、'学弟'、'学妹'等称谓。"
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"当前目标：{goal}\n"
+                    f"主线任务：{subject_title or goal}\n"
+                    f"前台应用：{app_name or '未知'}\n"
+                    f"窗口标题：{window_title or '未知'}\n"
+                    f"是否偏航：{'是' if is_deviated else '否'}\n"
+                    f"屏幕活动：{analysis.get('activity_summary', '')}\n"
+                    f"偏航原因：{analysis.get('deviation_reason', '')}\n"
+                    f"偏航程度：{analysis.get('deviation_level', '')}\n"
+                    f"干预提示：{analysis.get('intervention_hint', '')}\n\n"
+                    "请直接写出要展示给用户的一段提醒。"
+                    "它可以是一句话，也可以是两三句话；根据场景自然决定。"
+                    "如果用户明显偏航，可以明确把他拉回主线；如果用户仍在主线上，可以很轻地确认，甚至保持低存在感。"
+                ),
+            },
+        ]
+        try:
+            if hasattr(self.llm_client, "invoke_raw") and callable(getattr(self.llm_client, "invoke_raw")):
+                raw = self.llm_client.invoke_raw(messages)
+            else:
+                raw = self.llm_client.invoke(messages=messages)
+        except Exception:
+            return fallback
+
+        reminder = self._clean_screen_reminder(raw)
+        return reminder or fallback
+
+    def _clean_screen_reminder(self, text: Any) -> str:
+        if not isinstance(text, str):
+            return ""
+        text = text.strip()
+        if text.startswith("```") and text.endswith("```"):
+            text = text.strip("`").strip()
+        for prefix in ["提醒：", "提醒:", "工位搭子：", "工位搭子:", "Workmate：", "Workmate:"]:
+            if text.startswith(prefix):
+                text = text[len(prefix):].strip()
+        return self._compact_sentence(text, limit=320)
 
     def _parse_json_response(self, text: str) -> Dict[str, Any]:
         import re

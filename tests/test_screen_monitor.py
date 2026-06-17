@@ -19,8 +19,10 @@ def test_screen_deviation_detection_triggered(tmp_path):
         '{"is_deviated": true, '
         '"activity_summary": "在看 Bilibili 搞笑视频", '
         '"deviation_reason": "当前行为与学习 Python 目标无关", '
-        '"tone_suggestion": "先把视频放一边，回到代码这一小步。"}'
+        '"deviation_level": "high", '
+        '"intervention_hint": "firm_pullback"}'
     )
+    mock_llm.invoke_raw.return_value = "先把视频放一边，回到代码这一小步。"
     manager.set_llm_client(mock_llm)
 
     # Setup focus session and task view states
@@ -85,10 +87,13 @@ def test_screen_deviation_detection_triggered(tmp_path):
         assert "Bilibili" in deviation_events[0]["message"]
         assert deviation_events[0]["display_message"] == "先把视频放一边，回到代码这一小步。"
         vision_prompt = mock_llm.invoke_vision.call_args.args[0]
-        assert "可以很短，也可以稍长" in vision_prompt
-        assert "可以温柔托住，也可以在明显偏航时稍微坚定一点" in vision_prompt
-        assert "长度控制" not in vision_prompt
-        assert "一句自然短提醒" not in vision_prompt
+        assert "这里只做观察和判断" in vision_prompt
+        assert "不要写给用户看的提醒文案" in vision_prompt
+        assert "tone_suggestion" not in vision_prompt
+        reminder_messages = mock_llm.invoke_raw.call_args.args[0]
+        assert reminder_messages[0]["role"] == "system"
+        assert "不要输出 JSON" in reminder_messages[0]["content"]
+        assert "可以短，也可以稍长" in reminder_messages[0]["content"]
 
 
 def test_screen_deviation_detection_not_triggered_on_correct_behavior(tmp_path):
@@ -102,8 +107,10 @@ def test_screen_deviation_detection_not_triggered_on_correct_behavior(tmp_path):
         '{"is_deviated": false, '
         '"activity_summary": "在 VS Code 中编写 Python 代码", '
         '"deviation_reason": "", '
-        '"tone_suggestion": ""}'
+        '"deviation_level": "none", '
+        '"intervention_hint": "quiet_confirm"}'
     )
+    mock_llm.invoke_raw.return_value = "这段就在主线上，先把眼前这个点收住。"
     manager.set_llm_client(mock_llm)
 
     focus_state = {

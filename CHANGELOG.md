@@ -1,3 +1,10 @@
+## V2.1.5
+### 架构调整
+- 将屏幕监督从单次 Vision JSON 输出改为“两段式”链路：Vision 只负责结构化观察与偏航判断，语言模型单独负责生成自然提醒
+- 移除 Vision 结构化输出中的 `tone_suggestion` 字段，避免把用户可见文案塞进 JSON 模板里
+- 新增屏幕提醒表达层：基于 `activity_summary`、`deviation_reason`、`deviation_level` 和 `intervention_hint` 生成最终 `display_message`
+- 保留 JSON 作为内部状态管理边界，同时让最终提醒回到自然语言输出，提升工位搭子的真实陪伴感
+
 ## V2.1.4
 ### 调整
 - 放宽屏幕提醒的 Vision 提示词，不再要求提醒必须是固定长度、固定语气或“一句话短提醒”
