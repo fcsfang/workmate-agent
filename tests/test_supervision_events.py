@@ -132,3 +132,55 @@ def test_screen_accompaniment_copy_respects_model_suggestion(tmp_path):
     polished = manager._apply_copy_policy(candidate, manager._copy_policy({}))
 
     assert polished["display_message"] == "这个点先收一下，别急着开新分支。"
+
+
+def test_screen_observation_policy_waits_for_continuous_deviation(tmp_path):
+    manager = SupervisionEventManager(
+        events_path=str(tmp_path / "events.json"),
+        preferences_path=str(tmp_path / "preferences.json"),
+    )
+    now = datetime.now()
+    base_analysis = {
+        "is_deviated": True,
+        "activity_summary": "在浏览与当前任务弱相关的网页",
+        "activity_category": "research",
+        "goal_relation": "off_track",
+        "likely_intent": "可能临时查资料，也可能开始发散",
+        "visual_evidence": "浏览器页面与当前任务不直接相关",
+        "uncertainty": "可能是短暂切换",
+        "confidence": 0.64,
+        "deviation_reason": "与当前主线关系较弱",
+        "deviation_level": "medium",
+        "intervention_hint": "gentle_pullback",
+    }
+
+    first = manager._record_screen_observation(
+        analysis=base_analysis,
+        now=now,
+        subject_id="focus-1",
+        subject_title="写论文",
+        subject_type="focus",
+        goal="写论文",
+        app_name="Safari",
+        window_title="参考资料",
+    )
+    first_policy = manager._screen_observation_policy(first)
+
+    second = manager._record_screen_observation(
+        analysis=base_analysis,
+        now=now + timedelta(minutes=5),
+        subject_id="focus-1",
+        subject_title="写论文",
+        subject_type="focus",
+        goal="写论文",
+        app_name="Safari",
+        window_title="参考资料",
+    )
+    second_policy = manager._screen_observation_policy(second)
+
+    assert first_policy["action"] == "record_only"
+    assert first_policy["reason"] == "first_or_uncertain_deviation_observed"
+    assert second_policy["action"] == "emit_event"
+    assert second_policy["reason"] == "continuous_screen_deviation"
+    assert second_policy["severity"] == "medium"
+    assert len(manager.load_screen_observations()) == 2

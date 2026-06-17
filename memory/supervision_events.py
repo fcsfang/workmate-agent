@@ -14,13 +14,24 @@ class SupervisionEventManager:
     FINAL_STATUSES = {"resolved"}
     VALID_STATUSES = ACTIVE_STATUSES | PAUSED_STATUSES | FINAL_STATUSES
 
-    def __init__(self, events_path: Optional[str] = None, preferences_path: Optional[str] = None):
+    def __init__(
+        self,
+        events_path: Optional[str] = None,
+        preferences_path: Optional[str] = None,
+        observations_path: Optional[str] = None,
+    ):
         self.events_path = Path(events_path) if events_path else memory_data_path("supervision_events.json")
         self.preferences_path = (
             Path(preferences_path) if preferences_path else memory_data_path("supervision_preferences.json")
         )
+        self.observations_path = (
+            Path(observations_path)
+            if observations_path
+            else self.events_path.parent / "screen_observations.json"
+        )
         self.events_path.parent.mkdir(parents=True, exist_ok=True)
         self.preferences_path.parent.mkdir(parents=True, exist_ok=True)
+        self.observations_path.parent.mkdir(parents=True, exist_ok=True)
         self.llm_client = None
 
     def set_llm_client(self, llm_client: Any) -> None:
@@ -131,6 +142,22 @@ class SupervisionEventManager:
         with self.events_path.open("w", encoding="utf-8") as file:
             json.dump(events[-500:], file, ensure_ascii=False, indent=2)
 
+    def load_screen_observations(self) -> List[Dict[str, Any]]:
+        if not self.observations_path.exists() or self.observations_path.stat().st_size == 0:
+            return []
+        try:
+            with self.observations_path.open("r", encoding="utf-8") as file:
+                data = json.load(file)
+        except json.JSONDecodeError:
+            return []
+        if not isinstance(data, list):
+            return []
+        return [item for item in data if isinstance(item, dict)]
+
+    def save_screen_observations(self, observations: List[Dict[str, Any]]) -> None:
+        with self.observations_path.open("w", encoding="utf-8") as file:
+            json.dump(observations[-80:], file, ensure_ascii=False, indent=2)
+
     def get_event(self, event_id: str) -> Dict[str, Any]:
         for event in self.load_events():
             if event.get("id") == event_id:
@@ -188,12 +215,14 @@ class SupervisionEventManager:
         snoozed = [event for event in events if self._is_snoozed_now(event)]
         muted = [event for event in events if self._is_muted_now(event)]
         recent = sorted(events, key=lambda item: item.get("updated_at", ""), reverse=True)[:limit]
+        screen_observations = self._recent_screen_observations(limit=limit)
         active_sorted = sorted(active, key=lambda item: (self._severity_rank(item), item.get("updated_at", "")), reverse=True)
         return {
             "active": active_sorted[:limit],
             "snoozed": sorted(snoozed, key=lambda item: item.get("updated_at", ""), reverse=True)[:limit],
             "muted": sorted(muted, key=lambda item: item.get("updated_at", ""), reverse=True)[:limit],
             "recent": recent,
+            "screen_observations": screen_observations,
             "preferences": preferences,
             "feedback_stats": feedback_stats,
             "strategy": self._build_strategy(
@@ -437,29 +466,34 @@ class SupervisionEventManager:
                             current_task = (task_view or {}).get("current") or {}
                             task_title = current_task.get("title", "") or "个人自律"
                             
-                            # 增强 Prompt，将本地规则匹配结果也作为上下文提供给大模型参考
+                            recent_observations = self._recent_screen_observations(subject_id=subject_id, limit=6)
+                            recent_context = self._format_screen_observation_context(recent_observations)
+                            # 增强 Prompt，将本地窗口信息和最近观察轨迹作为上下文提供给大模型参考
                             local_rule_context = ""
                             if app_name:
                                 local_rule_context = f"\n（本地检测到前台 App 为：{app_name}，窗口标题为：{window_title}）"
                                 
                             prompt = (
-                                "你是一个工位搭子的屏幕观察助手。用户当前设定的专注目标是：'{goal}'，主线任务是：'{task_title}'。{local_context}\n"
-                                "请查看这张或这几张用户电脑屏幕的截图（支持多屏幕），分析用户目前正在做什么，以及用户的当前行为是否偏离了设定的目标 and 主线任务。\n"
-                                "如果用户当前正在编写代码、阅读相关技术文档、查找学习资料、查看工作任务或进行与上述目标直接相关的活动，则视为【没有偏航】。\n"
-                                "如果用户当前正在刷社交媒体（如微博、微信、B站娱乐视频）、看小说、玩游戏或浏览完全不相关的网页，则视为【偏航】。\n"
-                                "【判定偏航的严格性与针对性要求】：\n"
-                                "1. 目标针对性：如果用户的具体目标/任务包含特定的框架或库（例如：学习 LangChain），而用户在屏幕上做其他看似技术相关但并非该目标的事情（例如：只在阅读/修改当前项目代码，而非学习/查阅外部框架 LangChain 的代码或文档），必须判定为【偏航】。\n"
-                                "2. 防范『元工具拖延』：如果用户目前正在调试、开发、查阅或配置当前这个 Workmate Agent 项目本身的代码（通常是在 IDE 如 VS Code 中编写或阅读本项目源码，或者在终端调试运行项目代码），且这与当前设定目标无关时，必须判定为【偏航】（偏航原因指出：『用户正在阅读/调试本监督系统/Agent项目代码，而非推进设定的目标 {goal}』）。但请特别注意：如果屏幕中仅仅是打开了 Workmate Agent 的网页控制台面板（Workmate Agent Console）或者聊天交互窗口，这属于正常的监督、汇报与交互行为，【绝对不要】将其判定为偏航（应视为正常无偏航状态）。\n"
-                                "这里只做观察和判断，不要写给用户看的提醒文案。提醒文案会由另一个语言模型步骤单独生成。\n"
-                                "请严格只输出一个合法的 JSON 对象，不要包含 Markdown 格式标记，不要包含其他前后解释。JSON 结构必须恰好如下：\n"
+                                "你是 Workmate Agent 的屏幕观察模型。用户当前设定的专注目标是：'{goal}'，主线任务是：'{task_title}'。{local_context}\n"
+                                "你使用的是强视觉模型，请尽量发挥对截图、窗口内容、任务语义和用户意图的理解能力。不要只按 App 名或网站名机械判断；如果页面内容本身与目标相关，要把这种关系识别出来。\n"
+                                "请查看这张或这几张用户电脑屏幕截图（支持多屏幕），分析用户此刻正在做什么、它和当前目标的关系、是否像短暂切换/查资料/休息/娱乐拖延/元工具拖延。\n"
+                                "最近几次屏幕观察如下，用来帮助你判断连续趋势，不要把当前截图当成孤立瞬间：\n{recent_context}\n"
+                                "这里只做观察和判断，不要写给用户看的提醒文案。是否提醒、何时提醒会由本地连续状态策略决定。\n"
+                                "请严格只输出一个合法 JSON 对象，不要包含 Markdown，不要包含其他前后解释。JSON 结构必须恰好如下：\n"
                                 "{\n"
                                 "  \"is_deviated\": true 或 false,\n"
-                                "  \"activity_summary\": \"简短描述用户正在做什么（例如：在 VS Code 中写 Python 代码，或者在看 Bilibili 视频）\",\n"
-                                "  \"deviation_reason\": \"如果是偏航，简述偏航原因；如果没有偏航，留空\",\n"
+                                "  \"activity_summary\": \"简短描述用户正在做什么\",\n"
+                                "  \"activity_category\": \"deep_work|research|communication|planning|tooling|break|entertainment|unknown\",\n"
+                                "  \"goal_relation\": \"on_track|near_track|temporary_detour|off_track|unclear\",\n"
+                                "  \"likely_intent\": \"你对用户此刻意图的自然语言推测\",\n"
+                                "  \"visual_evidence\": \"你在截图中看到的关键依据，简短列出\",\n"
+                                "  \"uncertainty\": \"不确定之处；如果很确定可留空\",\n"
+                                "  \"confidence\": 0.0 到 1.0 的数字,\n"
+                                "  \"deviation_reason\": \"如果是偏航，简述偏航原因；如果不是偏航，留空\",\n"
                                 "  \"deviation_level\": \"none|low|medium|high\",\n"
-                                "  \"intervention_hint\": \"none|quiet_confirm|gentle_pullback|firm_pullback\"\n"
+                                "  \"intervention_hint\": \"none|watch_only|quiet_confirm|gentle_pullback|firm_pullback\"\n"
                                 "}"
-                            ).replace("{goal}", goal).replace("{task_title}", task_title).replace("{local_context}", local_rule_context)
+                            ).replace("{goal}", goal).replace("{task_title}", task_title).replace("{local_context}", local_rule_context).replace("{recent_context}", recent_context)
                             
                             # 传递图片列表或单张图片给 Vision 接口
                             img_arg = image_base64_list if len(image_base64_list) > 1 else image_base64_list[0]
@@ -478,6 +512,20 @@ class SupervisionEventManager:
         if vision_success:
             is_deviated = analysis.get("is_deviated", False)
             activity_summary = analysis.get("activity_summary", "")
+            observation = self._record_screen_observation(
+                analysis=analysis,
+                now=now,
+                subject_id=subject_id,
+                subject_title=subject_title,
+                subject_type=subject_type,
+                goal=goal,
+                app_name=app_name,
+                window_title=window_title,
+            )
+            policy = self._screen_observation_policy(observation)
+            if policy.get("action") == "record_only":
+                print(f"[DEBUG] Screen observation recorded without reminder: {policy}")
+                return {}
             
             if is_deviated:
                 deviation_reason = analysis.get("deviation_reason", "")
@@ -494,18 +542,26 @@ class SupervisionEventManager:
                     "subject_type": subject_type,
                     "subject_id": subject_id,
                     "subject_title": subject_title,
-                    "severity": "high",
+                    "severity": policy.get("severity", "high"),
                     "title": "工位偏航提醒 🔔",
                     "message": f"监测到屏幕活动偏离目标：{activity_summary}。原因：{deviation_reason}",
                     "display_message": display_message,
                     "metadata": {
                         "activity_summary": activity_summary,
+                        "activity_category": analysis.get("activity_category", ""),
+                        "goal_relation": analysis.get("goal_relation", ""),
+                        "likely_intent": analysis.get("likely_intent", ""),
+                        "visual_evidence": analysis.get("visual_evidence", ""),
+                        "uncertainty": analysis.get("uncertainty", ""),
+                        "confidence": self._safe_float(analysis.get("confidence"), 0.0),
                         "deviation_reason": deviation_reason,
                         "deviation_level": analysis.get("deviation_level", ""),
                         "intervention_hint": analysis.get("intervention_hint", ""),
                         "focus_goal": goal,
                         "triggered_by": "vision_llm",
                         "reminder_generated_by": "language_llm" if display_message else "fallback",
+                        "screen_policy": policy,
+                        "observation_id": observation.get("id", ""),
                     },
                 }
             else:
@@ -528,11 +584,19 @@ class SupervisionEventManager:
                     "display_message": display_message,
                     "metadata": {
                         "activity_summary": activity_summary,
+                        "activity_category": analysis.get("activity_category", ""),
+                        "goal_relation": analysis.get("goal_relation", ""),
+                        "likely_intent": analysis.get("likely_intent", ""),
+                        "visual_evidence": analysis.get("visual_evidence", ""),
+                        "uncertainty": analysis.get("uncertainty", ""),
+                        "confidence": self._safe_float(analysis.get("confidence"), 0.0),
                         "deviation_level": analysis.get("deviation_level", ""),
                         "intervention_hint": analysis.get("intervention_hint", ""),
                         "focus_goal": goal,
                         "triggered_by": "vision_llm",
                         "reminder_generated_by": "language_llm" if display_message else "fallback",
+                        "screen_policy": policy,
+                        "observation_id": observation.get("id", ""),
                     },
                 }
         else:
@@ -583,6 +647,127 @@ class SupervisionEventManager:
                         "triggered_by": "local_rules",
                     },
                 }
+
+    def _record_screen_observation(
+        self,
+        analysis: Dict[str, Any],
+        now: datetime,
+        subject_id: str,
+        subject_title: str,
+        subject_type: str,
+        goal: str,
+        app_name: str,
+        window_title: str,
+    ) -> Dict[str, Any]:
+        now_text = now.isoformat(timespec="seconds")
+        observation = {
+            "id": self._make_id(now_text, f"screen-observation:{subject_id}:{app_name}:{window_title}"),
+            "observed_at": now_text,
+            "subject_id": subject_id,
+            "subject_title": subject_title,
+            "subject_type": subject_type,
+            "focus_goal": goal,
+            "app_name": app_name or "",
+            "window_title": window_title or "",
+            "is_deviated": bool(analysis.get("is_deviated", False)),
+            "activity_summary": str(analysis.get("activity_summary", "") or ""),
+            "activity_category": str(analysis.get("activity_category", "") or "unknown"),
+            "goal_relation": str(analysis.get("goal_relation", "") or "unclear"),
+            "likely_intent": str(analysis.get("likely_intent", "") or ""),
+            "visual_evidence": str(analysis.get("visual_evidence", "") or ""),
+            "uncertainty": str(analysis.get("uncertainty", "") or ""),
+            "confidence": self._safe_float(analysis.get("confidence"), 0.0),
+            "deviation_reason": str(analysis.get("deviation_reason", "") or ""),
+            "deviation_level": str(analysis.get("deviation_level", "") or "none"),
+            "intervention_hint": str(analysis.get("intervention_hint", "") or "none"),
+        }
+        observations = self.load_screen_observations()
+        observations.append(observation)
+        self.save_screen_observations(observations)
+        return observation
+
+    def _recent_screen_observations(self, subject_id: str = "", limit: int = 6) -> List[Dict[str, Any]]:
+        observations = self.load_screen_observations()
+        if subject_id:
+            scoped = [item for item in observations if item.get("subject_id") == subject_id]
+            if scoped:
+                observations = scoped
+        return sorted(observations, key=lambda item: item.get("observed_at", ""), reverse=True)[:limit]
+
+    def _format_screen_observation_context(self, observations: List[Dict[str, Any]]) -> str:
+        if not observations:
+            return "暂无历史观察。"
+        lines = []
+        for item in sorted(observations, key=lambda value: value.get("observed_at", "")):
+            status = "偏航" if item.get("is_deviated") else "主线/接近主线"
+            lines.append(
+                f"- {item.get('observed_at', '')}: {status}; "
+                f"{item.get('activity_summary', '')}; "
+                f"relation={item.get('goal_relation', '')}; "
+                f"level={item.get('deviation_level', '')}; "
+                f"confidence={item.get('confidence', '')}"
+            )
+        return "\n".join(lines)
+
+    def _screen_observation_policy(self, observation: Dict[str, Any]) -> Dict[str, Any]:
+        relation = str(observation.get("goal_relation", "") or "").lower()
+        level = str(observation.get("deviation_level", "") or "none").lower()
+        hint = str(observation.get("intervention_hint", "") or "none").lower()
+        confidence = self._safe_float(observation.get("confidence"), 0.0)
+        if confidence == 0.0 and level == "high":
+            confidence = 0.75
+        is_deviated = bool(observation.get("is_deviated", False)) or relation == "off_track"
+        subject_id = observation.get("subject_id", "")
+        recent = self._recent_screen_observations(subject_id=subject_id, limit=4)
+        consecutive_offtrack = 0
+        for item in recent:
+            item_relation = str(item.get("goal_relation", "") or "").lower()
+            item_level = str(item.get("deviation_level", "") or "none").lower()
+            item_offtrack = bool(item.get("is_deviated", False)) or item_relation == "off_track"
+            if item_offtrack and item_level in {"low", "medium", "high"}:
+                consecutive_offtrack += 1
+            else:
+                break
+
+        if not is_deviated:
+            return {
+                "action": "record_only",
+                "reason": "screen_on_track_or_near_track",
+                "severity": "low",
+                "consecutive_offtrack": consecutive_offtrack,
+            }
+
+        if level == "high" and confidence >= 0.72:
+            return {
+                "action": "emit_event",
+                "reason": "high_confidence_direct_deviation",
+                "severity": "high",
+                "consecutive_offtrack": consecutive_offtrack,
+            }
+
+        if hint == "firm_pullback" and confidence >= 0.8:
+            return {
+                "action": "emit_event",
+                "reason": "vision_requested_firm_pullback",
+                "severity": "high",
+                "consecutive_offtrack": consecutive_offtrack,
+            }
+
+        if consecutive_offtrack >= 2:
+            severity = "high" if level == "high" or consecutive_offtrack >= 3 else "medium"
+            return {
+                "action": "emit_event",
+                "reason": "continuous_screen_deviation",
+                "severity": severity,
+                "consecutive_offtrack": consecutive_offtrack,
+            }
+
+        return {
+            "action": "record_only",
+            "reason": "first_or_uncertain_deviation_observed",
+            "severity": "low",
+            "consecutive_offtrack": consecutive_offtrack,
+        }
 
     def _compose_screen_reminder(
         self,
@@ -665,6 +850,17 @@ class SupervisionEventManager:
             return json.loads(text)
         except Exception:
             return {}
+
+    def _safe_float(self, value: Any, default: float = 0.0) -> float:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return default
+        if number < 0:
+            return 0.0
+        if number > 1:
+            return 1.0
+        return number
 
     def _get_active_window_macos(self) -> tuple[str, str]:
         """通过 AppleScript 获取当前最前台 App 的名称与活跃窗口标题。仅支持 macOS。"""
