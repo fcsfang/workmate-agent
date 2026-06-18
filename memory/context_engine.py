@@ -74,8 +74,10 @@ class ContextEngine:
 
         if "intent" in key_set:
             available["intent"] = memory_manager.intent_manager.format_for_context(intent_classification)
-        if "user_profile" in key_set:
-            available["user_profile"] = memory_manager.user_profile_manager.format_for_context()
+        if "long_term_knowledge" in key_set:
+            available["long_term_knowledge"] = memory_manager.get_long_term_knowledge_context(
+                intent_classification.get("intent", "chat")
+            )
         if "task_lifecycle" in key_set:
             available["task_lifecycle"] = memory_manager.task_state.format_task_lifecycle()
         if "task_state" in key_set:

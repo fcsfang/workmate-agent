@@ -308,8 +308,8 @@ def test_auto_monitor_during_work_hours(tmp_path):
 
 
 
-def test_screen_deviation_chat_injection(tmp_memory_manager):
-    """测试当检测到屏幕偏航事件时，系统会自动在对话历史记录中插入一条偏航提醒消息"""
+def test_screen_deviation_transient_chat_injection(tmp_memory_manager):
+    """屏幕偏航提醒只进入临时监督消息，不写入长期对话记忆。"""
     # Initialize mock llm_client
 
     # Current time is 14:00 (inside work hours)
@@ -347,21 +347,28 @@ def test_screen_deviation_chat_injection(tmp_memory_manager):
     deviation_events = [e for e in events if e["type"] == "screen_deviation"]
     assert len(deviation_events) == 1
     
-    # 2. Verify it is recorded in chat history
+    # 2. Verify it is visible as transient supervision message, not long-term record
     records = tmp_memory_manager.load_records()
-    assert len(records) == 1
-    assert records[0]["user"] == ""
-    assert records[0]["assistant"]
-    assert "方向很对" not in records[0]["assistant"]
+    assert records == []
+    supervision_messages = tmp_memory_manager.load_supervision_messages()
+    assert len(supervision_messages) == 1
+    assert supervision_messages[0]["user"] == ""
+    assert supervision_messages[0]["assistant"]
+    assert supervision_messages[0]["is_supervision"] is True
+    assert supervision_messages[0]["transient"] is True
+    assert "方向很对" not in supervision_messages[0]["assistant"]
+    recent = tmp_memory_manager.recent_records_with_transient_supervision()
+    assert len(recent) == 1
+    assert recent[0]["transient"] is True
     assert "bilibili" in deviation_events[0]["message"]
 
     # 3. Verify event metadata indicates it has been added to chat
     all_events = tmp_memory_manager.supervision_event_manager.load_events()
     matching_events = [e for e in all_events if e["id"] == deviation_events[0]["id"]]
     assert len(matching_events) == 1
-    assert matching_events[0]["metadata"].get("added_to_chat") is True
+    assert matching_events[0]["metadata"].get("added_to_transient_chat") is True
 
-    # 4. Run refresh_supervision_events again and verify no duplicate records are added
+    # 4. Run refresh_supervision_events again and verify no duplicate transient messages are added
     # Update cooldown to bypass interval check
     prefs = tmp_memory_manager.get_supervision_preferences()
     prefs["last_screen_check"] = (now - timedelta(minutes=10)).isoformat(timespec="seconds")
@@ -377,7 +384,8 @@ def test_screen_deviation_chat_injection(tmp_memory_manager):
             events2 = tmp_memory_manager.refresh_supervision_events()
 
     records2 = tmp_memory_manager.load_records()
-    assert len(records2) == 1  # Should still be 1, no duplicates!
+    assert records2 == []
+    assert len(tmp_memory_manager.load_supervision_messages()) == 1
 
 
 def test_custom_blacklist_keywords_intercept(tmp_path):

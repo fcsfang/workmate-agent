@@ -25,7 +25,7 @@
       {"type": "task", "id": "task-rag", "text": "Hybrid Memory RAG 记忆检索任务 正在完成评分解释", "terms": ["hybrid", "memory", "rag", "记忆", "检索", "任务", "进度"], "salience": 0.8, "status": "active"},
       {"type": "record", "id": "record-chat", "text": "普通闲聊", "terms": ["普通", "闲聊"]}
     ],
-    "expected": {"top_source_id": "task-rag"}
+    "expected": {"top_source_id": "task-rag", "has_source_attribution": true, "has_task_relevance_score": true}
   },
   {
     "id": "memory_recall_commitment_001",
@@ -35,7 +35,7 @@
       {"type": "commitment", "id": "commit-readme", "text": "承诺 今天补齐 README", "terms": ["承诺", "今天", "readme"], "salience": 0.6, "status": "open"},
       {"type": "task", "id": "task-other", "text": "调试前端布局", "terms": ["前端", "布局"]}
     ],
-    "expected": {"top_source_id": "commit-readme"}
+    "expected": {"top_source_id": "commit-readme", "has_source_attribution": true, "has_task_relevance_score": true}
   },
   {
     "id": "memory_recall_pattern_001",
@@ -45,7 +45,18 @@
       {"type": "behavior_pattern", "id": "pattern-scatter", "text": "任务分散 多个任务同时推进", "terms": ["任务", "分散", "模式"], "salience": 0.7, "status": "active"},
       {"type": "record", "id": "record-other", "text": "今天吃饭", "terms": ["吃饭"]}
     ],
-    "expected": {"top_source_id": "pattern-scatter"}
+    "expected": {"top_source_id": "pattern-scatter", "has_source_attribution": true, "has_task_relevance_score": true}
+  },
+  {
+    "id": "memory_recall_filter_task_001",
+    "category": "memory_recall",
+    "input": "记忆检索任务现在有什么进度",
+    "filters": {"types": ["task"], "statuses": ["active"], "task_id": "task-rag"},
+    "items": [
+      {"type": "task", "id": "task-rag", "text": "Hybrid Memory RAG 记忆检索任务 正在完成 metadata filter", "terms": ["hybrid", "memory", "rag", "记忆", "检索", "任务", "进度"], "salience": 0.8, "status": "active", "task_id": "task-rag", "task_title": "Hybrid Memory RAG"},
+      {"type": "memory_item", "id": "item-rag", "text": "记忆检索旧想法", "terms": ["记忆", "检索"], "salience": 0.8, "status": "active"}
+    ],
+    "expected": {"top_source_id": "task-rag", "has_source_attribution": true, "has_task_relevance_score": true}
   },
   {
     "id": "task_tracking_done_001",
@@ -173,7 +184,13 @@
     "id": "supervision_lifecycle_task_001",
     "category": "supervision_lifecycle",
     "scenario": "task_stale_snooze",
-    "expected": {"detected_type": "task_stale", "final_status": "snoozed"}
+    "expected": {"detected_type": "task_stale", "final_status": "snoozed", "has_transition_history": true}
+  },
+  {
+    "id": "supervision_lifecycle_dismiss_001",
+    "category": "supervision_lifecycle",
+    "scenario": "task_stale_dismiss",
+    "expected": {"detected_type": "task_stale", "final_status": "dismissed", "has_transition_history": true, "state_machine_final_count": 1}
   },
   {
     "id": "observability_trace_success_001",
@@ -235,6 +252,9 @@
         "/api/chat",
         "/api/memory",
         "/api/context",
+        "/api/privacy/inventory",
+        "/api/privacy/export",
+        "/api/scheduler/tick",
         "/api/supervision/events",
         "/api/tts/speech"
       ],
@@ -244,6 +264,9 @@
         "TurnTrace",
         "MemoryStateResponse",
         "ContextStateResponse",
+        "PrivacyInventoryResponse",
+        "PrivacyExportResponse",
+        "SchedulerTickResponse",
         "ChatStreamDoneEvent"
       ],
       "properties": {
@@ -279,12 +302,33 @@
         "MemoryStateResponse": [
           "observability",
           "provider_trace_recent",
-          "turn_trace"
+          "turn_trace",
+          "long_term_knowledge_files"
         ],
         "ContextStateResponse": [
           "observability",
           "provider_trace_recent",
-          "turn_trace"
+          "turn_trace",
+          "long_term_knowledge_files"
+        ],
+        "PrivacyInventoryResponse": [
+          "file_count",
+          "exportable_file_count",
+          "sensitive_file_count",
+          "files",
+          "export_policy"
+        ],
+        "PrivacyExportResponse": [
+          "filename",
+          "file_count",
+          "download_url",
+          "excluded"
+        ],
+        "SchedulerTickResponse": [
+          "checked_events",
+          "notified_events",
+          "notified_event_ids",
+          "supervision_events"
         ]
       }
     }

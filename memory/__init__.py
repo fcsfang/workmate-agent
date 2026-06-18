@@ -4,9 +4,11 @@ from .context_compressor import ContextCompressor
 from .context_engine import ContextEngine
 from .context_planner import ContextPlanner
 from .dashboard import DashboardManager
+from .data_portability import DataPortabilityService
 from .focus_session import FocusSessionManager
 from .governance import MemoryGovernanceManager
 from .interpreter import InsightManager, IntentManager, MemoryExtractor, SemanticDialogueManager, SummaryManager
+from .knowledge import LongTermKnowledgeManager
 from .manager import MemoryManager
 from .pipeline import MemoryPipeline
 from .stats import BehaviorStatsManager
@@ -31,9 +33,11 @@ __all__ = [
     "ContextEngine",
     "ContextPlanner",
     "DashboardManager",
+    "DataPortabilityService",
     "FocusSessionManager",
     "InsightManager",
     "IntentManager",
+    "LongTermKnowledgeManager",
     "MemoryCategoryManager",
     "MemoryGovernanceManager",
     "MemoryExtractor",

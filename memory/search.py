@@ -7,6 +7,30 @@ from .retriever import MemoryRetriever
 
 
 class SearchManager:
+    AUTHORITATIVE_SOURCE_TYPES = {
+        "user_profile",
+        "commitment",
+        "task",
+        "high_level_insight",
+        "behavior_pattern",
+    }
+    AUTHORITATIVE_MEMORY_ITEM_TYPES = {
+        "task",
+        "subtask",
+        "commitment",
+        "profile",
+        "pattern",
+        "supervision",
+    }
+    EPISODIC_SOURCE_TYPES = {
+        "record",
+        "daily_summary",
+        "memory_item",
+        "memory_category",
+        "memory_resource",
+        "semantic_dialogue",
+    }
+
     def __init__(
         self,
         index_path: Optional[str] = None,
@@ -126,32 +150,11 @@ class SearchManager:
             emb = get_embedding("daily_summary", s_id, text)
             items.append(self._item("daily_summary", s_id, text, summary, embedding=emb))
 
-        if user_profile:
-            text = self._sanitize_text(json.dumps(user_profile, ensure_ascii=False))
-            emb = get_embedding("user_profile", "user_profile", text)
-            items.append(self._item("user_profile", "user_profile", text, user_profile, embedding=emb))
-
-        for commitment in commitments or []:
-            text = self._sanitize_text(json.dumps(commitment, ensure_ascii=False))
-            c_id = commitment.get("id", "")
-            emb = get_embedding("commitment", c_id, text)
-            items.append(self._item("commitment", c_id, text, commitment, embedding=emb))
-
-        for task in tasks or []:
-            text = self._sanitize_text(" ".join([
-                task.get("title", ""),
-                task.get("status", ""),
-                task.get("progress", ""),
-                json.dumps(task.get("blockers", []), ensure_ascii=False),
-                json.dumps(task.get("next_actions", []), ensure_ascii=False),
-                json.dumps(task.get("subtasks", []), ensure_ascii=False),
-            ]))
-            t_id = task.get("id", "")
-            emb = get_embedding("task", t_id, text)
-            items.append(self._item("task", t_id, text, task, embedding=emb))
-
         for memory_item in memory_items or []:
-            if memory_item.get("status") == "archived":
+            if (
+                memory_item.get("status") == "archived"
+                or memory_item.get("type") in self.AUTHORITATIVE_MEMORY_ITEM_TYPES
+            ):
                 continue
             text = self._sanitize_text(" ".join([
                 memory_item.get("type", ""),
@@ -201,72 +204,54 @@ class SearchManager:
             emb = get_embedding("semantic_dialogue", d_id, text)
             items.append(self._item("semantic_dialogue", d_id, text, dialogue, embedding=emb))
 
-        for insight in insights or []:
-            if insight.get("status") not in {"active", ""}:
-                continue
-            text = self._sanitize_text(" ".join([
-                insight.get("type", ""),
-                insight.get("content", ""),
-                insight.get("why_it_matters", ""),
-                insight.get("suggested_intervention", ""),
-            ]))
-            ins_id = insight.get("id", "")
-            emb = get_embedding("high_level_insight", ins_id, text)
-            items.append(self._item("high_level_insight", ins_id, text, insight, embedding=emb))
-
-        for pattern in behavior_patterns or []:
-            if pattern.get("status") not in {"active", ""}:
-                continue
-            text = self._sanitize_text(" ".join([
-                pattern.get("title", ""),
-                pattern.get("summary", ""),
-                pattern.get("suggested_intervention", ""),
-                pattern.get("tone", ""),
-                pattern.get("severity", ""),
-                json.dumps(pattern.get("evidence", []), ensure_ascii=False),
-            ]))
-            pat_id = pattern.get("id", "")
-            emb = get_embedding("behavior_pattern", pat_id, text)
-            items.append(self._item("behavior_pattern", pat_id, text, pattern, embedding=emb))
-
         if self.chroma_enabled:
             try:
-                # Delete existing items to keep database in sync with built list
-                existing = self.collection.get()
-                if existing and existing.get("ids"):
-                    self.collection.delete(ids=existing["ids"])
-                
-                if items:
-                    ids_to_add = []
-                    documents_to_add = []
-                    metadatas_to_add = []
-                    embeddings_to_add = []
-                    
-                    for item in items:
-                        ids_to_add.append(item["id"])
-                        documents_to_add.append(item["text"])
-                        
-                        metadata = {
-                            "type": item["type"],
-                            "salience": item.get("salience", 0.0),
-                            "confidence": item.get("confidence", 0.0),
-                            "importance": item.get("importance", 0.0),
-                            "status": item.get("status", ""),
-                            "updated_at": item.get("updated_at", "")
-                        }
-                        metadatas_to_add.append(metadata)
-                        
-                        emb = item.get("embedding")
-                        if emb is not None:
-                            embeddings_to_add.append(emb)
-                        else:
-                            embeddings_to_add.append([0.0])
-                            
-                    self.collection.add(
-                        ids=ids_to_add,
-                        embeddings=embeddings_to_add,
-                        documents=documents_to_add,
-                        metadatas=metadatas_to_add
+                existing = self.collection.get(include=["documents", "metadatas", "embeddings"])
+                existing_ids = existing.get("ids", []) if existing else []
+                existing_documents = existing.get("documents", []) if existing else []
+                existing_metadatas = existing.get("metadatas", []) if existing else []
+                existing_embeddings = existing.get("embeddings") if existing else []
+                if existing_embeddings is None:
+                    existing_embeddings = []
+                existing_by_id = {
+                    item_id: {
+                        "document": existing_documents[index] if index < len(existing_documents) else "",
+                        "metadata": existing_metadatas[index] if index < len(existing_metadatas) else {},
+                        "embedding": existing_embeddings[index] if index < len(existing_embeddings) else None,
+                    }
+                    for index, item_id in enumerate(existing_ids)
+                }
+
+                current_ids = {item["id"] for item in items}
+                ids_to_delete = [item_id for item_id in existing_ids if item_id not in current_ids]
+                if ids_to_delete:
+                    self.collection.delete(ids=ids_to_delete)
+
+                ids_to_upsert = []
+                documents_to_upsert = []
+                metadatas_to_upsert = []
+                embeddings_to_upsert = []
+                for item in items:
+                    metadata = self._chroma_metadata(item)
+                    embedding = item.get("embedding") if item.get("embedding") is not None else [0.0]
+                    existing_item = existing_by_id.get(item["id"], {})
+                    if (
+                        existing_item.get("document") == item["text"]
+                        and existing_item.get("metadata") == metadata
+                        and self._embedding_equal(existing_item.get("embedding"), embedding)
+                    ):
+                        continue
+                    ids_to_upsert.append(item["id"])
+                    documents_to_upsert.append(item["text"])
+                    metadatas_to_upsert.append(metadata)
+                    embeddings_to_upsert.append(embedding)
+
+                if ids_to_upsert:
+                    self.collection.upsert(
+                        ids=ids_to_upsert,
+                        embeddings=embeddings_to_upsert,
+                        documents=documents_to_upsert,
+                        metadatas=metadatas_to_upsert
                     )
             except Exception as e:
                 print(f"[SearchManager] Failed to save to ChromaDB: {e}")
@@ -289,6 +274,7 @@ class SearchManager:
         tasks: Optional[List[Dict[str, Any]]] = None,
         behavior_patterns: Optional[List[Dict[str, Any]]] = None,
         limit: int = 5,
+        filters: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         if not self.needs_retrieval(query):
             return []
@@ -320,7 +306,7 @@ class SearchManager:
                 tasks,
                 behavior_patterns,
             )
-        return self.retriever.search(query, items, limit=limit)
+        return self.retriever.search(query, items, limit=limit, filters=filters)
 
     def needs_retrieval(self, query: str) -> bool:
         query = str(query or "")
@@ -328,10 +314,25 @@ class SearchManager:
             return True
         return self._has_any(query, ["之前", "上次", "最近", "历史", "记忆", "进度", "任务", "承诺", "复盘"])
 
-    def build_retrieval_plan(self, query: str, results: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+    def build_retrieval_plan(
+        self,
+        query: str,
+        results: Optional[List[Dict[str, Any]]] = None,
+        filters: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         results = results or []
         needs = self.needs_retrieval(query)
-        return self.retriever.build_plan(query, results, needs_retrieval=needs)
+        plan = self.retriever.build_plan(query, results, needs_retrieval=needs, filters=filters)
+        plan["source_policy"] = self.source_policy()
+        return plan
+
+    def source_policy(self) -> Dict[str, Any]:
+        return {
+            "mode": "episodic_only",
+            "indexed_types": sorted(self.EPISODIC_SOURCE_TYPES),
+            "direct_context_types": sorted(self.AUTHORITATIVE_SOURCE_TYPES),
+            "principle": "RAG may recall history but cannot override current execution state.",
+        }
 
     def format_retrieval_plan(self, plan: Dict[str, Any]) -> str:
         if not plan:
@@ -342,14 +343,17 @@ class SearchManager:
             f"mode: {plan.get('mode', 'keyword')}",
             f"vector_status: {plan.get('vector_status', 'disabled')}",
             f"preferred_types: {', '.join(plan.get('preferred_types', [])) or 'none'}",
+            f"filters: {json.dumps(plan.get('filters', {}), ensure_ascii=False)}",
             f"hit_count: {plan.get('hit_count', 0)}",
             f"sufficiency: {plan.get('sufficiency', 'unknown')}",
+            f"source_policy: {json.dumps(plan.get('source_policy', self.source_policy()), ensure_ascii=False)}",
             f"reason: {plan.get('reason', '')}",
             "top_results:",
             *[
                 (
                     f"- [{item.get('source_type', '')}] {item.get('source_id', '')} "
-                    f"score={item.get('score', 0)} reason={item.get('reason', '')}"
+                    f"score={item.get('score', 0)} reason={item.get('reason', '')} "
+                    f"citation={self._format_attribution(item.get('source_attribution', {}))}"
                 )
                 for item in plan.get("top_results", [])[:5]
             ],
@@ -366,8 +370,28 @@ class SearchManager:
             reason = item.get("reason", "")
             reason_text = f" reason={reason}" if reason else ""
             item_type = item.get("source_type") or item.get("type", "")
-            lines.append(f"{index}. [{item_type}{score_text}{reason_text}] {self._compact(item['text'], 220)}")
+            attribution = item.get("source_attribution", {})
+            attribution_text = ""
+            if isinstance(attribution, dict):
+                source_id = attribution.get("source_id", "")
+                task_title = attribution.get("task_title", "")
+                attribution_text = f" source={source_id}" if source_id else ""
+                if task_title:
+                    attribution_text += f" task={task_title}"
+            lines.append(f"{index}. [{item_type}{score_text}{reason_text}{attribution_text}] {self._compact(item['text'], 220)}")
         return "\n".join(lines)
+
+    def _format_attribution(self, attribution: Dict[str, Any]) -> str:
+        if not isinstance(attribution, dict):
+            return ""
+        parts = []
+        if attribution.get("source_id"):
+            parts.append(f"source:{attribution.get('source_id')}")
+        if attribution.get("task_title"):
+            parts.append(f"task:{attribution.get('task_title')}")
+        if attribution.get("record_id"):
+            parts.append(f"record:{attribution.get('record_id')}")
+        return "|".join(parts)
 
     def save_index(self, items: List[Dict[str, Any]]) -> None:
         serializable = [{key: value for key, value in item.items() if key != "payload"} for item in items]
@@ -404,10 +428,13 @@ class SearchManager:
                         "importance": float(meta.get("importance", 0.0)) if meta else 0.0,
                         "status": meta.get("status", "") if meta else "",
                         "updated_at": meta.get("updated_at", "") if meta else "",
+                        "task_id": meta.get("task_id", "") if meta else "",
+                        "task_title": meta.get("task_title", "") if meta else "",
+                        "record_id": meta.get("record_id", "") if meta else "",
                         "embedding": emb_list
                     }
                     normalized = self._normalize_index_item(item)
-                    if normalized:
+                    if normalized and self._is_allowed_index_item(normalized):
                         items.append(normalized)
                 return items
             except Exception as e:
@@ -423,7 +450,21 @@ class SearchManager:
             return []
         if not isinstance(data, list):
             return []
-        return [item for item in (self._normalize_index_item(item) for item in data) if item]
+        return [
+            item
+            for item in (self._normalize_index_item(item) for item in data)
+            if item and self._is_allowed_index_item(item)
+        ]
+
+    def _is_allowed_index_item(self, item: Dict[str, Any]) -> bool:
+        item_type = item.get("type", "")
+        if item_type not in self.EPISODIC_SOURCE_TYPES:
+            return False
+        if item_type == "memory_item":
+            memory_kind = str(item.get("text", "")).split(" ", 1)[0].strip().lower()
+            if memory_kind in self.AUTHORITATIVE_MEMORY_ITEM_TYPES:
+                return False
+        return True
 
     def _item(
         self,
@@ -433,6 +474,7 @@ class SearchManager:
         payload: Dict[str, Any],
         embedding: Optional[List[float]] = None
     ) -> Dict[str, Any]:
+        source = self._source_metadata(item_type, item_id, payload)
         item_dict = {
             "type": item_type,
             "id": item_id,
@@ -443,6 +485,7 @@ class SearchManager:
             "importance": float(payload.get("importance", 0)) if isinstance(payload, dict) else 0,
             "status": payload.get("status", "") if isinstance(payload, dict) else "",
             "updated_at": payload.get("updated_at", "") if isinstance(payload, dict) else "",
+            **source,
             "payload": payload,
         }
         if embedding is not None:
@@ -468,8 +511,52 @@ class SearchManager:
             "importance": float(item.get("importance", 0)),
             "status": item.get("status", ""),
             "updated_at": item.get("updated_at", ""),
+            "task_id": item.get("task_id", ""),
+            "task_title": item.get("task_title", ""),
+            "record_id": item.get("record_id", ""),
             "embedding": item.get("embedding"),
         }
+
+    def _source_metadata(self, item_type: str, item_id: str, payload: Dict[str, Any]) -> Dict[str, str]:
+        if not isinstance(payload, dict):
+            return {"task_id": "", "task_title": "", "record_id": ""}
+        task_id = payload.get("task_id", "")
+        task_title = payload.get("task_title", "") or payload.get("title", "")
+        record_id = payload.get("record_id", "")
+        if item_type == "record":
+            record_id = payload.get("id", "") or item_id
+        if item_type == "task":
+            task_id = payload.get("id", "") or item_id
+            task_title = payload.get("title", "")
+        return {
+            "task_id": str(task_id or ""),
+            "task_title": str(task_title or ""),
+            "record_id": str(record_id or ""),
+        }
+
+    def _chroma_metadata(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "type": item["type"],
+            "salience": item.get("salience", 0.0),
+            "confidence": item.get("confidence", 0.0),
+            "importance": item.get("importance", 0.0),
+            "status": item.get("status", ""),
+            "updated_at": item.get("updated_at", ""),
+            "task_id": item.get("task_id", ""),
+            "task_title": item.get("task_title", ""),
+            "record_id": item.get("record_id", ""),
+        }
+
+    def _embedding_equal(self, left: Any, right: Any) -> bool:
+        if hasattr(left, "tolist"):
+            left = left.tolist()
+        if hasattr(right, "tolist"):
+            right = right.tolist()
+        if left is None:
+            return right is None
+        if not isinstance(left, list) or not isinstance(right, list) or len(left) != len(right):
+            return False
+        return all(abs(float(a) - float(b)) < 1e-9 for a, b in zip(left, right))
 
     def _has_source_data(self, *values: Any) -> bool:
         for value in values:

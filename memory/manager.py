@@ -10,9 +10,11 @@ from .context_compressor import ContextCompressor
 from .context_engine import ContextEngine
 from .context_planner import ContextPlanner
 from .dashboard import DashboardManager
+from .data_portability import DataPortabilityService
 from .focus_session import FocusSessionManager
 from .governance import MemoryGovernanceManager
 from .interpreter import InsightManager, IntentManager, MemoryExtractor, SemanticDialogueManager, SummaryManager
+from .knowledge import LongTermKnowledgeManager
 from .store import MemoryCategoryManager, MemoryItemManager, MemoryResourceManager
 from .pipeline import MemoryPipeline
 from .reflection import ReflectionManager
@@ -43,6 +45,7 @@ class MemoryManager:
         focus_session_manager: Optional[FocusSessionManager] = None,
         insight_manager: Optional[InsightManager] = None,
         intent_manager: Optional[IntentManager] = None,
+        long_term_knowledge_manager: Optional[LongTermKnowledgeManager] = None,
         memory_category_manager: Optional[MemoryCategoryManager] = None,
         memory_governance_manager: Optional[MemoryGovernanceManager] = None,
         memory_item_manager: Optional[MemoryItemManager] = None,
@@ -63,6 +66,8 @@ class MemoryManager:
         user_profile_manager: Optional[UserProfileManager] = None,
     ):
         self.memory_path = Path(memory_path) if memory_path else memory_data_path("records.json")
+        self.supervision_messages_path = self.memory_path.parent / "supervision_messages.json"
+        self.data_portability = DataPortabilityService(self.memory_path.parent)
         self.recent_limit = recent_limit
         self.summary_limit = summary_limit
         self.commitment_manager = commitment_manager or CommitmentManager()
@@ -78,6 +83,9 @@ class MemoryManager:
         self.focus_session_manager = focus_session_manager or FocusSessionManager()
         self.insight_manager = insight_manager or InsightManager()
         self.intent_manager = intent_manager or IntentManager()
+        self.long_term_knowledge_manager = long_term_knowledge_manager or LongTermKnowledgeManager(
+            str(self.memory_path.parent / "knowledge")
+        )
         self.memory_category_manager = memory_category_manager or MemoryCategoryManager()
         self.memory_governance_manager = memory_governance_manager or MemoryGovernanceManager()
         self.memory_item_manager = memory_item_manager or MemoryItemManager()
@@ -105,6 +113,7 @@ class MemoryManager:
         self.last_pipeline_result: Dict[str, Any] = {}
         self.last_reminder_control: Dict[str, Any] = {}
         self.memory_path.parent.mkdir(parents=True, exist_ok=True)
+        self.supervision_messages_path.parent.mkdir(parents=True, exist_ok=True)
 
     def set_llm_client(self, llm_client: Any) -> None:
         self.llm_client = llm_client
@@ -121,6 +130,15 @@ class MemoryManager:
 
     def set_summary_client(self, llm_client: Any) -> None:
         self.set_llm_client(llm_client)
+
+    def get_privacy_inventory(self) -> Dict[str, Any]:
+        return self.data_portability.inventory()
+
+    def export_local_data(self) -> Dict[str, Any]:
+        return self.data_portability.export()
+
+    def resolve_local_export(self, filename: str) -> Path:
+        return self.data_portability.resolve_export(filename)
 
     def load_records(self) -> List[Dict[str, Any]]:
         if not self.memory_path.exists() or self.memory_path.stat().st_size == 0:
@@ -185,6 +203,53 @@ class MemoryManager:
         self.save_records(records)
         return record
 
+    def load_supervision_messages(self) -> List[Dict[str, Any]]:
+        if not self.supervision_messages_path.exists() or self.supervision_messages_path.stat().st_size == 0:
+            return []
+        try:
+            with self.supervision_messages_path.open("r", encoding="utf-8") as file:
+                data = json.load(file)
+        except json.JSONDecodeError:
+            return []
+        if not isinstance(data, list):
+            return []
+        return [item for item in data if isinstance(item, dict)]
+
+    def save_supervision_messages(self, messages: List[Dict[str, Any]]) -> None:
+        with self.supervision_messages_path.open("w", encoding="utf-8") as file:
+            json.dump(messages[-120:], file, ensure_ascii=False, indent=2)
+
+    def add_supervision_message(self, event: Dict[str, Any], body: str) -> Dict[str, Any]:
+        messages = self.load_supervision_messages()
+        now_text = datetime.now().isoformat(timespec="seconds")
+        event_id = str(event.get("id", "") or "")
+        existing = next((item for item in messages if item.get("event_id") == event_id and event_id), None)
+        if existing:
+            return existing
+        message = {
+            "id": f"supervision-{hashlib.md5((event_id or now_text).encode('utf-8')).hexdigest()[:12]}",
+            "event_id": event_id,
+            "time": now_text,
+            "user": "",
+            "assistant": body,
+            "is_supervision": True,
+            "transient": True,
+            "source": "vision_supervision",
+            "type": event.get("type", ""),
+            "task_state_snapshot": {},
+            "extracted": {},
+        }
+        messages.append(message)
+        self.save_supervision_messages(messages)
+        return message
+
+    def recent_records_with_transient_supervision(self, limit: int = 30) -> List[Dict[str, Any]]:
+        records = self.load_records()
+        messages = self.load_supervision_messages()
+        combined = [*records, *messages]
+        combined = sorted(combined, key=lambda item: item.get("time", ""))
+        return combined[-limit:]
+
     def update_derived_memory(
         self,
         record: Dict[str, Any],
@@ -231,15 +296,19 @@ class MemoryManager:
         )
         memory_items = self.memory_item_manager.load_items()
         memory_categories = self.memory_category_manager.rebuild_from_items(memory_items)
+        behavior_patterns = self.refresh_behavior_patterns()
+        knowledge_files = self.sync_long_term_knowledge(
+            user_profile=user_profile,
+            insights=self.insight_manager.load_insights(),
+            behavior_patterns=behavior_patterns,
+        )
         retrieval_index = self.refresh_search_index(
             records,
             memory_items=memory_items,
             memory_categories=memory_categories,
             memory_resources=self.memory_resource_manager.load_resources(),
             semantic_dialogues=self.semantic_dialogue_manager.load_dialogues(),
-            insights=self.insight_manager.load_insights(),
         )
-        behavior_patterns = self.refresh_behavior_patterns()
         return {
             "resource": resource,
             "semantic_dialogue": semantic_dialogue,
@@ -248,6 +317,7 @@ class MemoryManager:
             "reflection": reflection,
             "retrieval_index": retrieval_index,
             "behavior_patterns": behavior_patterns,
+            "knowledge_files": knowledge_files,
             "commitments": commitments,
             "user_profile": user_profile,
             "recent_summary": recent_summary,
@@ -317,6 +387,32 @@ class MemoryManager:
     def get_user_profile(self) -> Dict[str, Any]:
         return self.user_profile_manager.load_profile()
 
+    def sync_long_term_knowledge(
+        self,
+        user_profile: Optional[Dict[str, Any]] = None,
+        insights: Optional[List[Dict[str, Any]]] = None,
+        behavior_patterns: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, str]:
+        return self.long_term_knowledge_manager.sync(
+            user_profile=user_profile if user_profile is not None else self.get_user_profile(),
+            insights=insights if insights is not None else self.insight_manager.load_insights(),
+            behavior_patterns=(
+                behavior_patterns
+                if behavior_patterns is not None
+                else self.behavior_pattern_manager.load_patterns()
+            ),
+        )
+
+    def get_long_term_knowledge_context(self, intent: str = "chat") -> str:
+        if not self.long_term_knowledge_manager.has_documents():
+            self.sync_long_term_knowledge()
+        return self.long_term_knowledge_manager.format_for_context(intent=intent)
+
+    def get_long_term_knowledge_files(self) -> List[Dict[str, Any]]:
+        if not self.long_term_knowledge_manager.has_documents():
+            self.sync_long_term_knowledge()
+        return self.long_term_knowledge_manager.list_documents()
+
     def get_memory_items(self, limit: int = 50) -> List[Dict[str, Any]]:
         return self.memory_item_manager.get_recent_items(limit=limit)
 
@@ -354,34 +450,29 @@ class MemoryManager:
             user_profile=self.get_user_profile(),
         )
         
-        has_new_chat_records = False
+        has_new_chat_messages = False
         for event in events:
             if event.get("type") in {"screen_deviation", "screen_accompaniment"} and event.get("status") == "detected":
                 metadata = event.get("metadata", {})
-                if not metadata.get("added_to_chat"):
+                if not metadata.get("added_to_transient_chat"):
                     fallback_msg = (
                         "检测到屏幕活动偏离了当前目标，记得回来看一眼任务哦。"
                         if event.get("type") == "screen_deviation"
                         else "检测到屏幕活动，咱们一起加油哦。"
                     )
                     body = event.get("display_message") or event.get("message") or fallback_msg
-                    self.persist_record(
-                        user_input="",
-                        assistant_output=body,
-                        extracted={},
-                        task_state=self.get_task_state(),
-                    )
-                    metadata["added_to_chat"] = True
-                    has_new_chat_records = True
+                    self.add_supervision_message(event, body)
+                    metadata["added_to_transient_chat"] = True
+                    has_new_chat_messages = True
                     
-        if has_new_chat_records:
+        if has_new_chat_messages:
             all_events = self.supervision_event_manager.load_events()
-            notified_ids = {e.get("id") for e in events if e.get("metadata", {}).get("added_to_chat")}
+            notified_ids = {e.get("id") for e in events if e.get("metadata", {}).get("added_to_transient_chat")}
             for ev in all_events:
                 if ev.get("id") in notified_ids:
                     if "metadata" not in ev or not isinstance(ev["metadata"], dict):
                         ev["metadata"] = {}
-                    ev["metadata"]["added_to_chat"] = True
+                    ev["metadata"]["added_to_transient_chat"] = True
             self.supervision_event_manager.save_events(all_events)
             
         return events
@@ -407,6 +498,8 @@ class MemoryManager:
             event = self.supervision_event_manager.get_event(event_id)
             linked_updates = self._resolve_supervision_subject(event)
             return self.supervision_event_manager.resolve(event_id, linked_updates=linked_updates)
+        if action == "dismiss":
+            return self.supervision_event_manager.dismiss(event_id)
         if action == "mute":
             return self.supervision_event_manager.mute(event_id, hours=hours)
         if action == "snooze":
@@ -568,7 +661,6 @@ class MemoryManager:
         memory_categories: Optional[List[Dict[str, Any]]] = None,
         memory_resources: Optional[List[Dict[str, Any]]] = None,
         semantic_dialogues: Optional[List[Dict[str, Any]]] = None,
-        insights: Optional[List[Dict[str, Any]]] = None,
     ) -> List[Dict[str, Any]]:
         records = records if records is not None else self.load_records()
         memory_items = memory_items if memory_items is not None else self.memory_item_manager.load_items()
@@ -577,19 +669,13 @@ class MemoryManager:
         )
         memory_resources = memory_resources if memory_resources is not None else self.memory_resource_manager.load_resources()
         semantic_dialogues = semantic_dialogues if semantic_dialogues is not None else self.semantic_dialogue_manager.load_dialogues()
-        insights = insights if insights is not None else self.insight_manager.load_insights()
         return self.context_engine.refresh_search_index(
             records,
             daily_summaries=self.get_recent_summary(days=7).get("daily_summaries", []),
-            user_profile=self.get_user_profile(),
-            commitments=self.task_state.all_commitments(),
             memory_items=memory_items,
             memory_categories=memory_categories,
             memory_resources=memory_resources,
             semantic_dialogues=semantic_dialogues,
-            insights=insights,
-            tasks=self.task_manager.load_tasks(),
-            behavior_patterns=self.behavior_pattern_manager.load_patterns(),
         )
 
     def search_related_memories(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:

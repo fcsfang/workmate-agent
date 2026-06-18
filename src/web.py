@@ -150,7 +150,11 @@ class SupervisionEvent(BaseModel):
     updated_at: Optional[str] = ""
     snoozed_until: Optional[str] = ""
     muted_until: Optional[str] = ""
+    dismissed_at: Optional[str] = ""
+    dismiss_reason: Optional[str] = ""
+    last_transition_reason: Optional[str] = ""
     feedback_history: List[Dict[str, Any]] = []
+    transition_history: List[Dict[str, Any]] = []
     metadata: Optional[Dict[str, Any]] = None
 
 
@@ -164,6 +168,7 @@ class SupervisionEventsState(BaseModel):
     feedback_stats: Dict[str, Any] = {}
     strategy: Dict[str, Any] = {}
     counts: Dict[str, int] = {}
+    state_machine: Dict[str, Any] = {}
 
 
 class MemoryItem(BaseModel):
@@ -278,6 +283,7 @@ class MemoryStateResponse(BaseModel):
     task_view: Optional[TaskView] = None
     open_commitments: List[Commitment] = []
     user_profile: Dict[str, Any] = {}
+    long_term_knowledge_files: List[Dict[str, Any]] = []
     memory_items: List[MemoryItem] = []
     memory_categories: List[MemoryCategory] = []
     memory_resources: List[Dict[str, Any]] = []
@@ -311,6 +317,7 @@ class ContextStateResponse(BaseModel):
     open_commitments: List[Commitment] = []
     task_view: Optional[TaskView] = None
     user_profile: Dict[str, Any] = {}
+    long_term_knowledge_files: List[Dict[str, Any]] = []
     memory_items: List[MemoryItem] = []
     memory_categories: List[MemoryCategory] = []
     memory_resources: List[Dict[str, Any]] = []
@@ -397,6 +404,13 @@ class SupervisionPreferencesUpdateResponse(BaseModel):
     supervision_events: SupervisionEventsState
 
 
+class SchedulerTickResponse(BaseModel):
+    checked_events: int
+    notified_events: int
+    notified_event_ids: List[str] = []
+    supervision_events: SupervisionEventsState
+
+
 class NotifyStatusResponse(BaseModel):
     enabled_channels: List[str]
     local_configured: bool
@@ -426,6 +440,36 @@ class TaskUpdateStatusResponse(BaseModel):
 class TTSRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=500)
     provider: str = "xfyun"
+
+
+class PrivacyDataFile(BaseModel):
+    path: str
+    size_bytes: int
+    modified_at: str
+    category: str
+    exportable: bool
+    sensitive: bool
+    exclusion_reason: str = ""
+
+
+class PrivacyInventoryResponse(BaseModel):
+    data_root: str
+    file_count: int
+    total_bytes: int
+    exportable_file_count: int
+    exportable_bytes: int
+    sensitive_file_count: int
+    files: List[PrivacyDataFile] = []
+    export_policy: Dict[str, List[str]] = {}
+
+
+class PrivacyExportResponse(BaseModel):
+    filename: str
+    created_at: str
+    file_count: int
+    total_bytes: int
+    download_url: str
+    excluded: List[str] = []
 
 
 class ChatStreamDeltaEvent(BaseModel):
@@ -489,8 +533,7 @@ class WorkmateWebApp:
 
     def memory_state(self, current_prompt=""):
         records = self.memory_manager.load_records()
-        recent_records = records[-30:]
-        self.memory_manager.refresh_supervision_events()
+        recent_records = self.memory_manager.recent_records_with_transient_supervision(limit=30)
         behavior_patterns = self.memory_manager.get_behavior_patterns()
         dashboard = self.memory_manager.get_dashboard_state()
         context_debug = self.memory_manager.build_context_debug()
@@ -505,6 +548,7 @@ class WorkmateWebApp:
             "task_view": self.memory_manager.get_task_view(),
             "open_commitments": self.memory_manager.get_open_commitments(),
             "user_profile": self.memory_manager.get_user_profile(),
+            "long_term_knowledge_files": self.memory_manager.get_long_term_knowledge_files(),
             "memory_items": self.memory_manager.get_memory_items(limit=30),
             "memory_categories": self.memory_manager.get_memory_categories(limit=12),
             "memory_resources": self.memory_manager.get_memory_resources(limit=12),
@@ -544,6 +588,7 @@ class WorkmateWebApp:
             "open_commitments": self.memory_manager.get_open_commitments(),
             "task_view": self.memory_manager.get_task_view(),
             "user_profile": self.memory_manager.get_user_profile(),
+            "long_term_knowledge_files": self.memory_manager.get_long_term_knowledge_files(),
             "memory_items": self.memory_manager.get_memory_items(limit=20),
             "memory_categories": self.memory_manager.get_memory_categories(limit=10),
             "memory_resources": self.memory_manager.get_memory_resources(limit=10),
@@ -611,8 +656,16 @@ class WorkmateWebApp:
         return get_provider_trace_summary(limit=20)
 
     def dashboard_state(self):
-        self.memory_manager.refresh_supervision_events()
         return self.memory_manager.get_dashboard_state()
+
+    def privacy_inventory(self):
+        return self.memory_manager.get_privacy_inventory()
+
+    def export_local_data(self):
+        return self.memory_manager.export_local_data()
+
+    def resolve_local_export(self, filename):
+        return self.memory_manager.resolve_local_export(filename)
 
     def update_task_status(self, payload):
         task_id = payload.get("id")
@@ -628,7 +681,6 @@ class WorkmateWebApp:
         }
 
     def supervision_events(self):
-        self.memory_manager.refresh_supervision_events()
         return self.memory_manager.get_supervision_event_state()
 
     def update_supervision_event(self, payload):
@@ -668,7 +720,11 @@ class WorkmateWebApp:
             time.sleep(60)
 
     def run_background_checks(self):
+        return self.scheduler_tick()
+
+    def scheduler_tick(self):
         events = self.memory_manager.refresh_supervision_events()
+        notified_event_ids = []
         for event in events:
             if not self.memory_manager.supervision_event_manager.should_notify(event, channel="background"):
                 continue
@@ -676,13 +732,20 @@ class WorkmateWebApp:
             body = event.get("display_message") or event.get("message") or "有一个事项需要你稍后回来处理。"
             self.notifier.send_notification(title, body)
             self.memory_manager.update_supervision_event(event.get("id", ""), "mark_notified")
+            notified_event_ids.append(event.get("id", ""))
+        return {
+            "checked_events": len(events),
+            "notified_events": len(notified_event_ids),
+            "notified_event_ids": notified_event_ids,
+            "supervision_events": self.memory_manager.get_supervision_event_state(),
+        }
 
 
 APP = WorkmateWebApp()
 app = FastAPI(
     title="Workmate Agent API",
     description="Local API for chat, memory, focus sessions, supervision events, and runtime observability.",
-    version="2.4.3",
+    version="2.9.0",
 )
 
 
@@ -720,6 +783,27 @@ async def get_context():
 @app.get("/api/dashboard", summary="Get today dashboard state", response_model=DashboardStateResponse)
 async def get_dashboard():
     return APP.dashboard_state()
+
+
+@app.get("/api/privacy/inventory", summary="Inspect local agent data", response_model=PrivacyInventoryResponse)
+async def get_privacy_inventory():
+    return APP.privacy_inventory()
+
+
+@app.post("/api/privacy/export", summary="Create a portable local data export", response_model=PrivacyExportResponse)
+async def post_privacy_export():
+    return APP.export_local_data()
+
+
+@app.get("/api/privacy/exports/{filename}", summary="Download a generated local data export")
+async def get_privacy_export(filename: str):
+    export_path = APP.resolve_local_export(filename)
+    return FileResponse(export_path, media_type="application/zip", filename=export_path.name)
+
+
+@app.post("/api/scheduler/tick", summary="Run one supervision scheduler tick", response_model=SchedulerTickResponse)
+async def post_scheduler_tick():
+    return APP.scheduler_tick()
 
 
 @app.get("/api/supervision/events", summary="Get active supervision events", response_model=SupervisionEventsState)

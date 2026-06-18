@@ -1,3 +1,104 @@
+## V2.9.0
+### State-centric Hierarchical Memory
+- 新增 `LongTermKnowledgeManager`，将稳定用户认知投影为 `USER.md`、`GOALS.md`、`PREFERENCES.md`、`PATTERNS.md`、`INSIGHTS.md` 五类可审阅 Markdown 文件。
+- `ContextPlanner` 默认直接注入长期认知、当前任务、承诺和专注状态，不再把画像、洞察、行为模式、原子记忆和语义对话同时重复塞入上下文。
+- `SearchManager` 明确采用 `episodic_only` 索引策略：RAG 只召回对话、每日摘要、历史记忆片段、分类、资源和语义对话；当前任务、承诺、画像、洞察与行为模式不再进入向量索引。
+- Retrieval plan 新增 `source_policy`，明确“历史召回不能覆盖当前执行状态”，并让旧 ChromaDB 中的权威状态条目在下次增量同步时自动删除。
+- 本地数据导出支持 Markdown 长期认知文件；新增分层知识、上下文边界、RAG 索引边界与可移植性测试。
+
+## V2.8.0
+### Local Data Inventory & Portable Export
+- 新增 `DataPortabilityService`，统一扫描 `memory/data` 下的本地 Agent 数据，并按 conversation、execution state、derived profile、memory index、supervision、screen observation 等类别生成可审计清单。
+- 新增 `/api/privacy/inventory`、`/api/privacy/export` 与受控下载端点，可通过 FastAPI `/docs` 查看数据范围并生成带 manifest 的 ZIP 导出包。
+- 导出边界只允许 `memory/data` 中的可移植 JSON；默认排除 `.env` / API Key、屏幕截图、屏幕观察内容、ChromaDB 索引和缓存元数据，并阻止导出文件路径穿越。
+- Web 侧栏 `SYSTEM CONFIG` 增加本地数据统计与 `EXPORT DATA` 操作，导出后由浏览器直接下载数据包。
+- OpenAPI schema eval 与 Web API smoke contract 补充 privacy 路径和强类型响应模型；新增数据可移植性测试，覆盖敏感数据排除、manifest 和路径安全。
+
+## V2.7.3
+### Resume-oriented README Front Page
+- README 顶部重写为 reviewer quick view，先展示项目定位、Agent 工程亮点、5 分钟 demo 路线、OpenAPI 和架构 walkthrough 入口。
+- 新增能力证据表，将 Agent Runtime、Memory RAG、Tool Calling、Supervision Loop、Vision Companion、API Contract 和 Evaluation 映射到具体代码入口与展示位置。
+- README 首屏新增可直接用于简历的英文 bullets，让项目从“个人工具说明”更快进入“Agent 工程项目展示”语境。
+- 保留原有项目愿景、功能清单和运行说明，避免丢失长期迭代背景。
+
+## V2.7.2
+### Interview Architecture Walkthrough
+- 新增 `docs/ARCHITECTURE_WALKTHROUGH.md`，作为面试展示用技术 walkthrough。
+- 文档包含系统架构图、Agent Loop 序列图、Hybrid Memory RAG 流程图、Tool Calling 流程图和主动监督状态机图。
+- 补充 3-5 分钟 demo script，串联 demo reset、一键启动、Web UI、Model Context、Tool Trace、RAG explainability、Supervision Events 和 FastAPI `/docs`。
+- README 增加 architecture walkthrough 入口，便于 reviewer 从示例对话继续进入工程架构讲解。
+
+## V2.7.1
+### Reproducible Demo Data Reset
+- 新增 `scripts/reset_demo_data.py`，可一键把本地 `memory/data` 重置为面试展示友好的 demo 状态。
+- 脚本默认先备份当前运行数据到 `memory/archive/demo-backup-*`，再清理本地 JSON、daily summaries、screenshots 和 Chroma 缓存，避免私人数据混入 demo。
+- Demo seed 覆盖任务生命周期、子任务、承诺、专注会话、监督事件、transient Vision 提醒、用户画像、记忆项、记忆分类、资源层、语义对话、高阶洞察、行为模式和 retrieval index。
+- README 新增“可复现 Demo 数据”说明，展示 `python scripts/reset_demo_data.py` -> `./run.sh` 的演示前准备流程。
+
+## V2.7.0
+### One-command Startup Hardening
+- `run.sh` 新增统一 `say/fail` 输出、项目根目录检查、`requirements.txt` 检查和更明确的启动失败提示。
+- 启动前会检查默认端口是否被占用；如果 `7860` 被占用，会提示使用 `WORKMATE_PORT=7861 ./run.sh` 指定其它端口。
+- `.venv` 创建和依赖安装失败时会输出可读错误，不再让用户只看到底层命令失败。
+- 终端启动提示新增 FastAPI OpenAPI 文档地址，方便面试展示时直接打开 `/docs` 查看 API schema。
+- README 快速启动段补充端口占用处理、自定义端口和错误提示说明。
+
+## V2.6.3
+### Lightweight Vision Supervision Memory Boundary
+- 屏幕监督事件不再通过 `persist_record()` 写入长期 `records.json`，避免 Vision 观察进入摘要、RAG 索引、用户画像和长期对话记忆。
+- `MemoryManager` 新增 `supervision_messages.json` 作为短期监督消息存储，并提供 `load_supervision_messages()`、`add_supervision_message()` 与 `recent_records_with_transient_supervision()`。
+- `/api/memory` 的 `recent` 会合并长期 records 与 transient supervision messages，前端仍能恢复屏幕提醒消息，但 `count` 仍只代表长期对话记录数量。
+- 屏幕事件 metadata 从 `added_to_chat` 改为 `added_to_transient_chat`，用于去重并明确这类消息不会进入长期记忆。
+- 屏幕监控测试更新为断言 Vision 提醒可见于 transient supervision messages，同时 `load_records()` 保持为空。
+
+## V2.6.2
+### Explainable Adaptive Supervision Strategy
+- `SupervisionEventManager._build_strategy()` 新增 `explanations` 输出，为每条提醒策略建议记录 decision、reason、evidence、affected_fields、recommendation、confidence 和 auto_applicable。
+- 全局提醒降噪、后台推送门槛、默认稍后间隔、按事件类型调整门槛等策略都会携带反馈证据，例如 snoozed/muted 与 acknowledged/resolved 计数。
+- `steady` 模式也会输出 `keep_current_strategy` 解释，说明当前反馈不足以支持调整，避免策略区看起来像没有决策依据。
+- 前端提醒策略详情会展示最多数条策略解释摘要和反馈计数，让用户在点击 `APPLY STRATEGY` 前知道建议来自什么证据。
+- 单测补充策略解释断言，覆盖降低推送和保持稳定两类分支。
+
+## V2.6.1
+### Scheduler Boundary for Supervision Updates
+- 新增 `/api/scheduler/tick`，用于显式执行一次主动监督检查：刷新监督事件、按后台渠道策略发送通知，并将已发送事件迁移为 `notified`。
+- `WorkmateWebApp.run_background_checks()` 复用同一个 scheduler tick，避免后台循环和手动触发走两套逻辑。
+- `/api/memory`、`/api/dashboard`、`/api/supervision/events` 等 GET 快照接口不再主动调用 `refresh_supervision_events()`，降低纯读取接口写入事件、更新偏好或写入聊天记录的风险。
+- Web API smoke 测试补充 scheduler 边界断言：GET 快照不触发 refresh，POST `/api/scheduler/tick` 才推进监督事件并发送通知。
+- API schema eval 补充 `/api/scheduler/tick` 与 `SchedulerTickResponse`，让主动监督推进入口能在 OpenAPI 和评估报告中被看见。
+
+## V2.6.0
+### Proactive Supervision State Machine
+- `SupervisionEventManager` 将监督事件生命周期显式扩展为 `detected/notified/acknowledged/snoozed/muted/resolved/dismissed`，新增 `dismissed` 终态用于关闭不需要继续跟进的提醒。
+- 每个监督事件新增 `transition_history` 与 `last_transition_reason`，记录从哪个状态迁移到哪个状态、迁移时间和原因，使主动监督闭环更可解释。
+- `build_state()` 新增 `state_machine` 摘要，返回各状态计数、状态分组和最近迁移列表，便于 API/前端/eval 查看监督系统当前闭环状态。
+- `/api/supervision/events` 的响应模型新增 dismissed、transition history 与 state machine 字段；前端监督事件卡片展示最近迁移原因，并支持 `DISMISS` 操作。
+- Evaluation Suite 的 `supervision_lifecycle` 新增 dismissed 场景和 transition history 断言，覆盖关闭提醒这一条终态路径。
+
+## V2.5.2
+### Hybrid Scoring Task Relevance & Rerank Hook
+- `MemoryRetriever` 的 hybrid scoring 新增独立 `task_relevance` 分数，结合记忆类型、task_id、task_title 与 query terms 判断任务关联度，并写入 `score_breakdown`。
+- 评分权重调整为 keyword、recency、salience、vector、task_relevance 五路可解释组合，`reason` 中会显示“任务相关”信号。
+- `MemoryRetriever` 新增可替换 `reranker` hook，支持对象式 `rerank(query, results, limit)` 或 callable reranker；rerank 失败时自动回退到原有分数排序。
+- Evaluation Suite 的 Memory Retrieval Cases 新增 task score 覆盖列，并可断言 `has_task_relevance_score`。
+- 新增 retriever 单测覆盖 `task_relevance` score breakdown 和自定义 reranker 覆写最终排序。
+
+## V2.5.1
+### Incremental ChromaDB Sync
+- `SearchManager.build_index()` 的 ChromaDB 同步从“全量 delete 后 add”改为增量 delete/upsert：仅删除本轮索引中已不存在的 ids，仅 upsert 新增或 document/metadata/embedding 发生变化的条目。
+- ChromaDB metadata 复用 V2.5.0 的 source 字段，持久化 type、status、salience、confidence、importance、updated_at、task_id、task_title、record_id。
+- 保留 JSON index fallback 路径不变；无 ChromaDB 或无 embedding 配置时仍按原有 JSON/关键词检索降级。
+- 新增 fake Chroma collection 单测，覆盖首次 upsert、无变化不重复 upsert、条目消失时 delete 的增量同步语义。
+
+## V2.5.0
+### Retrieval Metadata Filters & Source Attribution
+- `MemoryRetriever.search()` 新增可选 `filters`，支持按 memory type、status、task_id、min_salience、updated_after 收窄召回范围；默认不传 filters 时保持原有检索行为。
+- 检索结果新增 `source_attribution`，包含 source type/id、status、updated_at、task_id、task_title、record_id、confidence 和 salience，用于解释每条上下文来自哪个记忆源。
+- `SearchManager` 将 task/source 元数据提升到索引顶层，并在 JSON/ChromaDB 索引中保存 task_id、task_title、record_id，避免重载索引后 citation 信息丢失。
+- Retrieval plan、上下文格式化和前端 `MODEL CONTEXT` 均展示 citation/source attribution；`observability.rag_explainability.top_sources` 同步携带 source attribution。
+- Evaluation Suite 的 `memory_recall` 类别新增 hit rate、source attribution、filter types 指标，并在 Markdown 报告新增 `Memory Retrieval Cases` 表格。
+- 新增 metadata filter 固定用例和 retriever 单测，覆盖按类型、状态、任务关联、显著度过滤后的召回行为。
+
 ## V2.4.3
 ### Supervision Preference Tools
 - Tool Registry 新增 `get_supervision_preferences` 与 `update_supervision_preferences`，把监督提醒偏好纳入标准 Agent action layer。

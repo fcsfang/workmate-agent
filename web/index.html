@@ -1675,6 +1675,13 @@
           </div>
           <button class="focus-button" id="testNotifyBtn" type="button" style="margin-top: 10px; width: 100%;">发送测试通知 🔔</button>
           <div id="testNotifyResult" style="margin-top: 6px; font-size: 10px; font-family: var(--mono); text-align: center;"></div>
+          <div class="config-channel" style="margin-top: 12px;">
+            <span class="channel-dot" id="privacyDataDot"></span>
+            <span class="channel-name">Local Agent Data</span>
+            <span class="channel-status" id="privacyDataStatus">checking...</span>
+          </div>
+          <button class="focus-button" id="exportDataBtn" type="button" style="margin-top: 10px; width: 100%;">EXPORT DATA</button>
+          <div id="exportDataResult" style="margin-top: 6px; font-size: 10px; font-family: var(--mono); text-align: center;"></div>
         </div>
       </details>
 
@@ -1817,6 +1824,10 @@
     const completeFocus = document.querySelector("#completeFocus");
     const abandonFocus = document.querySelector("#abandonFocus");
     const contextPreview = document.querySelector("#contextPreview");
+    const exportDataBtn = document.querySelector("#exportDataBtn");
+    const exportDataResult = document.querySelector("#exportDataResult");
+    const privacyDataDot = document.querySelector("#privacyDataDot");
+    const privacyDataStatus = document.querySelector("#privacyDataStatus");
 
     let localTurns = 0;
     let transcriptRestored = false;
@@ -2357,11 +2368,18 @@
           }
           (ragExplainability.top_sources || []).slice(0, 3).forEach((item, index) => {
             const breakdown = item.score_breakdown || {};
+            const attribution = item.source_attribution || {};
             const parts = Object.keys(breakdown).sort().map((key) => `${key}=${breakdown[key]}`);
             observabilityLines.push(
               `rag_source ${index + 1}. [${item.source_type || "memory"}] ${item.source_id || ""} ` +
               `score=${item.score || 0} ${item.reason || ""}`
             );
+            if (attribution.source_id || attribution.task_title || attribution.record_id) {
+              observabilityLines.push(
+                `  citation source=${attribution.source_id || item.source_id || ""} ` +
+                `task=${attribution.task_title || ""} record=${attribution.record_id || ""}`
+              );
+            }
             if (parts.length) observabilityLines.push(`  breakdown ${parts.join(" ")}`);
             if (item.text_preview) observabilityLines.push(`  preview ${item.text_preview}`);
           });
@@ -2443,11 +2461,18 @@
         retrievalLines.push(`reason: ${retrieval.reason || ""}`);
         (retrieval.top_results || []).slice(0, 5).forEach((item, index) => {
           const breakdown = item.score_breakdown || {};
+          const attribution = item.source_attribution || {};
           retrievalLines.push(
             `${index + 1}. [${item.source_type || "memory"}] ${item.source_id || ""} score=${item.score || 0} ` +
             `keyword=${breakdown.keyword ?? 0} recency=${breakdown.recency ?? 0} salience=${breakdown.salience ?? 0} ` +
             `reason=${item.reason || ""}\n   ${item.text || ""}`
           );
+          if (attribution.source_id || attribution.task_title || attribution.record_id) {
+            retrievalLines.push(
+              `   citation: source=${attribution.source_id || item.source_id || ""} ` +
+              `task=${attribution.task_title || ""} record=${attribution.record_id || ""}`
+            );
+          }
         });
       }
       const toolLines = [];
@@ -2606,12 +2631,14 @@
           <div class="supervision-event-meta">
             <span>${escapeHtml(event.status || "detected")}</span>
             <span>${escapeHtml(event.type || "event")}</span>
+            ${event.last_transition_reason ? `<span>${escapeHtml(event.last_transition_reason)}</span>` : ""}
             ${event.updated_at ? `<span>${formatTodoTime(event.updated_at)}</span>` : ""}
           </div>
           <div class="supervision-event-actions">
             <button class="supervision-action" data-action="snooze" type="button">SNOOZE</button>
             <button class="supervision-action" data-action="acknowledge" type="button">ACK</button>
             <button class="supervision-action" data-action="mute" type="button">MUTE</button>
+            <button class="supervision-action" data-action="dismiss" type="button">DISMISS</button>
             <button class="supervision-action" data-action="resolve" type="button">DONE</button>
           </div>
         `;
@@ -2687,6 +2714,7 @@
     function renderReminderStrategy(strategy = {}) {
       currentReminderStrategy = strategy || {};
       const recommendations = strategy.recommendations || [];
+      const explanations = strategy.explanations || [];
       const typeFriction = strategy.type_friction || [];
       const typePreferenceSignals = strategy.type_preference_signals || [];
       const manualControl = strategy.manual_control || {};
@@ -2708,6 +2736,14 @@
           manualControl.quiet_until ? `quiet until ${formatTodoTime(manualControl.quiet_until)}` : "",
           tonePolicy.reply_guidance ? `tone: ${tonePolicy.reply_guidance}` : "",
           copyPolicy.summary ? `copy: ${copyPolicy.summary}` : "",
+          ...explanations.map((item) => {
+            const evidence = item.evidence || {};
+            const counts = [
+              evidence.snoozed_or_muted !== undefined ? `delay ${evidence.snoozed_or_muted}` : "",
+              evidence.acknowledged_or_resolved !== undefined ? `accept ${evidence.acknowledged_or_resolved}` : ""
+            ].filter(Boolean).join(", ");
+            return `${item.decision || "strategy"}: ${item.reason || item.recommendation || ""}${counts ? ` (${counts})` : ""}`;
+          }),
           ...recommendations.map((item) => `${item.field}: ${item.current} -> ${item.recommended}`),
           ...typeFriction.map((item) => `${item.type}: ${item.suggestion}`),
           ...typePreferenceSignals.map((item) => `${item.type}: ${item.summary}`),
@@ -3627,6 +3663,19 @@
       }
     }
 
+    async function loadPrivacyInventory() {
+      try {
+        const response = await fetch("/api/privacy/inventory");
+        if (!response.ok) throw new Error("Failed to inspect local data");
+        const inventory = await response.json();
+        privacyDataDot.className = "channel-dot active";
+        privacyDataStatus.textContent = `${inventory.exportable_file_count} FILES / ${inventory.sensitive_file_count} SENSITIVE`;
+      } catch (err) {
+        privacyDataDot.className = "channel-dot inactive";
+        privacyDataStatus.textContent = "UNAVAILABLE";
+      }
+    }
+
     const testNotifyBtn = document.querySelector("#testNotifyBtn");
     const testNotifyResult = document.querySelector("#testNotifyResult");
 
@@ -3657,6 +3706,33 @@
         }, 5000);
       }
     });
+
+    exportDataBtn.addEventListener("click", async () => {
+      exportDataBtn.disabled = true;
+      exportDataBtn.textContent = "EXPORTING...";
+      exportDataResult.textContent = "";
+      try {
+        const response = await fetch("/api/privacy/export", { method: "POST" });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Export failed");
+        const link = document.createElement("a");
+        link.href = result.download_url;
+        link.download = result.filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        exportDataResult.textContent = `${result.file_count} files exported`;
+        exportDataResult.style.color = "var(--moss)";
+      } catch (err) {
+        exportDataResult.textContent = err.message;
+        exportDataResult.style.color = "var(--cinnabar)";
+      } finally {
+        exportDataBtn.disabled = false;
+        exportDataBtn.textContent = "EXPORT DATA";
+      }
+    });
+
+    loadPrivacyInventory();
 
     // Tabs switching logic
     const tabBtnExecution = document.querySelector("#tabBtnExecution");

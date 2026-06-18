@@ -10,9 +10,12 @@ def test_context_planner_task_includes_retrieval_and_task_state():
 
     assert "task_lifecycle" in keys
     assert "task_state" in keys
+    assert "long_term_knowledge" in keys
     assert "retrieval_plan" in keys
     assert "related_memories" in keys
     assert "commitments" in keys
+    assert "user_profile" not in keys
+    assert "memory_items" not in keys
 
 
 def test_context_planner_weekly_report_includes_report_blocks():

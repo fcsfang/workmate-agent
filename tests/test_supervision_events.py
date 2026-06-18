@@ -25,11 +25,45 @@ def test_supervision_event_lifecycle_detect_ack_snooze_resolve(tmp_path):
     assert active[0]["type"] == "focus_expired"
     acknowledged = manager.acknowledge(active[0]["id"])
     assert acknowledged["status"] == "acknowledged"
+    assert acknowledged["last_transition_reason"] == "user_acknowledged"
+    assert acknowledged["transition_history"][-1]["from"] == "detected"
+    assert acknowledged["transition_history"][-1]["to"] == "acknowledged"
     snoozed = manager.snooze(active[0]["id"], minutes=30)
     assert snoozed["status"] == "snoozed"
     assert snoozed["snoozed_until"]
     resolved = manager.resolve(active[0]["id"])
     assert resolved["status"] == "resolved"
+    state = manager.build_state()
+    assert state["state_machine"]["states"]["resolved"] == 1
+    assert state["state_machine"]["recent_transitions"][0]["to"] == "resolved"
+
+
+def test_supervision_event_can_be_dismissed_as_final_state(tmp_path):
+    manager = SupervisionEventManager(
+        events_path=str(tmp_path / "events.json"),
+        preferences_path=str(tmp_path / "preferences.json"),
+    )
+    old = (datetime.now() - timedelta(days=2)).isoformat(timespec="seconds")
+
+    with patch.object(SupervisionEventManager, "_get_active_window_macos", return_value=("", "")):
+        active = manager.detect_events(
+            focus_state={"current": {}},
+            commitments=[],
+            task_view={"current": {
+                "id": "task-1",
+                "title": "整理状态机",
+                "status": "active",
+                "updated_at": old,
+            }},
+        )
+
+    dismissed = manager.dismiss(active[0]["id"])
+    assert dismissed["status"] == "dismissed"
+    assert dismissed["dismissed_at"]
+    assert dismissed["last_transition_reason"] == "user_dismissed"
+    state = manager.build_state()
+    assert state["counts"]["dismissed"] == 1
+    assert state["state_machine"]["states"]["dismissed"] == 1
 
 
 def test_supervision_event_detects_overdue_commitment_and_stale_task(tmp_path):
@@ -87,6 +121,23 @@ def test_reminder_preference_strategy_reduces_push_after_delays(tmp_path):
 
     assert strategy["mode"] == "reduce_push"
     assert strategy["preference_updates"]["browser_min_severity"] == "high"
+    assert strategy["explanations"][0]["decision"] == "raise_browser_threshold"
+    assert strategy["explanations"][0]["evidence"]["snoozed_or_muted"] == 3
+
+
+def test_reminder_strategy_keeps_explainable_steady_state(tmp_path):
+    manager = SupervisionEventManager(
+        events_path=str(tmp_path / "events.json"),
+        preferences_path=str(tmp_path / "preferences.json"),
+    )
+
+    state = manager.build_state()
+    strategy = state["strategy"]
+
+    assert strategy["mode"] == "steady"
+    assert strategy["preference_updates"] == {}
+    assert strategy["explanations"][0]["decision"] == "keep_current_strategy"
+    assert strategy["explanations"][0]["auto_applicable"] is False
 
 
 def test_voice_preferences_are_normalized_and_persisted(tmp_path):

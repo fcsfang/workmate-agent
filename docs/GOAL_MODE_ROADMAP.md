@@ -94,16 +94,18 @@ execution tracing, failure isolation, and side-effect auditing.
 
 ### V2.5 RAG & Memory Retrieval Maturity
 
+状态：进行中。V2.5.0 已补充 retrieval metadata filters、source attribution 和 Memory Retrieval Cases 报告，能按类型、状态、任务关联、显著度和时间收窄召回，并在前端/报告中解释每条上下文来源。V2.5.1 已将 ChromaDB 同步从全量删除重建改为增量 delete/upsert。V2.5.2 已补充任务相关性评分和可替换 rerank hook。
+
 目标：让记忆系统从“已经接入向量库”升级为更成熟的长期记忆检索系统。
 
 建议实现：
 
-- 将 ChromaDB 刷新从删除重建优化为真实增量 upsert / delete。
-- 支持按 memory type、时间、重要度、任务关联进行 metadata filter。
-- 强化 hybrid scoring：向量相似度、关键词、时间衰减、显著度、任务相关性分别可解释。
-- 引入轻量 rerank，可用 LLM rerank，也可先做可替换的 rerank 接口。
-- 为召回结果增加 citation / source attribution，说明每条上下文来自哪个记忆源。
-- 增加 retrieval eval，固定 query 验证召回命中率和排序质量。
+- 已完成：将 ChromaDB 刷新从删除重建优化为真实增量 upsert / delete。
+- 已完成：支持按 memory type、时间、重要度、任务关联进行 metadata filter。
+- 已完成：强化 hybrid scoring：向量相似度、关键词、时间衰减、显著度、任务相关性分别可解释。
+- 已完成：引入轻量 rerank，可用 LLM rerank，也可先做可替换的 rerank 接口。
+- 已完成：为召回结果增加 citation / source attribution，说明每条上下文来自哪个记忆源。
+- 已完成：增加 retrieval eval 指标，固定 query 验证召回命中率、citation 和 filter 覆盖。
 
 验收标准：
 
@@ -121,15 +123,17 @@ metadata filtering, source attribution, and retrieval quality evaluation.
 
 ### V2.6 Proactive Supervision Closed Loop
 
+状态：已完成。V2.6.0 已将监督事件生命周期显式整理为状态机，补充 `dismissed` 终态、`transition_history`、最近迁移原因、状态计数和最近迁移摘要，并在 API/前端/eval 中暴露这些闭环信号。V2.6.1 已拆分只读快照与主动推进边界，GET 状态接口不再刷新监督事件，后台 scheduler 和 `/api/scheduler/tick` 负责推进事件与发送通知。V2.6.2 已为自适应提醒策略补充 explanations，记录每条策略建议的反馈证据、影响字段、置信度和是否可应用。V2.6.3 已将屏幕监督提醒改为 transient supervision messages，保持页面可见但不写入长期 `records.json` 或记忆提炼链路。
+
 目标：把主动监督从“能提醒”升级为可解释的闭环状态机。
 
 建议实现：
 
-- 将任务、承诺、专注会话、屏幕观察和监督事件统一映射到监督状态机。
-- 区分 `observed`、`pending`、`notified`、`snoozed`、`resolved`、`dismissed` 等状态。
-- 避免纯读取接口产生副作用，后台 scheduler 负责主动检查与状态推进。
-- 根据用户反馈动态调整提醒策略，但保留可解释原因。
-- 屏幕陪伴仍保持轻量，不把 Vision 观察强行写入长期记忆。
+- 已完成：将任务、承诺、专注会话、屏幕观察和监督事件统一映射到监督状态机。
+- 已完成：区分 `detected`、`notified`、`acknowledged`、`snoozed`、`muted`、`resolved`、`dismissed` 等状态，并记录迁移历史。
+- 已完成：避免纯读取接口产生监督推进副作用，后台 scheduler 与 `/api/scheduler/tick` 负责主动检查与状态推进。
+- 已完成：根据用户反馈动态调整提醒策略，并保留 explainable strategy reasons、反馈证据和影响字段。
+- 已完成：屏幕陪伴保持轻量，Vision 提醒只进入 transient supervision messages，不强行写入长期记忆。
 
 验收标准：
 
@@ -147,15 +151,17 @@ screen observations, reminder policies, and user feedback into an auditable stat
 
 ### V2.7 Packaging & Demo Readiness
 
+状态：已完成。V2.7.0 已加固 `run.sh` 一键启动入口，补充项目根目录检查、端口占用提示、自定义端口方式、依赖安装失败提示和 OpenAPI 文档地址输出。V2.7.1 已新增 demo 数据重置脚本，可备份当前本地数据并写入覆盖任务、RAG、工具展示、监督事件和 transient Vision 提醒的可复现演示状态。V2.7.2 已新增面试架构 walkthrough，覆盖系统架构图、Agent Loop、RAG、工具调用、监督状态机和 3-5 分钟 demo script。V2.7.3 已将 README 首屏改为 reviewer quick view，突出项目定位、技术亮点、demo 路线、证据地图和简历 bullet。桌面包装保留为非阻塞探索项，不影响本阶段验收。
+
 目标：把项目包装成招聘者或面试官可以快速理解、快速运行、快速看到亮点的作品。
 
 建议实现：
 
-- 优化 `./run.sh` 的环境检查、端口占用提示、浏览器自动打开和错误提示。
-- 准备 demo 数据重置脚本，能一键进入可展示状态。
-- 补充架构图、Agent Loop 图、RAG 流程图、工具调用流程图。
-- 准备一段 3 到 5 分钟 demo script。
-- README 首页聚焦项目亮点、运行方式、API 文档、评估方式和简历 bullet。
+- 已完成：优化 `./run.sh` 的环境检查、端口占用提示、浏览器自动打开和错误提示。
+- 已完成：准备 demo 数据重置脚本，能一键进入可展示状态。
+- 已完成：补充架构图、Agent Loop 图、RAG 流程图、工具调用流程图。
+- 已完成：准备一段 3 到 5 分钟 demo script。
+- 已完成：README 首页聚焦项目亮点、运行方式、API 文档、评估方式和简历 bullet。
 - 可选：探索 PyInstaller + pywebview 或 Tauri + Python sidecar 的桌面包装。
 
 验收标准：
@@ -172,19 +178,50 @@ Packaged a local-first agent into a reproducible demo with one-command startup,
 OpenAPI docs, evaluation reports, and an interview-ready architecture walkthrough.
 ```
 
-## 可选后续版本
-
 ### V2.8 Privacy, Security & Provider Abstraction
+
+状态：进行中。V2.8.0 已完成本地数据清单与安全导出切片，提供隐私清单、可移植 ZIP、manifest、Web 导出入口和路径安全边界。
 
 目标：补齐本地 Agent 项目的隐私与模型供应商工程化能力。
 
-候选方向：
+建议实现：
 
-- 记忆导出、删除、重置。
+- 已完成：本地数据 inventory 与记忆导出；明确排除 API Key、截图、屏幕观察内容和可重建索引。
+- 待完成：受确认保护的记忆删除、选择性删除与完整重置。
 - 屏幕截图敏感信息提示或本地过滤。
 - LLM / Vision / Embedding / TTS provider 统一抽象。
 - API Key 配置检查与启动时诊断。
 - OpenRouter、OpenAI、讯飞、Ollama 等 provider 的统一错误分类。
+
+验收标准：
+
+- 用户能查看本地持久化数据范围，并安全导出或删除自己的数据。
+- 敏感截图、API Key 与可重建索引不会混入默认导出包。
+- Provider 配置、健康状态、错误类型和 fallback 路径能通过统一接口查看。
+- 无云端配置时，本地状态读取、数据治理和已有降级路径仍可工作。
+
+简历亮点：
+
+```text
+Designed privacy and provider boundaries for a local-first multimodal agent,
+including auditable data portability, sensitive-data controls, and unified provider diagnostics.
+```
+
+### V2.9 State-centric Hierarchical Memory
+
+状态：已完成首个架构切片。V2.9.0 已建立权威状态、分层 Markdown 长期认知与 episodic RAG 的职责边界。
+
+目标：让记忆系统按 Workmate 的监督用途组织，而不是把所有长期数据都交给模糊检索。
+
+已完成：
+
+- 当前任务、承诺、专注会话和监督状态继续确定性读取。
+- 用户、目标、偏好、模式和洞察形成可审阅 Markdown 长期认知层。
+- RAG 收紧为历史情景召回，不再索引权威状态与稳定认知。
+- 上下文规划按意图选择长期认知，并减少重复上下文块。
+- 数据导出纳入 Markdown 长期认知文件。
+
+后续可选增强：为用户手工编辑 Markdown 增加受控合并区，以及为已完成任务生成独立 task episode。
 
 ## Goal 模式每轮执行流程
 
@@ -199,6 +236,6 @@ OpenAPI docs, evaluation reports, and an interview-ready architecture walkthroug
 
 ## 当前下一步
 
-下一步建议从 V2.3 开始，优先做 Agent Observability & Evaluation。
+下一步回到 V2.8 Privacy, Security & Provider Abstraction，优先补充受确认保护的数据删除/重置，再进入截图敏感信息控制与 provider 抽象。V2.9.0 的记忆边界已完成，不继续扩张为新的存储系统。
 
 不要先做更多提醒文案、语音音色或个人偏好细节。那些会改善体验，但不能明显提升这个项目作为简历 Agent 工程的含金量。

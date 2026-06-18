@@ -11,8 +11,17 @@ from .paths import memory_data_path
 class SupervisionEventManager:
     ACTIVE_STATUSES = {"detected", "notified", "acknowledged"}
     PAUSED_STATUSES = {"snoozed", "muted"}
-    FINAL_STATUSES = {"resolved"}
+    FINAL_STATUSES = {"resolved", "dismissed"}
     VALID_STATUSES = ACTIVE_STATUSES | PAUSED_STATUSES | FINAL_STATUSES
+    STATE_LABELS = {
+        "detected": "已发现",
+        "notified": "已提醒",
+        "acknowledged": "已确认",
+        "snoozed": "稍后提醒",
+        "muted": "已静音",
+        "resolved": "已完成",
+        "dismissed": "已关闭",
+    }
 
     def __init__(
         self,
@@ -237,8 +246,10 @@ class SupervisionEventManager:
                 "snoozed": len(snoozed),
                 "muted": len(muted),
                 "resolved": len([event for event in events if event.get("status") == "resolved"]),
+                "dismissed": len([event for event in events if event.get("status") == "dismissed"]),
                 "total": len(events),
             },
+            "state_machine": self._state_machine_summary(events),
         }
 
     def mark_notified(self, event_id: str) -> Dict[str, Any]:
@@ -264,6 +275,16 @@ class SupervisionEventManager:
         if linked_updates is not None:
             fields["linked_updates"] = linked_updates
         return self._transition(event_id, "resolved", fields)
+
+    def dismiss(self, event_id: str, reason: str = "user_dismissed") -> Dict[str, Any]:
+        return self._transition(
+            event_id,
+            "dismissed",
+            {
+                "dismissed_at": datetime.now().isoformat(timespec="seconds"),
+                "dismiss_reason": str(reason or "user_dismissed").strip() or "user_dismissed",
+            },
+        )
 
     def mute(self, event_id: str, hours: int = 24) -> Dict[str, Any]:
         hours = self._bounded_int(hours, 1, 168)
@@ -1007,10 +1028,21 @@ class SupervisionEventManager:
             "snoozed_at": "",
             "snoozed_until": "",
             "resolved_at": "",
+            "dismissed_at": "",
+            "dismiss_reason": "",
             "muted_at": "",
             "muted_until": "",
             "linked_updates": [],
             "feedback_history": [],
+            "transition_history": [
+                self._transition_record(
+                    from_status="",
+                    to_status="detected",
+                    at=now_text,
+                    reason="candidate_detected",
+                    fields={},
+                )
+            ],
             "created_at": now_text,
             "updated_at": now_text,
         })
@@ -1035,9 +1067,18 @@ class SupervisionEventManager:
                 "screen_deviation",
                 "screen_accompaniment",
             }:
+                previous_status = str(event.get("status", "detected") or "detected")
                 event["status"] = "resolved"
                 event["resolved_at"] = now_text
                 event["updated_at"] = now_text
+                self._append_transition(
+                    event,
+                    from_status=previous_status,
+                    to_status="resolved",
+                    now_text=now_text,
+                    reason="candidate_disappeared",
+                    fields={"resolved_at": now_text},
+                )
 
     def _transition(self, event_id: str, status: str, fields: Dict[str, Any]) -> Dict[str, Any]:
         if status not in self.VALID_STATUSES:
@@ -1046,9 +1087,18 @@ class SupervisionEventManager:
         now_text = datetime.now().isoformat(timespec="seconds")
         for event in events:
             if event.get("id") == event_id:
+                previous_status = str(event.get("status", "detected") or "detected")
                 event["status"] = status
                 event["updated_at"] = now_text
                 event.update(fields)
+                self._append_transition(
+                    event,
+                    from_status=previous_status,
+                    to_status=status,
+                    now_text=now_text,
+                    reason=self._transition_reason(previous_status, status, fields),
+                    fields=fields,
+                )
                 self._append_feedback(event, status, now_text, fields)
                 self.save_events(events)
                 return event
@@ -1083,10 +1133,15 @@ class SupervisionEventManager:
             "snoozed_at": item.get("snoozed_at", ""),
             "snoozed_until": item.get("snoozed_until", ""),
             "resolved_at": item.get("resolved_at", ""),
+            "dismissed_at": item.get("dismissed_at", ""),
+            "dismiss_reason": item.get("dismiss_reason", ""),
             "muted_at": item.get("muted_at", ""),
             "muted_until": item.get("muted_until", ""),
             "feedback_history": item.get("feedback_history", [])
             if isinstance(item.get("feedback_history", []), list) else [],
+            "transition_history": item.get("transition_history", [])
+            if isinstance(item.get("transition_history", []), list) else [],
+            "last_transition_reason": item.get("last_transition_reason", ""),
             "created_at": item.get("created_at", ""),
             "updated_at": item.get("updated_at", ""),
         }
@@ -1105,6 +1160,89 @@ class SupervisionEventManager:
             },
         })
         event["feedback_history"] = history[-20:]
+
+    def _append_transition(
+        self,
+        event: Dict[str, Any],
+        from_status: str,
+        to_status: str,
+        now_text: str,
+        reason: str,
+        fields: Dict[str, Any],
+    ) -> None:
+        history = event.get("transition_history", [])
+        if not isinstance(history, list):
+            history = []
+        history.append(self._transition_record(from_status, to_status, now_text, reason, fields))
+        event["transition_history"] = history[-30:]
+        event["last_transition_reason"] = reason
+
+    def _transition_record(
+        self,
+        from_status: str,
+        to_status: str,
+        at: str,
+        reason: str,
+        fields: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        details = {
+            key: value
+            for key, value in (fields or {}).items()
+            if key.endswith("_until") or key.endswith("_at") or key in {"dismiss_reason"}
+        }
+        return {
+            "from": from_status,
+            "to": to_status,
+            "at": at,
+            "reason": reason,
+            "details": details,
+        }
+
+    def _transition_reason(self, previous_status: str, status: str, fields: Dict[str, Any]) -> str:
+        if status == "notified":
+            return "notification_sent"
+        if status == "acknowledged":
+            return "user_acknowledged"
+        if status == "snoozed":
+            return "user_snoozed"
+        if status == "muted":
+            return "user_muted"
+        if status == "resolved":
+            return "user_resolved" if previous_status != "detected" else "user_marked_done"
+        if status == "dismissed":
+            return str(fields.get("dismiss_reason") or "user_dismissed")
+        return "status_updated"
+
+    def _state_machine_summary(self, events: List[Dict[str, Any]]) -> Dict[str, Any]:
+        status_counts: Dict[str, int] = {status: 0 for status in sorted(self.VALID_STATUSES)}
+        recent_transitions = []
+        for event in events:
+            status = str(event.get("status", "detected") or "detected")
+            if status in status_counts:
+                status_counts[status] += 1
+            history = event.get("transition_history", []) or []
+            if isinstance(history, list):
+                for item in history[-3:]:
+                    if not isinstance(item, dict):
+                        continue
+                    recent_transitions.append({
+                        "event_id": event.get("id", ""),
+                        "type": event.get("type", ""),
+                        "subject_title": event.get("subject_title", ""),
+                        "from": item.get("from", ""),
+                        "to": item.get("to", ""),
+                        "at": item.get("at", ""),
+                        "reason": item.get("reason", ""),
+                    })
+        recent_transitions = sorted(recent_transitions, key=lambda item: item.get("at", ""), reverse=True)[:10]
+        return {
+            "states": status_counts,
+            "active_statuses": sorted(self.ACTIVE_STATUSES),
+            "paused_statuses": sorted(self.PAUSED_STATUSES),
+            "final_statuses": sorted(self.FINAL_STATUSES),
+            "labels": self.STATE_LABELS,
+            "recent_transitions": recent_transitions,
+        }
 
     def _feedback_stats(self, events: List[Dict[str, Any]]) -> Dict[str, Any]:
         by_action: Dict[str, int] = {}
@@ -1144,6 +1282,7 @@ class SupervisionEventManager:
         delayed = int(by_action.get("snoozed", 0) or 0) + int(by_action.get("muted", 0) or 0)
         accepted = int(by_action.get("acknowledged", 0) or 0) + int(by_action.get("resolved", 0) or 0)
         recommendations = []
+        explanations = []
         updates: Dict[str, Any] = {}
 
         if delayed >= 3 and delayed > accepted:
@@ -1155,6 +1294,18 @@ class SupervisionEventManager:
                     "reason": "用户对提醒更多选择稍后或静音，浏览器通知适合只推送高优先级事件。",
                     "impact": "低/中等级事件仍保留在页面内，但不弹出浏览器通知。",
                 })
+                explanations.append(self._strategy_explanation(
+                    decision="raise_browser_threshold",
+                    reason="用户对提醒更多选择稍后或静音。",
+                    evidence={
+                        "snoozed_or_muted": delayed,
+                        "acknowledged_or_resolved": accepted,
+                        "last_feedback_at": feedback_stats.get("last_feedback_at", ""),
+                    },
+                    affected_fields=["browser_min_severity", "push_min_severity"],
+                    recommendation="浏览器通知只推送高优先级事件。",
+                    confidence="medium",
+                ))
                 updates["browser_min_severity"] = "high"
                 updates["push_min_severity"] = "high"
             if preferences.get("background_min_severity") != "high":
@@ -1165,6 +1316,17 @@ class SupervisionEventManager:
                     "reason": "后台推送比页面提醒更打扰，适合保持最高门槛。",
                     "impact": "macOS/Bark/飞书等后台通知只处理高优先级事件。",
                 })
+                explanations.append(self._strategy_explanation(
+                    decision="keep_background_strict",
+                    reason="后台推送打扰度高，且近期反馈没有支持提高后台主动性。",
+                    evidence={
+                        "snoozed_or_muted": delayed,
+                        "acknowledged_or_resolved": accepted,
+                    },
+                    affected_fields=["background_min_severity"],
+                    recommendation="后台通知保持高门槛。",
+                    confidence="high",
+                ))
                 updates["background_min_severity"] = "high"
             if int(preferences.get("default_snooze_minutes", 60) or 60) < 120:
                 recommendations.append({
@@ -1174,6 +1336,17 @@ class SupervisionEventManager:
                     "reason": "稍后提醒次数偏多，默认稍后间隔可以放长一点。",
                     "impact": "减少短时间内重复回来的提醒。",
                 })
+                explanations.append(self._strategy_explanation(
+                    decision="extend_snooze_interval",
+                    reason="用户多次选择稍后或静音，短周期重复提醒可能偏打扰。",
+                    evidence={
+                        "snoozed_or_muted": delayed,
+                        "current_default_snooze_minutes": preferences.get("default_snooze_minutes", 60),
+                    },
+                    affected_fields=["default_snooze_minutes"],
+                    recommendation="默认稍后间隔延长到 120 分钟。",
+                    confidence="medium",
+                ))
                 updates["default_snooze_minutes"] = 120
             mode = "reduce_push"
             summary = "提醒反馈显示用户可能需要更安静一点。"
@@ -1185,11 +1358,36 @@ class SupervisionEventManager:
                 "reason": "用户近期更常确认或关闭提醒，可以允许中等级事件主动推送。",
                 "impact": "浏览器通知会稍微积极一点，但后台推送仍保持更高门槛。",
             })
+            explanations.append(self._strategy_explanation(
+                decision="lower_browser_threshold",
+                reason="用户近期更常确认或完成提醒，说明浏览器层中等级提醒可能是有帮助的。",
+                evidence={
+                    "acknowledged_or_resolved": accepted,
+                    "snoozed_or_muted": delayed,
+                    "current_browser_min_severity": preferences.get("browser_min_severity", "high"),
+                },
+                affected_fields=["browser_min_severity", "push_min_severity"],
+                recommendation="允许中等级事件触发浏览器通知。",
+                confidence="medium",
+            ))
             updates["browser_min_severity"] = "medium"
             updates["push_min_severity"] = "medium"
             mode = "allow_more_push"
             summary = "用户近期能较好处理提醒，可以略微提高主动性。"
         else:
+            explanations.append(self._strategy_explanation(
+                decision="keep_current_strategy",
+                reason="反馈数量或倾向还不足以支持调整提醒策略。",
+                evidence={
+                    "snoozed_or_muted": delayed,
+                    "acknowledged_or_resolved": accepted,
+                    "total_feedback": feedback_stats.get("total", 0),
+                },
+                affected_fields=[],
+                recommendation="保持当前策略，继续观察。",
+                confidence="high" if feedback_stats.get("total", 0) else "low",
+                auto_applicable=False,
+            ))
             mode = "steady"
             summary = "当前提醒策略保持稳定即可。"
 
@@ -1215,7 +1413,23 @@ class SupervisionEventManager:
                     "type": event_type,
                     "mode": "reduce_push_for_type",
                     "summary": "这一类提醒更常被稍后或静音，适合只保留页面提醒或提高弹窗门槛。",
+                    "evidence": {
+                        "snoozed_or_muted": type_delayed,
+                        "acknowledged_or_resolved": type_accepted,
+                    },
                 })
+                explanations.append(self._strategy_explanation(
+                    decision="raise_type_threshold",
+                    reason=f"{event_type} 类型提醒更常被稍后或静音。",
+                    evidence={
+                        "event_type": event_type,
+                        "snoozed_or_muted": type_delayed,
+                        "acknowledged_or_resolved": type_accepted,
+                    },
+                    affected_fields=[f"event_type_min_severity.{event_type}.browser", f"event_type_min_severity.{event_type}.background"],
+                    recommendation="提高这一类事件的弹窗和后台推送门槛。",
+                    confidence="medium",
+                ))
             elif type_accepted >= 3 and type_accepted >= type_delayed * 2:
                 suggested_channels = {"browser": "medium"}
                 type_preference_updates[event_type] = suggested_channels
@@ -1223,7 +1437,23 @@ class SupervisionEventManager:
                     "type": event_type,
                     "mode": "allow_browser_for_type",
                     "summary": "这一类提醒更常被确认或关闭，可以允许中等级浏览器提醒。",
+                    "evidence": {
+                        "acknowledged_or_resolved": type_accepted,
+                        "snoozed_or_muted": type_delayed,
+                    },
                 })
+                explanations.append(self._strategy_explanation(
+                    decision="lower_type_browser_threshold",
+                    reason=f"{event_type} 类型提醒更常被确认或完成。",
+                    evidence={
+                        "event_type": event_type,
+                        "acknowledged_or_resolved": type_accepted,
+                        "snoozed_or_muted": type_delayed,
+                    },
+                    affected_fields=[f"event_type_min_severity.{event_type}.browser"],
+                    recommendation="允许这一类事件触发中等级浏览器提醒。",
+                    confidence="medium",
+                ))
 
         if type_preference_updates:
             updates["event_type_min_severity"] = self._merge_event_type_updates(
@@ -1243,6 +1473,7 @@ class SupervisionEventManager:
             "mode": mode,
             "summary": summary,
             "recommendations": recommendations,
+            "explanations": explanations[:8],
             "preference_updates": updates,
             "type_friction": type_friction[:5],
             "type_preference_signals": type_preference_signals[:5],
@@ -1270,6 +1501,26 @@ class SupervisionEventManager:
             "organize_first": organize_first,
             "no_proof": no_proof,
             "summary": self._copy_policy_summary(low_pressure, concise, organize_first, no_proof),
+        }
+
+    def _strategy_explanation(
+        self,
+        decision: str,
+        reason: str,
+        evidence: Dict[str, Any],
+        affected_fields: List[str],
+        recommendation: str,
+        confidence: str = "medium",
+        auto_applicable: bool = True,
+    ) -> Dict[str, Any]:
+        return {
+            "decision": decision,
+            "reason": reason,
+            "evidence": evidence if isinstance(evidence, dict) else {},
+            "affected_fields": affected_fields if isinstance(affected_fields, list) else [],
+            "recommendation": recommendation,
+            "confidence": confidence if confidence in {"low", "medium", "high"} else "medium",
+            "auto_applicable": bool(auto_applicable),
         }
 
     def _copy_policy_summary(

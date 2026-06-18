@@ -41,7 +41,7 @@ class ContextPlanner:
     ) -> List[str]:
         intent = (classification or {}).get("intent") or self.intent(current_prompt)
         period = self.time_period()
-        keys = ["intent", "user_profile", "task_lifecycle", "task_state", "focus_session", "time_context"]
+        keys = ["intent", "long_term_knowledge", "task_lifecycle", "task_state", "focus_session", "time_context"]
 
         if is_morning:
             keys.append("morning_briefing")
@@ -54,32 +54,28 @@ class ContextPlanner:
             keys.append("behavior_stats")
 
         if intent in {"task", "review", "supervision", "search"}:
-            keys.extend(["high_level_insights", "memory_governance"])
+            keys.append("memory_governance")
 
         if intent in {"task", "review", "supervision"} and period != "night":
             keys.append("dashboard")
             keys.append("supervision")
             keys.append("supervision_events")
-            keys.append("behavior_patterns")
 
         if self.needs_support_knowledge(current_prompt):
             keys.append("support_knowledge")
 
         if intent in {"task", "review", "search", "supervision"}:
-            keys.extend(["retrieval_plan", "semantic_dialogues", "memory_categories", "memory_items"])
+            keys.extend(["retrieval_plan", "related_memories"])
 
         if intent in {"task", "review", "supervision"}:
             keys.extend(["commitments", "recent_summary"])
 
-        if intent in {"task", "review", "search"}:
-            keys.append("related_memories")
-
         if intent == "review":
-            keys.extend(["reflections", "memory_summary", "structured_summary", "behavior_stats", "behavior_patterns", "dashboard"])
+            keys.extend(["reflections", "memory_summary", "structured_summary", "behavior_stats", "dashboard"])
         elif intent == "task":
             keys.append("structured_summary")
         elif intent == "weekly_report":
-            keys.extend(["weekly_report_data", "high_level_insights", "behavior_stats", "behavior_patterns", "dashboard", "commitments", "reflections", "supervision_events"])
+            keys.extend(["weekly_report_data", "behavior_stats", "dashboard", "commitments", "reflections", "supervision_events"])
         return self._unique(keys)
 
     def time_period(self) -> str:

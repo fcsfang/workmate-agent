@@ -353,6 +353,7 @@ class AgentRuntime:
                     "score": item.get("score", 0),
                     "reason": item.get("reason", ""),
                     "score_breakdown": item.get("score_breakdown", {}),
+                    "source_attribution": item.get("source_attribution", {}),
                     "text_preview": self._preview(item.get("text", ""), 120),
                 }
                 for item in top_results[:5]

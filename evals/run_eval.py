@@ -111,15 +111,30 @@ class EvaluationSuite:
 
     def eval_memory_recall(self, case: Dict[str, Any]) -> EvalResult:
         retriever = MemoryRetriever(vector_enabled=False)
-        actual_results = retriever.search(case.get("input", ""), case.get("items", []), limit=3)
+        actual_results = retriever.search(
+            case.get("input", ""),
+            case.get("items", []),
+            limit=3,
+            filters=case.get("filters", {}),
+        )
+        expected = case.get("expected", {})
+        expected_source = expected.get("top_source_id")
+        hit_ids = [item.get("source_id", "") for item in actual_results]
         actual = {
             "top_source_id": actual_results[0].get("source_id", "") if actual_results else "",
             "top_source_type": actual_results[0].get("source_type", "") if actual_results else "",
             "hit_count": len(actual_results),
             "top_score": actual_results[0].get("score", 0) if actual_results else 0,
+            "has_task_relevance_score": "task_relevance" in ((actual_results[0].get("score_breakdown", {}) if actual_results else {})),
+            "hit_rate": 1.0 if expected_source and expected_source in hit_ids else 0.0,
+            "has_source_attribution": bool((actual_results[0].get("source_attribution") if actual_results else {})),
+            "filter_types": case.get("filters", {}).get("types", []),
         }
-        expected = case.get("expected", {})
-        passed = actual.get("top_source_id") == expected.get("top_source_id")
+        passed = actual.get("top_source_id") == expected_source
+        if "has_source_attribution" in expected:
+            passed = passed and actual["has_source_attribution"] == expected["has_source_attribution"]
+        if "has_task_relevance_score" in expected:
+            passed = passed and actual["has_task_relevance_score"] == expected["has_task_relevance_score"]
         return self._result(case, passed, actual)
 
     def eval_task_tracking(self, case: Dict[str, Any]) -> EvalResult:
@@ -275,10 +290,34 @@ class EvaluationSuite:
                     }},
                 )
                 event = manager.snooze(active[0]["id"], minutes=30)
+            elif scenario == "task_stale_dismiss":
+                old = (datetime.now() - timedelta(days=2)).isoformat(timespec="seconds")
+                active = manager.detect_events(
+                    focus_state={"current": {}},
+                    commitments=[],
+                    task_view={"current": {
+                        "id": "task-dismiss",
+                        "title": "关闭旧提醒",
+                        "status": "active",
+                        "updated_at": old,
+                    }},
+                )
+                event = manager.dismiss(active[0]["id"])
             else:
                 raise ValueError(f"unknown supervision scenario: {scenario}")
 
-            actual = {"detected_type": active[0].get("type", ""), "final_status": event.get("status", "")}
+            state = manager.build_state()
+            actual = {
+                "detected_type": active[0].get("type", ""),
+                "final_status": event.get("status", ""),
+                "has_transition_history": bool(event.get("transition_history")),
+                "last_transition_reason": event.get("last_transition_reason", ""),
+                "state_machine_final_count": (
+                    state.get("state_machine", {})
+                    .get("states", {})
+                    .get(event.get("status", ""), 0)
+                ),
+            }
             expected = case.get("expected", {})
             passed = all(actual.get(key) == value for key, value in expected.items())
             return self._result(case, passed, actual)
@@ -705,6 +744,27 @@ def format_markdown(report: Dict[str, Any]) -> str:
             lines.append(
                 f"- `{category}`: {metric.get('passed', 0)}/{metric.get('total', 0)}. "
                 f"{category_notes.get(category, '')}"
+            )
+
+    memory_cases = [
+        item for item in report.get("results", [])
+        if item.get("category") == "memory_recall"
+    ]
+    if memory_cases:
+        lines.extend(["", "## Memory Retrieval Cases", ""])
+        lines.extend([
+            "| case | passed | top source | type | hit rate | citation | task score | filters |",
+            "| --- | --- | --- | --- | ---: | --- | --- | --- |",
+        ])
+        for item in memory_cases:
+            actual = item.get("actual") or {}
+            filters = actual.get("filter_types") or []
+            lines.append(
+                f"| `{item.get('case_id', '')}` | {item.get('passed')} | "
+                f"{actual.get('top_source_id', '')} | {actual.get('top_source_type', '')} | "
+                f"{actual.get('hit_rate', 0)} | {actual.get('has_source_attribution')} | "
+                f"{actual.get('has_task_relevance_score')} | "
+                f"{', '.join(filters) if isinstance(filters, list) else filters} |"
             )
 
     observability_cases = [
