@@ -451,11 +451,13 @@ class LLMClient:
                     continue
                 choice = chunk.choices[0]
                 delta = getattr(choice, "delta", {})
-                content = delta.get("content") if isinstance(delta, dict) else getattr(delta, "content", None)
+                content = self._stream_content(delta)
                 if content:
                     yielded = True
                     output_chars += len(content)
                     yield content
+            if not yielded:
+                raise RuntimeError("流式响应结束，但 provider 没有返回可见文本")
             record_provider_call(
                 "llm",
                 provider=self._provider_label(self.baseUrl),
@@ -544,6 +546,24 @@ class LLMClient:
                 raise
             if content:
                 yield content
+
+    @staticmethod
+    def _stream_content(delta):
+        content = delta.get("content") if isinstance(delta, dict) else getattr(delta, "content", None)
+        if isinstance(content, str):
+            return content
+        if not isinstance(content, list):
+            return ""
+
+        parts = []
+        for part in content:
+            if isinstance(part, str):
+                parts.append(part)
+                continue
+            text = part.get("text") if isinstance(part, dict) else getattr(part, "text", None)
+            if isinstance(text, str):
+                parts.append(text)
+        return "".join(parts)
 
     def invoke_raw(self, messages):
         started = time.perf_counter()

@@ -1216,6 +1216,7 @@ class SupervisionEventManager:
     def _state_machine_summary(self, events: List[Dict[str, Any]]) -> Dict[str, Any]:
         status_counts: Dict[str, int] = {status: 0 for status in sorted(self.VALID_STATUSES)}
         recent_transitions = []
+        transition_sequence = 0
         for event in events:
             status = str(event.get("status", "detected") or "detected")
             if status in status_counts:
@@ -1225,6 +1226,7 @@ class SupervisionEventManager:
                 for item in history[-3:]:
                     if not isinstance(item, dict):
                         continue
+                    transition_sequence += 1
                     recent_transitions.append({
                         "event_id": event.get("id", ""),
                         "type": event.get("type", ""),
@@ -1233,8 +1235,15 @@ class SupervisionEventManager:
                         "to": item.get("to", ""),
                         "at": item.get("at", ""),
                         "reason": item.get("reason", ""),
+                        "_sequence": transition_sequence,
                     })
-        recent_transitions = sorted(recent_transitions, key=lambda item: item.get("at", ""), reverse=True)[:10]
+        recent_transitions = sorted(
+            recent_transitions,
+            key=lambda item: (item.get("at", ""), item.get("_sequence", 0)),
+            reverse=True,
+        )[:10]
+        for item in recent_transitions:
+            item.pop("_sequence", None)
         return {
             "states": status_counts,
             "active_statuses": sorted(self.ACTIVE_STATUSES),

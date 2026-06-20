@@ -2,7 +2,7 @@
 
 Workmate Agent 是一个 **local-first productivity agent**。它围绕任务、承诺、专注会话和屏幕活动维护长期状态，通过分层记忆、受控工具调用和主动监督，帮助用户持续推进目标，而不只是完成一轮问答。
 
-> 当前版本：V2.9.0 · Python 3.12 · FastAPI · ChromaDB · OpenAI-compatible API
+> 当前版本：V2.9.2 · Python 3.12 · FastAPI · ChromaDB · OpenAI-compatible API
 
 项目愿景是让 Agent 能在较长周期内理解用户的目标与执行节奏，在合适的时候温和提醒偏航、帮助收束注意力，并推动任务形成闭环。它强调陪伴与监督，而不是替用户完成具体工作。
 
@@ -62,7 +62,7 @@ detected → notified → acknowledged / snoozed / muted → resolved / dismisse
 ### 5. 可观察与可评估
 
 - FastAPI `/docs` 暴露强类型 OpenAPI 合同
-- Web `MODEL CONTEXT` 展示上下文、RAG、工具和 provider trace
+- Web 调试模式 `/?debug=1` 的 `MODEL CONTEXT` 展示上下文、RAG、工具和 provider trace
 - Evaluation Suite 覆盖意图、记忆召回、任务、承诺、工具与监督状态机
 - pytest 与 GitHub Actions 自动执行语法检查、测试和 eval smoke test
 - 本地数据支持 inventory 与带 manifest 的 ZIP 导出
@@ -126,7 +126,7 @@ python scripts/reset_demo_data.py
 
 1. 在聊天区汇报一个任务计划。
 2. 查看任务、承诺和专注状态更新。
-3. 打开 `MODEL CONTEXT` 查看 RAG 与 tool trace。
+3. 访问 `http://127.0.0.1:7860/?debug=1`，打开 `MODEL CONTEXT` 查看 RAG 与 tool trace。
 4. 在监督事件中演示 snooze、resolve 或 dismiss。
 5. 打开 `/docs` 展示 API schema。
 

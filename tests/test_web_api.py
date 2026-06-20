@@ -9,6 +9,10 @@ def test_web_api_context_and_memory_smoke(monkeypatch, tmp_path):
     web = importlib.import_module("src.web")
 
     class FakeAgent:
+        def invoke_stream(self, prompt):
+            yield "第一段"
+            yield "第二段"
+
         def get_last_context(self):
             return [{"role": "system", "content": "fake context"}]
 
@@ -223,5 +227,14 @@ def test_web_api_context_and_memory_smoke(monkeypatch, tmp_path):
         assert "/api/scheduler/tick" in openapi["paths"]
         assert "/api/privacy/inventory" in openapi["paths"]
         assert "/api/privacy/export" in openapi["paths"]
+        assert "ChatStreamDeltaEvent" in openapi["components"]["schemas"]
+        assert "ChatStreamDoneEvent" in openapi["components"]["schemas"]
+
+        with client.stream("POST", "/api/chat", json={"prompt": "测试流式输出"}) as response:
+            assert response.status_code == 200
+            lines = [line for line in response.iter_lines() if line.startswith("data: ")]
+        events = [__import__("json").loads(line[6:]) for line in lines]
+        assert [event["type"] for event in events] == ["delta", "delta", "done"]
+        assert "".join(event.get("content", "") for event in events) == "第一段第二段"
     finally:
         os.environ.pop("WORKMATE_DISABLE_SCHEDULER", None)

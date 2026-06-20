@@ -2,6 +2,21 @@
 
 本文档记录 Workmate Agent 的重要能力演进与架构决策。当前版本保留较详细说明；早期版本按工程阶段归档，细粒度修复可通过 Git history 查询。
 
+## V2.9.2 - Daily-use Sidebar
+
+- 默认侧栏收敛为今日概览、当前计划、Todo、未关闭承诺、专注会话和监督提醒。
+- 七日回顾改为折叠区域，减少低频信息占用垂直空间。
+- 隐藏 records、memory internals、tool/runtime trace、Model Context 和系统诊断等开发信息。
+- 保留 `?debug=1` 调试入口，可恢复 Memory tab、System Config、Provider/Tool Trace 和 Model Context。
+- 精简重复的 mainline/open loops 卡片并缩小品牌头部，确保桌面和移动端输入区始终可见。
+
+## V2.9.1 - Reliable Streaming Output
+
+- 前端流式阶段不再为每个 token 重跑完整 Markdown 与 Prism 渲染，改为按浏览器动画帧刷新纯文本，结束后再统一渲染 Markdown。
+- SSE parser 兼容 `LF` 与 `CRLF` 分隔，端点增加连接预热帧与 `no-transform / no-buffering` 响应头。
+- `LLMClient` 支持 provider 返回字符串或 content parts；流正常结束但没有可见文本时自动降级为非流式调用。
+- 新增 LLM stream 与 `/api/chat` SSE contract tests，覆盖多段 delta、content parts、空流降级和 done 事件。
+
 ## V2.9.0 - State-centric Hierarchical Memory
 
 ### 核心变化

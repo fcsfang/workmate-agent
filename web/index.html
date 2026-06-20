@@ -127,7 +127,7 @@
     }
 
     .brand {
-      padding: 22px 48px 18px 20px;
+      padding: 16px 48px 14px 20px;
       border-bottom: 1px solid var(--line);
     }
 
@@ -152,9 +152,9 @@
     }
 
     h1 {
-      margin: 12px 0 0;
+      margin: 8px 0 0;
       font-family: var(--serif);
-      font-size: clamp(28px, 4vw, 44px);
+      font-size: 32px;
       font-weight: 700;
       line-height: 0.95;
       letter-spacing: 0;
@@ -869,6 +869,11 @@
       font-size: 15px;
     }
 
+    .message-content.is-streaming {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
     .message-content > :first-child {
       margin-top: 0;
     }
@@ -1226,6 +1231,10 @@
       display: grid;
       gap: 8px;
     }
+
+    body:not(.debug-mode) .developer-only {
+      display: none !important;
+    }
     .config-channel {
       display: flex;
       align-items: center;
@@ -1272,7 +1281,7 @@
         <h1>Focus Ledger</h1>
       </header>
 
-      <section class="stats" aria-label="Memory stats">
+      <section class="stats developer-only" aria-label="Runtime stats">
         <div class="stat">
           <span class="stat-value" id="memoryCount">0</span>
           <span class="stat-label">records</span>
@@ -1288,7 +1297,7 @@
       </section>
 
       <!-- Tabs Header -->
-      <div class="tabs-header">
+      <div class="tabs-header developer-only">
         <button class="tab-btn active" id="tabBtnExecution" type="button">🎯 EXECUTION</button>
         <button class="tab-btn" id="tabBtnMemory" type="button">🧠 MEMORY</button>
       </div>
@@ -1309,19 +1318,19 @@
               <span class="task-label">today done</span>
               <span class="task-value" id="dashboardTodayDone">0 tasks</span>
             </div>
-            <div class="task-field">
+            <div class="task-field developer-only">
               <span class="task-label">open loops</span>
               <span class="task-value" id="dashboardOpenLoops">0 open</span>
             </div>
-            <div class="task-field">
+            <div class="task-field developer-only">
               <span class="task-label">mainline</span>
               <span class="task-value" id="dashboardMainline">暂无主线</span>
             </div>
-            <div class="task-field">
+            <div class="task-field developer-only">
               <span class="task-label">week rhythm</span>
               <span class="task-value" id="dashboardWeek">0m / 0 tasks / 0d</span>
             </div>
-            <div class="task-field">
+            <div class="task-field developer-only">
               <span class="task-label">load</span>
               <span class="task-value" id="dashboardLoad">low</span>
             </div>
@@ -1339,8 +1348,8 @@
 
         <section class="task-panel" aria-label="Task state">
           <div class="section-title">
-            <span>CURRENT TASK</span>
-            <button class="icon-button" id="refreshContext" title="刷新上下文" type="button">⌘</button>
+            <span>CURRENT PLAN</span>
+            <button class="icon-button developer-only" id="refreshContext" title="刷新上下文" type="button">⌘</button>
           </div>
           <div class="task-grid">
             <div class="task-field">
@@ -1363,7 +1372,7 @@
               <span class="task-label">next action</span>
               <span class="task-value" id="taskNextAction">暂无下一步</span>
             </div>
-            <div class="task-field">
+            <div class="task-field developer-only">
               <span class="task-label">lifecycle</span>
               <span class="task-value" id="taskLifecycle">暂无任务记录</span>
             </div>
@@ -1379,6 +1388,37 @@
             <!-- Dynamic Todo items will go here -->
           </div>
         </section>
+
+        <section class="task-panel" aria-label="Open commitments">
+          <div class="section-title">
+            <span>OPEN LOOPS</span>
+            <span id="commitmentCount">0</span>
+          </div>
+          <div class="task-grid">
+            <div class="task-field">
+              <span class="task-label">commitments</span>
+              <span class="task-value" id="openCommitments">暂无未关闭承诺</span>
+            </div>
+          </div>
+        </section>
+
+        <details class="context-box usage-review">
+          <summary>RECENT REVIEW <span id="summaryRange">--</span></summary>
+          <div class="task-grid">
+            <div class="task-field">
+              <span class="task-label">active tasks</span>
+              <span class="task-value" id="summaryTasks">暂无摘要</span>
+            </div>
+            <div class="task-field">
+              <span class="task-label">risks</span>
+              <span class="task-value" id="summaryRisks">暂无风险</span>
+            </div>
+            <div class="task-field">
+              <span class="task-label">next</span>
+              <span class="task-value" id="summaryNext">暂无下一步</span>
+            </div>
+          </div>
+        </details>
 
         <section class="task-panel" aria-label="Focus session">
           <div class="section-title">
@@ -1414,7 +1454,7 @@
               <span id="supervisionEventCount">0 active</span>
             </div>
           </div>
-          <div class="task-value" id="supervisionFeedbackStats">暂无反馈统计</div>
+          <div class="task-value developer-only" id="supervisionFeedbackStats">暂无反馈统计</div>
           <div class="supervision-event-list" id="supervisionEventList">
             <div class="task-value">暂无监督事件</div>
           </div>
@@ -1433,7 +1473,7 @@
                 <input id="prefSnooze" type="number" min="5" max="1440" value="60">
               </label>
             </div>
-            <div class="supervision-pref-row">
+            <div class="supervision-pref-row developer-only">
               <label class="supervision-pref-item">
                 <span>page min</span>
                 <select id="prefPageMinSeverity">
@@ -1534,7 +1574,7 @@
                 <input id="prefWorkHoursEnd" type="time" value="18:00">
               </label>
             </div>
-            <div class="supervision-pref-row">
+            <div class="supervision-pref-row developer-only">
               <label class="supervision-pref-item">
                 <span>interval (mins)</span>
                 <input id="prefMonitorInterval" type="number" min="1" max="60" value="5">
@@ -1544,19 +1584,19 @@
                 <span>force vision message</span>
               </label>
             </div>
-            <div class="supervision-pref-row" style="grid-template-columns: 1fr;">
+            <div class="supervision-pref-row developer-only" style="grid-template-columns: 1fr;">
               <label class="supervision-pref-item" style="flex-direction: column; align-items: flex-start; gap: 4px; width: 100%;">
                 <span>custom blacklist keywords (comma split)</span>
                 <input id="prefCustomBlacklist" type="text" placeholder="e.g. wechat, 微信, qq, taobao" style="width: 100%; box-sizing: border-box; padding: 4px 8px; border: 1px solid var(--line); border-radius: 4px; background: transparent; color: var(--ink);">
               </label>
             </div>
-            <div class="supervision-pref-row" style="grid-template-columns: 1fr;">
+            <div class="supervision-pref-row developer-only" style="grid-template-columns: 1fr;">
               <label class="supervision-pref-item" style="flex-direction: column; align-items: flex-start; gap: 4px; width: 100%;">
                 <span>custom whitelist keywords (comma split)</span>
                 <input id="prefCustomWhitelist" type="text" placeholder="e.g. documentation, api, github" style="width: 100%; box-sizing: border-box; padding: 4px 8px; border: 1px solid var(--line); border-radius: 4px; background: transparent; color: var(--ink);">
               </label>
             </div>
-            <div class="supervision-strategy" aria-label="Adaptive reminder strategy">
+            <div class="supervision-strategy developer-only" aria-label="Adaptive reminder strategy">
               <div>
                 <strong id="reminderStrategyMode">steady</strong>
                 <span id="reminderStrategySummary">当前提醒策略保持稳定即可。</span>
@@ -1569,38 +1609,9 @@
       </div>
 
       <!-- Tab Content: Memory -->
-      <div class="tab-content" id="tabContentMemory">
-        <section class="task-panel" aria-label="Recent summary">
-          <div class="section-title">
-            <span>7D SUMMARY</span>
-            <span id="summaryRange">--</span>
-          </div>
+      <div class="tab-content developer-only" id="tabContentMemory">
+        <section class="task-panel" aria-label="Internal memory state">
           <div class="task-grid">
-            <div class="task-field">
-              <span class="task-label">active tasks</span>
-              <span class="task-value" id="summaryTasks">暂无摘要</span>
-            </div>
-            <div class="task-field">
-              <span class="task-label">risks</span>
-              <span class="task-value" id="summaryRisks">暂无风险</span>
-            </div>
-            <div class="task-field">
-              <span class="task-label">next</span>
-              <span class="task-value" id="summaryNext">暂无下一步</span>
-            </div>
-          </div>
-        </section>
-
-        <section class="task-panel" aria-label="Open commitments">
-          <div class="section-title">
-            <span>OPEN LOOPS</span>
-            <span id="commitmentCount">0</span>
-          </div>
-          <div class="task-grid">
-            <div class="task-field">
-              <span class="task-label">commitments</span>
-              <span class="task-value" id="openCommitments">暂无未关闭承诺</span>
-            </div>
             <div class="task-field">
               <span class="task-label">profile</span>
               <span class="task-value" id="userProfile">暂无长期画像</span>
@@ -1655,7 +1666,7 @@
         <pre class="summary" id="memorySummary">loading memory...</pre>
       </div>
 
-      <details class="context-box" id="systemConfigBox">
+      <details class="context-box developer-only" id="systemConfigBox">
         <summary>SYSTEM CONFIG & PUSH TEST</summary>
         <div class="config-panel">
           <div class="config-channel" id="channelLocal">
@@ -1685,7 +1696,7 @@
         </div>
       </details>
 
-      <details class="context-box">
+      <details class="context-box developer-only">
         <summary>MODEL CONTEXT</summary>
         <pre class="context-preview" id="contextPreview">还没有发送过消息。本区会显示下一轮/上一轮实际发给模型的上下文。</pre>
       </details>
@@ -1727,6 +1738,9 @@
   </main>
 
   <script>
+    const debugMode = new URLSearchParams(window.location.search).get("debug") === "1";
+    document.body.classList.toggle("debug-mode", debugMode);
+
     const sidebarToggle = document.querySelector("#sidebarToggle");
     const sidebarCloseBtn = document.querySelector("#sidebarCloseBtn");
     const sidebarBackdrop = document.querySelector("#sidebarBackdrop");
@@ -2059,8 +2073,13 @@
       lastEvent.textContent = `restored ${usableRecords.length} saved turns`;
     }
 
-    function updateAgentMessage(target, content) {
-      processMessageContent(target.body, content);
+    function updateAgentMessage(target, content, streaming = false) {
+      target.body.classList.toggle("is-streaming", streaming);
+      if (streaming) {
+        target.body.textContent = content;
+      } else {
+        processMessageContent(target.body, content);
+      }
       transcript.scrollTop = transcript.scrollHeight;
     }
 
@@ -3376,6 +3395,19 @@
       const reader = response.body.getReader();
       const decoder = new TextDecoder("utf-8");
       let buffer = "";
+      let streamDirty = false;
+      let streamDone = false;
+
+      async function paintStreamFrame() {
+        if (!streamDirty || streamDone) return;
+        streamDirty = false;
+        await new Promise((resolve) => {
+          requestAnimationFrame(() => {
+            updateAgentMessage(agentMessage, agentContent, true);
+            resolve();
+          });
+        });
+      }
 
       async function handleEvent(rawEvent) {
         const data = rawEvent
@@ -3388,11 +3420,14 @@
         const payload = JSON.parse(data);
         if (payload.type === "delta") {
           agentContent += payload.content || "";
-          updateAgentMessage(agentMessage, agentContent);
+          streamDirty = true;
           return;
         }
 
         if (payload.type === "done") {
+          streamDone = true;
+          streamDirty = false;
+          updateAgentMessage(agentMessage, agentContent, false);
           renderMemory(payload.memory);
           renderContext(payload.context);
           renderToolCalls(payload.tool_calls || payload.memory?.tool_calls || []);
@@ -3411,16 +3446,21 @@
       while (true) {
         const { value, done } = await reader.read();
         buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+        buffer = buffer.replace(/\r\n/g, "\n");
         const events = buffer.split("\n\n");
         buffer = events.pop() || "";
         for (const eventText of events) {
           await handleEvent(eventText);
         }
+        await paintStreamFrame();
         if (done) break;
       }
 
       if (buffer.trim()) {
         await handleEvent(buffer);
+      }
+      if (!streamDone) {
+        updateAgentMessage(agentMessage, agentContent, false);
       }
     }
 

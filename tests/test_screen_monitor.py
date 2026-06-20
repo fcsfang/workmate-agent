@@ -484,12 +484,13 @@ def test_screen_accompaniment_and_auto_resolution(tmp_memory_manager):
     assert accompaniment_events[0]["severity"] == "low"
     assert "Visual Studio Code" in accompaniment_events[0]["message"]
 
-    # 验证对话记录中包含伴随鼓励文本
+    # Vision 提醒只进入短期监督消息，不污染长期对话记录。
     records = tmp_memory_manager.load_records()
-    assert len(records) == 1
-    assert records[0]["user"] == ""
-    assert records[0]["assistant"]
-    assert "方向很对" not in records[0]["assistant"]
+    messages = tmp_memory_manager.load_supervision_messages()
+    assert records == []
+    assert len(messages) == 1
+    assert messages[0]["assistant"]
+    assert "方向很对" not in messages[0]["assistant"]
 
     # Step 2: 再次运行，仍处于工作应用中，验证不会重复写入对话记录 (deduplication)
     prefs = tmp_memory_manager.get_supervision_preferences()
@@ -505,8 +506,8 @@ def test_screen_accompaniment_and_auto_resolution(tmp_memory_manager):
 
             events2 = tmp_memory_manager.refresh_supervision_events()
 
-    records2 = tmp_memory_manager.load_records()
-    assert len(records2) == 1  # 依然只有一条消息，没有重复写入！
+    messages2 = tmp_memory_manager.load_supervision_messages()
+    assert len(messages2) == 1
 
     # Step 3: 用户偏航到 Bilibili，验证原来的 screen_accompaniment 自动 resolved，并产生 screen_deviation
     prefs = tmp_memory_manager.get_supervision_preferences()
@@ -533,9 +534,10 @@ def test_screen_accompaniment_and_auto_resolution(tmp_memory_manager):
     assert len(old_acc_events) == 1
     assert old_acc_events[0]["status"] == "resolved"
 
-    # 验证对话历史增加了偏航提醒
-    records3 = tmp_memory_manager.load_records()
-    assert len(records3) == 2
+    # 验证短期监督消息增加了偏航提醒，长期 records 仍为空。
+    messages3 = tmp_memory_manager.load_supervision_messages()
+    assert len(messages3) == 2
+    assert tmp_memory_manager.load_records() == []
 
 
 def test_adaptive_screen_monitor_cooldown(tmp_path):

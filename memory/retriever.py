@@ -199,7 +199,7 @@ class MemoryRetriever:
             if str(item.get("task_id", "") or payload.get("task_id", "")) != task_id:
                 return False
         min_salience = filters.get("min_salience")
-        if min_salience is not None and self.salience_score(item) < self._float(min_salience, 0):
+        if min_salience is not None and self._float(item.get("salience"), 0) < self._float(min_salience, 0):
             return False
         updated_after = filters.get("updated_after")
         if updated_after and not self._updated_after(item.get("updated_at") or item.get("time"), updated_after):

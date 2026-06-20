@@ -745,7 +745,7 @@ APP = WorkmateWebApp()
 app = FastAPI(
     title="Workmate Agent API",
     description="Local API for chat, memory, focus sessions, supervision events, and runtime observability.",
-    version="2.9.0",
+    version="2.9.2",
 )
 
 
@@ -869,6 +869,7 @@ async def post_task_update_status(payload: TaskStatusRequest):
 
 
 def stream_chat_events(prompt: str) -> Generator[str, None, None]:
+    yield ": stream-start\n\n"
     try:
         for event in APP.chat_stream(prompt):
             yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
@@ -877,7 +878,27 @@ def stream_chat_events(prompt: str) -> Generator[str, None, None]:
         yield f"data: {json.dumps(error_event, ensure_ascii=False)}\n\n"
 
 
-@app.post("/api/chat", summary="Send a chat prompt and stream the response")
+@app.post(
+    "/api/chat",
+    summary="Send a chat prompt and stream the response",
+    response_class=StreamingResponse,
+    responses={
+        200: {
+            "model": Union[ChatStreamDeltaEvent, ChatStreamDoneEvent],
+            "description": "SSE delta events followed by one done event",
+            "content": {
+                "text/event-stream": {
+                    "schema": {
+                        "oneOf": [
+                            {"$ref": "#/components/schemas/ChatStreamDeltaEvent"},
+                            {"$ref": "#/components/schemas/ChatStreamDoneEvent"},
+                        ]
+                    }
+                }
+            },
+        }
+    },
+)
 async def post_chat(payload: ChatRequest):
     prompt = payload.prompt.strip()
     if not prompt:
@@ -885,7 +906,12 @@ async def post_chat(payload: ChatRequest):
     return StreamingResponse(
         stream_chat_events(prompt),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 
