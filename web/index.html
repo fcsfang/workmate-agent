@@ -871,7 +871,6 @@
     }
 
     .message-content.is-streaming {
-      white-space: pre-wrap;
       overflow-wrap: anywhere;
     }
 
@@ -972,23 +971,50 @@
       position: relative;
       z-index: 1;
       flex-shrink: 0;
-      padding: 10px 12px;
-      border-top: 1px solid var(--line);
+      padding: 0 12px 10px;
+      border-top: none;
       background: rgba(244, 240, 230, 0.88);
       backdrop-filter: blur(10px);
+    }
+
+    .composer-resize-handle {
+      height: 10px;
+      cursor: ns-resize;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-top: 1px solid var(--line);
+      margin-bottom: 8px;
+      user-select: none;
+    }
+
+    .composer-resize-handle::before {
+      content: "";
+      width: 32px;
+      height: 3px;
+      border-radius: 99px;
+      background: var(--line-strong);
+      transition: background 150ms ease, width 150ms ease;
+    }
+
+    .composer-resize-handle:hover::before,
+    .composer-resize-handle.dragging::before {
+      background: var(--cinnabar);
+      width: 48px;
     }
 
     .composer-box {
       display: grid;
       grid-template-columns: minmax(0, 1fr) 48px;
+      align-items: stretch;
       gap: 10px;
     }
 
     textarea {
       width: 100%;
       min-height: 60px;
-      max-height: 140px;
-      resize: vertical;
+      max-height: 40vh;
+      resize: none;
       padding: 10px 12px;
       border: 1px solid var(--line-strong);
       border-radius: 6px;
@@ -1007,7 +1033,7 @@
 
     .send-button {
       width: 48px;
-      min-height: 60px;
+      align-self: stretch;
       border: 1px solid rgba(184, 64, 42, 0.2);
       border-radius: 6px;
       color: var(--paper);
@@ -1727,6 +1753,7 @@
       </section>
 
       <form class="composer" id="chatForm">
+        <div class="composer-resize-handle" id="composerResizeHandle" title="拖动调整输入框高度"></div>
         <div class="composer-box">
           <textarea id="promptInput" rows="2" placeholder="我现在完成了... 但卡在..." autocomplete="off"></textarea>
           <button class="send-button" id="sendButton" title="发送" type="submit">↑</button>
@@ -2078,7 +2105,10 @@
     function updateAgentMessage(target, content, streaming = false) {
       target.body.classList.toggle("is-streaming", streaming);
       if (streaming) {
-        target.body.textContent = content;
+        // Render markdown during streaming so symbols display correctly.
+        // processMessageContent adds code-copy buttons etc.; skip that overhead
+        // on every frame and only do the full pass when the stream is done.
+        target.body.innerHTML = renderMarkdown(content);
       } else {
         processMessageContent(target.body, content);
       }
@@ -3494,6 +3524,44 @@
         chatForm.requestSubmit();
       }
     });
+
+    // ── Top resize handle ──────────────────────────────────────────────────
+    const composerResizeHandle = document.querySelector("#composerResizeHandle");
+    if (composerResizeHandle && promptInput) {
+      const MIN_H = 60;
+      const MAX_H = Math.round(window.innerHeight * 0.4);
+
+      let dragStartY = 0;
+      let dragStartH = 0;
+      let dragging = false;
+
+      composerResizeHandle.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        dragging = true;
+        dragStartY = e.clientY;
+        dragStartH = promptInput.offsetHeight;
+        composerResizeHandle.classList.add("dragging");
+        document.body.style.cursor = "ns-resize";
+        document.body.style.userSelect = "none";
+      });
+
+      document.addEventListener("mousemove", (e) => {
+        if (!dragging) return;
+        // Dragging up (negative delta) → increase height
+        const delta = dragStartY - e.clientY;
+        const newH = Math.min(Math.max(dragStartH + delta, MIN_H), MAX_H);
+        promptInput.style.height = `${newH}px`;
+      });
+
+      document.addEventListener("mouseup", () => {
+        if (!dragging) return;
+        dragging = false;
+        composerResizeHandle.classList.remove("dragging");
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      });
+    }
+    // ── End resize handle ──────────────────────────────────────────────────
 
     refreshMemory.addEventListener("click", async () => {
       setStatus("refresh", true);
