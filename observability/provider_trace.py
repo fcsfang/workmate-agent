@@ -16,7 +16,11 @@ def start_provider_turn(turn_id: str) -> contextvars.Token:
 
 def finish_provider_turn(token: Optional[contextvars.Token] = None) -> None:
     if token is not None:
-        _current_turn_id.reset(token)
+        try:
+            _current_turn_id.reset(token)
+        except ValueError:
+            # Defensive fallback for callers crossing an execution context.
+            _current_turn_id.set("")
     else:
         _current_turn_id.set("")
 

@@ -58,10 +58,10 @@
 
     .shell {
       height: 100vh;
-      padding: 18px;
+      padding: 8px;
       display: grid;
-      grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
-      gap: 14px;
+      grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+      gap: 8px;
       overflow: hidden;
     }
 
@@ -656,7 +656,7 @@
       align-items: center;
       justify-content: space-between;
       gap: 14px;
-      padding: 14px 16px;
+      padding: 7px 12px;
       border-bottom: 1px solid var(--line);
       background: rgba(29, 33, 28, 0.96);
       color: var(--paper);
@@ -733,7 +733,7 @@
 
     .topbar-title strong {
       font-family: var(--serif);
-      font-size: 22px;
+      font-size: 18px;
       letter-spacing: 0;
       white-space: nowrap;
     }
@@ -751,8 +751,8 @@
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      min-height: 34px;
-      padding: 0 12px;
+      min-height: 28px;
+      padding: 0 10px;
       border: 1px solid rgba(244, 240, 230, 0.22);
       border-radius: 999px;
       font-family: var(--mono);
@@ -772,10 +772,10 @@
       z-index: 1;
       min-height: 0;
       overflow: auto;
-      padding: 18px;
+      padding: 12px;
       display: grid;
       align-content: start;
-      gap: 14px;
+      gap: 10px;
     }
 
     .empty {
@@ -804,7 +804,7 @@
     }
 
     .message {
-      width: min(760px, 86%);
+      width: min(1040px, 88%);
       padding: 14px 15px;
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -819,6 +819,7 @@
     }
 
     .message-user {
+      width: min(860px, 70%);
       justify-self: end;
       background: #e2e8da; /* Soft pale sage green paper note */
       color: var(--ink);
@@ -971,7 +972,7 @@
       position: relative;
       z-index: 1;
       flex-shrink: 0;
-      padding: 16px 20px;
+      padding: 10px 12px;
       border-top: 1px solid var(--line);
       background: rgba(244, 240, 230, 0.88);
       backdrop-filter: blur(10px);
@@ -985,10 +986,10 @@
 
     textarea {
       width: 100%;
-      min-height: 78px;
-      max-height: 180px;
+      min-height: 60px;
+      max-height: 140px;
       resize: vertical;
-      padding: 14px;
+      padding: 10px 12px;
       border: 1px solid var(--line-strong);
       border-radius: 6px;
       color: var(--ink);
@@ -1006,7 +1007,7 @@
 
     .send-button {
       width: 48px;
-      min-height: 78px;
+      min-height: 60px;
       border: 1px solid rgba(184, 64, 42, 0.2);
       border-radius: 6px;
       color: var(--paper);
@@ -1037,7 +1038,7 @@
     }
 
     .composer-meta {
-      display: flex;
+      display: none;
       justify-content: space-between;
       gap: 12px;
       margin-top: 8px;
@@ -1235,6 +1236,7 @@
     body:not(.debug-mode) .developer-only {
       display: none !important;
     }
+
     .config-channel {
       display: flex;
       align-items: center;
@@ -1706,8 +1708,8 @@
       <header class="topbar">
         <button class="sidebar-toggle" id="sidebarToggle" title="展开侧边栏" type="button">☰</button>
         <div class="topbar-title">
-          <strong>Desk Console</strong>
-          <span id="lastEvent">waiting for first report</span>
+          <strong>Workmate</strong>
+          <span class="developer-only" id="lastEvent">waiting for first report</span>
         </div>
         <div class="status-pill">
           <span class="status-dot" id="statusDot"></span>
@@ -1726,7 +1728,7 @@
 
       <form class="composer" id="chatForm">
         <div class="composer-box">
-          <textarea id="promptInput" rows="3" placeholder="我现在完成了... 但卡在..." autocomplete="off"></textarea>
+          <textarea id="promptInput" rows="2" placeholder="我现在完成了... 但卡在..." autocomplete="off"></textarea>
           <button class="send-button" id="sendButton" title="发送" type="submit">↑</button>
         </div>
         <div class="composer-meta">

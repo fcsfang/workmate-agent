@@ -1,8 +1,10 @@
+import asyncio
 import json
 import os
 import sys
+import threading
 from pathlib import Path
-from typing import Any, Dict, Generator, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
@@ -745,7 +747,7 @@ APP = WorkmateWebApp()
 app = FastAPI(
     title="Workmate Agent API",
     description="Local API for chat, memory, focus sessions, supervision events, and runtime observability.",
-    version="2.9.2",
+    version="2.9.3",
 )
 
 
@@ -868,14 +870,30 @@ async def post_task_update_status(payload: TaskStatusRequest):
     return APP.update_task_status(model_to_dict(payload))
 
 
-def stream_chat_events(prompt: str) -> Generator[str, None, None]:
+async def stream_chat_events(prompt: str):
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue = asyncio.Queue()
+    finished = object()
+
+    def enqueue(item: Any) -> None:
+        loop.call_soon_threadsafe(queue.put_nowait, item)
+
+    def produce() -> None:
+        try:
+            for event in APP.chat_stream(prompt):
+                enqueue(event)
+        except Exception as exc:
+            enqueue({"type": "error", "error": str(exc)})
+        finally:
+            enqueue(finished)
+
     yield ": stream-start\n\n"
-    try:
-        for event in APP.chat_stream(prompt):
-            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
-    except Exception as exc:
-        error_event = {"type": "error", "error": str(exc)}
-        yield f"data: {json.dumps(error_event, ensure_ascii=False)}\n\n"
+    threading.Thread(target=produce, name="workmate-chat-stream", daemon=True).start()
+    while True:
+        event = await queue.get()
+        if event is finished:
+            break
+        yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
 
 @app.post(

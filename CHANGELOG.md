@@ -2,6 +2,14 @@
 
 本文档记录 Workmate Agent 的重要能力演进与架构决策。当前版本保留较详细说明；早期版本按工程阶段归档，细粒度修复可通过 Git history 查询。
 
+## V2.9.3 - Space-efficient Default Layout
+
+- 默认页面缩小外边距、顶栏和输入区，将更多视口高度留给对话内容。
+- 消息卡片最大宽度从 760px 提升到 1040px，减少宽屏中的无效留白。
+- 移除单独的录屏模式，日常使用、截图和录制始终展示同一套默认界面。
+- SSE producer 固定在单独线程中执行，避免同步流生成器跨 Starlette worker context 导致 ContextVar token 错误。
+- Provider trace 清理增加跨 context 防御性降级，避免观测清理失败中断用户回复。
+
 ## V2.9.2 - Daily-use Sidebar
 
 - 默认侧栏收敛为今日概览、当前计划、Todo、未关闭承诺、专注会话和监督提醒。

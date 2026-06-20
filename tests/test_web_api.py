@@ -10,8 +10,14 @@ def test_web_api_context_and_memory_smoke(monkeypatch, tmp_path):
 
     class FakeAgent:
         def invoke_stream(self, prompt):
-            yield "第一段"
-            yield "第二段"
+            from observability import finish_provider_turn, start_provider_turn
+
+            token = start_provider_turn("stream-test-turn")
+            try:
+                yield "第一段"
+                yield "第二段"
+            finally:
+                finish_provider_turn(token)
 
         def get_last_context(self):
             return [{"role": "system", "content": "fake context"}]
