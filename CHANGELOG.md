@@ -1,1204 +1,153 @@
-## V2.9.0
-### State-centric Hierarchical Memory
-- 新增 `LongTermKnowledgeManager`，将稳定用户认知投影为 `USER.md`、`GOALS.md`、`PREFERENCES.md`、`PATTERNS.md`、`INSIGHTS.md` 五类可审阅 Markdown 文件。
-- `ContextPlanner` 默认直接注入长期认知、当前任务、承诺和专注状态，不再把画像、洞察、行为模式、原子记忆和语义对话同时重复塞入上下文。
-- `SearchManager` 明确采用 `episodic_only` 索引策略：RAG 只召回对话、每日摘要、历史记忆片段、分类、资源和语义对话；当前任务、承诺、画像、洞察与行为模式不再进入向量索引。
-- Retrieval plan 新增 `source_policy`，明确“历史召回不能覆盖当前执行状态”，并让旧 ChromaDB 中的权威状态条目在下次增量同步时自动删除。
-- 本地数据导出支持 Markdown 长期认知文件；新增分层知识、上下文边界、RAG 索引边界与可移植性测试。
-
-## V2.8.0
-### Local Data Inventory & Portable Export
-- 新增 `DataPortabilityService`，统一扫描 `memory/data` 下的本地 Agent 数据，并按 conversation、execution state、derived profile、memory index、supervision、screen observation 等类别生成可审计清单。
-- 新增 `/api/privacy/inventory`、`/api/privacy/export` 与受控下载端点，可通过 FastAPI `/docs` 查看数据范围并生成带 manifest 的 ZIP 导出包。
-- 导出边界只允许 `memory/data` 中的可移植 JSON；默认排除 `.env` / API Key、屏幕截图、屏幕观察内容、ChromaDB 索引和缓存元数据，并阻止导出文件路径穿越。
-- Web 侧栏 `SYSTEM CONFIG` 增加本地数据统计与 `EXPORT DATA` 操作，导出后由浏览器直接下载数据包。
-- OpenAPI schema eval 与 Web API smoke contract 补充 privacy 路径和强类型响应模型；新增数据可移植性测试，覆盖敏感数据排除、manifest 和路径安全。
-
-## V2.7.3
-### Resume-oriented README Front Page
-- README 顶部重写为 reviewer quick view，先展示项目定位、Agent 工程亮点、5 分钟 demo 路线、OpenAPI 和架构 walkthrough 入口。
-- 新增能力证据表，将 Agent Runtime、Memory RAG、Tool Calling、Supervision Loop、Vision Companion、API Contract 和 Evaluation 映射到具体代码入口与展示位置。
-- README 首屏新增可直接用于简历的英文 bullets，让项目从“个人工具说明”更快进入“Agent 工程项目展示”语境。
-- 保留原有项目愿景、功能清单和运行说明，避免丢失长期迭代背景。
-
-## V2.7.2
-### Interview Architecture Walkthrough
-- 新增 `docs/ARCHITECTURE_WALKTHROUGH.md`，作为面试展示用技术 walkthrough。
-- 文档包含系统架构图、Agent Loop 序列图、Hybrid Memory RAG 流程图、Tool Calling 流程图和主动监督状态机图。
-- 补充 3-5 分钟 demo script，串联 demo reset、一键启动、Web UI、Model Context、Tool Trace、RAG explainability、Supervision Events 和 FastAPI `/docs`。
-- README 增加 architecture walkthrough 入口，便于 reviewer 从示例对话继续进入工程架构讲解。
-
-## V2.7.1
-### Reproducible Demo Data Reset
-- 新增 `scripts/reset_demo_data.py`，可一键把本地 `memory/data` 重置为面试展示友好的 demo 状态。
-- 脚本默认先备份当前运行数据到 `memory/archive/demo-backup-*`，再清理本地 JSON、daily summaries、screenshots 和 Chroma 缓存，避免私人数据混入 demo。
-- Demo seed 覆盖任务生命周期、子任务、承诺、专注会话、监督事件、transient Vision 提醒、用户画像、记忆项、记忆分类、资源层、语义对话、高阶洞察、行为模式和 retrieval index。
-- README 新增“可复现 Demo 数据”说明，展示 `python scripts/reset_demo_data.py` -> `./run.sh` 的演示前准备流程。
-
-## V2.7.0
-### One-command Startup Hardening
-- `run.sh` 新增统一 `say/fail` 输出、项目根目录检查、`requirements.txt` 检查和更明确的启动失败提示。
-- 启动前会检查默认端口是否被占用；如果 `7860` 被占用，会提示使用 `WORKMATE_PORT=7861 ./run.sh` 指定其它端口。
-- `.venv` 创建和依赖安装失败时会输出可读错误，不再让用户只看到底层命令失败。
-- 终端启动提示新增 FastAPI OpenAPI 文档地址，方便面试展示时直接打开 `/docs` 查看 API schema。
-- README 快速启动段补充端口占用处理、自定义端口和错误提示说明。
-
-## V2.6.3
-### Lightweight Vision Supervision Memory Boundary
-- 屏幕监督事件不再通过 `persist_record()` 写入长期 `records.json`，避免 Vision 观察进入摘要、RAG 索引、用户画像和长期对话记忆。
-- `MemoryManager` 新增 `supervision_messages.json` 作为短期监督消息存储，并提供 `load_supervision_messages()`、`add_supervision_message()` 与 `recent_records_with_transient_supervision()`。
-- `/api/memory` 的 `recent` 会合并长期 records 与 transient supervision messages，前端仍能恢复屏幕提醒消息，但 `count` 仍只代表长期对话记录数量。
-- 屏幕事件 metadata 从 `added_to_chat` 改为 `added_to_transient_chat`，用于去重并明确这类消息不会进入长期记忆。
-- 屏幕监控测试更新为断言 Vision 提醒可见于 transient supervision messages，同时 `load_records()` 保持为空。
-
-## V2.6.2
-### Explainable Adaptive Supervision Strategy
-- `SupervisionEventManager._build_strategy()` 新增 `explanations` 输出，为每条提醒策略建议记录 decision、reason、evidence、affected_fields、recommendation、confidence 和 auto_applicable。
-- 全局提醒降噪、后台推送门槛、默认稍后间隔、按事件类型调整门槛等策略都会携带反馈证据，例如 snoozed/muted 与 acknowledged/resolved 计数。
-- `steady` 模式也会输出 `keep_current_strategy` 解释，说明当前反馈不足以支持调整，避免策略区看起来像没有决策依据。
-- 前端提醒策略详情会展示最多数条策略解释摘要和反馈计数，让用户在点击 `APPLY STRATEGY` 前知道建议来自什么证据。
-- 单测补充策略解释断言，覆盖降低推送和保持稳定两类分支。
-
-## V2.6.1
-### Scheduler Boundary for Supervision Updates
-- 新增 `/api/scheduler/tick`，用于显式执行一次主动监督检查：刷新监督事件、按后台渠道策略发送通知，并将已发送事件迁移为 `notified`。
-- `WorkmateWebApp.run_background_checks()` 复用同一个 scheduler tick，避免后台循环和手动触发走两套逻辑。
-- `/api/memory`、`/api/dashboard`、`/api/supervision/events` 等 GET 快照接口不再主动调用 `refresh_supervision_events()`，降低纯读取接口写入事件、更新偏好或写入聊天记录的风险。
-- Web API smoke 测试补充 scheduler 边界断言：GET 快照不触发 refresh，POST `/api/scheduler/tick` 才推进监督事件并发送通知。
-- API schema eval 补充 `/api/scheduler/tick` 与 `SchedulerTickResponse`，让主动监督推进入口能在 OpenAPI 和评估报告中被看见。
-
-## V2.6.0
-### Proactive Supervision State Machine
-- `SupervisionEventManager` 将监督事件生命周期显式扩展为 `detected/notified/acknowledged/snoozed/muted/resolved/dismissed`，新增 `dismissed` 终态用于关闭不需要继续跟进的提醒。
-- 每个监督事件新增 `transition_history` 与 `last_transition_reason`，记录从哪个状态迁移到哪个状态、迁移时间和原因，使主动监督闭环更可解释。
-- `build_state()` 新增 `state_machine` 摘要，返回各状态计数、状态分组和最近迁移列表，便于 API/前端/eval 查看监督系统当前闭环状态。
-- `/api/supervision/events` 的响应模型新增 dismissed、transition history 与 state machine 字段；前端监督事件卡片展示最近迁移原因，并支持 `DISMISS` 操作。
-- Evaluation Suite 的 `supervision_lifecycle` 新增 dismissed 场景和 transition history 断言，覆盖关闭提醒这一条终态路径。
-
-## V2.5.2
-### Hybrid Scoring Task Relevance & Rerank Hook
-- `MemoryRetriever` 的 hybrid scoring 新增独立 `task_relevance` 分数，结合记忆类型、task_id、task_title 与 query terms 判断任务关联度，并写入 `score_breakdown`。
-- 评分权重调整为 keyword、recency、salience、vector、task_relevance 五路可解释组合，`reason` 中会显示“任务相关”信号。
-- `MemoryRetriever` 新增可替换 `reranker` hook，支持对象式 `rerank(query, results, limit)` 或 callable reranker；rerank 失败时自动回退到原有分数排序。
-- Evaluation Suite 的 Memory Retrieval Cases 新增 task score 覆盖列，并可断言 `has_task_relevance_score`。
-- 新增 retriever 单测覆盖 `task_relevance` score breakdown 和自定义 reranker 覆写最终排序。
-
-## V2.5.1
-### Incremental ChromaDB Sync
-- `SearchManager.build_index()` 的 ChromaDB 同步从“全量 delete 后 add”改为增量 delete/upsert：仅删除本轮索引中已不存在的 ids，仅 upsert 新增或 document/metadata/embedding 发生变化的条目。
-- ChromaDB metadata 复用 V2.5.0 的 source 字段，持久化 type、status、salience、confidence、importance、updated_at、task_id、task_title、record_id。
-- 保留 JSON index fallback 路径不变；无 ChromaDB 或无 embedding 配置时仍按原有 JSON/关键词检索降级。
-- 新增 fake Chroma collection 单测，覆盖首次 upsert、无变化不重复 upsert、条目消失时 delete 的增量同步语义。
-
-## V2.5.0
-### Retrieval Metadata Filters & Source Attribution
-- `MemoryRetriever.search()` 新增可选 `filters`，支持按 memory type、status、task_id、min_salience、updated_after 收窄召回范围；默认不传 filters 时保持原有检索行为。
-- 检索结果新增 `source_attribution`，包含 source type/id、status、updated_at、task_id、task_title、record_id、confidence 和 salience，用于解释每条上下文来自哪个记忆源。
-- `SearchManager` 将 task/source 元数据提升到索引顶层，并在 JSON/ChromaDB 索引中保存 task_id、task_title、record_id，避免重载索引后 citation 信息丢失。
-- Retrieval plan、上下文格式化和前端 `MODEL CONTEXT` 均展示 citation/source attribution；`observability.rag_explainability.top_sources` 同步携带 source attribution。
-- Evaluation Suite 的 `memory_recall` 类别新增 hit rate、source attribution、filter types 指标，并在 Markdown 报告新增 `Memory Retrieval Cases` 表格。
-- 新增 metadata filter 固定用例和 retriever 单测，覆盖按类型、状态、任务关联、显著度过滤后的召回行为。
-
-## V2.4.3
-### Supervision Preference Tools
-- Tool Registry 新增 `get_supervision_preferences` 与 `update_supervision_preferences`，把监督提醒偏好纳入标准 Agent action layer。
-- `update_supervision_preferences` 只允许受控字段更新，包括 enabled、reminder_strength、各渠道 min severity、notify flags、default_snooze_minutes 和 screen_force_message，未知字段会被忽略。
-- 监督偏好写工具声明 `side_effects=["updates supervision_preferences.json"]`，并自动获得 V2.4.1 的结构化 audit record。
-- 工具执行单测和 Evaluation Suite 新增监督偏好工具覆盖，使 V2.4 验收标准中的任务、记忆、专注、监督偏好四类工具都进入固定用例。
-
-## V2.4.2
-### Recoverable Tool Failure Trace
-- `ToolExecutor` 为工具执行失败补充 `recoverable=True` 与 `recovery_hint`，明确失败后应继续用已有上下文回复，避免内部状态工具故障中断普通对话。
-- `__tool_planning__` 规划失败 trace 新增 recovery hint，提示本轮跳过工具调用并用已有对话上下文降级。
-- FastAPI `ToolCallTrace` schema 新增 `recoverable` 与 `recovery_hint` 字段；前端 `OBSERVABILITY SUMMARY` 和 `TOOL TRACE` 会在工具错误下显示可恢复状态与降级建议。
-- 工具执行单测补充 planner failure 的 recoverable/recovery hint 断言；OpenAPI schema smoke case 补充字段检查。
-
-## V2.4.1
-### Write Tool Audit Records
-- `ToolExecutor` 为 `read_only=False` 的状态写入工具生成结构化 `audit_record`，记录 audit id、工具名、状态、决策来源、planner 序号、耗时、side effects、参数键、输出键和错误摘要。
-- 直接执行工具默认标记为 `decision_source=direct_execute`；经 planner 执行的工具会在覆写 `decision_source=llm_plan` 后重新生成 audit record，确保审计来源准确。
-- `AgentRuntime` 将写工具 audit records 聚合进 `observability.tool_trace.audit_records`，前端 `OBSERVABILITY SUMMARY` 显示 audit record 数量与单条工具调用的 audit id。
-- FastAPI `ToolCallTrace` schema 新增 `audit_record` 字段；Evaluation Suite 的写工具用例新增 `has_audit_record` 断言。
-- 工具执行单测补充读工具无 audit、写工具有 audit、专注会话写入 side effects 被审计记录捕获的覆盖。
-
-## V2.4.0
-### Tool Planner Trace
-- `ToolExecutor` 新增 `last_plan_trace`，记录工具规划来源、可用工具数、max calls、解析数量、选择数量、执行数量、截断状态、planner 错误和 raw plan 预览。
-- 每条工具执行结果新增 `decision_source` 与 `planner_call_index`，区分模型规划、planner 错误、无 registry 等来源，为后续规则兜底/系统固定流程预留统一标记。
-- `AgentRuntime` 将 `tool_plan` 写入 `turn_trace`，并把 planner 摘要合入 `observability.tool_trace.planner`。
-- 前端 `OBSERVABILITY SUMMARY` 新增 `tool_planner` 行，展示 source、parsed、selected、executed、max calls 与 truncated；`TOOL TRACE` 单条调用显示 decision source。
-- FastAPI schema、`observability_trace` eval 和工具执行单测同步覆盖 `tool_plan`、`decision_source`、`planner_call_index`、planner selected count 和截断状态。
-
-## V2.3.6
-### Provider Detail Snapshot
-- `AgentRuntime` 新增 `provider_detail` observability 摘要，从 provider trace 的单条调用中派生调用序列、provider/model/operation、metadata keys、usage、慢调用、fallback 时间线和错误摘要。
-- 前端 `OBSERVABILITY SUMMARY` 新增 provider detail 展示，除 provider totals 外，还能看到 provider_counts、slowest provider call、前 5 条 provider call 的 metadata keys 与 token/estimated token。
-- `observability_trace` eval 新增 `provider_detail_has_sequence` 与 `provider_detail_has_metadata_keys` 断言，避免 provider trace 退化成只有总数。
-- OpenAPI schema smoke case 新增 `ObservabilitySummary.provider_detail` 检查，让 FastAPI 合同暴露更完整的运行观测结构。
-- Provider detail 继续复用已脱敏的 provider trace，不保存 API Key、完整 prompt 或图片内容。
-
-## V2.3.5
-### Tool Trace Detail Snapshot
-- `AgentRuntime` 新增 `tool_trace` observability 摘要，从已有工具调用结果中派生调用序列、读写模式、参数键、observation 键、输入/输出 schema 键、耗时、错误和副作用摘要。
-- FastAPI `ToolCallTrace` 响应模型补齐 `call_id`、`arguments`、`observation`、`input_schema`、`output_schema`、`started_at`、`completed_at` 等字段，OpenAPI schema 能更完整展示内部状态工具契约。
-- 前端 `OBSERVABILITY SUMMARY` 新增工具调用审计行，展示 read/write/error 工具列表和前 5 个工具调用的原因、参数摘要、输出摘要、副作用与错误。
-- 前端原有 `TOOL TRACE` 区块补充 `args` 与 `observation` 键名，方便在不展开完整 JSON 的情况下快速判断工具输入输出形态。
-- `observability_trace` eval 新增 `tool_trace_has_sequence` 与 `tool_trace_has_io_summary` 断言；OpenAPI schema smoke case 新增 `ToolCallTrace` 与 `ObservabilitySummary.tool_trace` 检查。
-
-## V2.3.4
-### RAG Explainability Snapshot
-- `AgentRuntime` 新增 `rag_explainability` 摘要，从现有 `retrieval_plan` 派生出检索必要性、命中类型、top score、sufficiency、注入决策、score coverage、top sources、分数拆解和文本预览。
-- `observability` 顶层新增 `rag_explainability` 字段，保留原有 `rag` 轻量摘要，同时为 Web 面板、FastAPI schema 和 eval 提供更完整的 RAG 审计信息。
-- 前端 `MODEL CONTEXT` 的 `OBSERVABILITY SUMMARY` 新增 RAG 注入决策、命中类型、score avg/max、top source、score breakdown 和 preview，方便快速判断为什么某些记忆被带入上下文。
-- `observability_trace` eval 用例新增 `rag_explainability`、`rag_score_breakdown` 和 `rag_injection_decision` 断言，Markdown 报告的 Observability Trace 表格新增 RAG explain 覆盖列。
-- OpenAPI schema smoke case 补充检查 `ObservabilitySummary.rag_explainability`，避免后续接口重构时遗漏 RAG 可解释性字段。
-
-## V2.3.3
-### OpenAPI Contract Eval
-- Evaluation Suite 新增 `api_schema_smoke` 类别，直接读取 FastAPI `app.openapi()`，检查关键 API 路径、响应模型和 observability/provider 字段是否存在，不需要启动 Web 服务。
-- 新增 `api_schema_observability_001` 固定用例，覆盖 `/api/chat`、`/api/memory`、`/api/context`、`/api/supervision/events`、`/api/tts/speech`，以及 `ObservabilitySummary`、`TurnTrace`、`MemoryStateResponse`、`ContextStateResponse`、`ChatStreamDoneEvent` 等 schema。
-- Evaluation Markdown 报告新增 `API Schema Smoke Cases` 区块，展示 OpenAPI path/schema 数量、缺失路径、缺失 schema 和缺失字段。
-- Coverage Map 将 `api_schema_smoke` 纳入 Runtime observability 区域，用于证明 FastAPI/OpenAPI 合同与运行轨迹结构可被自动审计。
-
-## V2.3.2
-### Provider Usage Snapshot
-- Provider trace 新增 `usage` 聚合，汇总 `prompt_tokens`、`completion_tokens`、`total_tokens`、`estimated_tokens`、输入/输出字符数、图片数量、图片 base64 字节、音频字节和 embedding 维度。
-- `LLMClient` 在非流式、流式、raw 和 Vision 调用中记录 provider 返回的 usage tokens；当 provider 不返回 usage 时，基于输入/输出字符数提供 provider-neutral 的估算 token。
-- `observability` 顶层新增 `usage` 字段，前端 `OBSERVABILITY SUMMARY` 展示 tokens、估算 tokens、字符规模、图片数和音频字节数。
-- `observability_trace` eval 用例新增 `estimated_tokens_positive` 断言，Markdown 报告的 Observability Trace 表格展示 estimated tokens 覆盖情况。
-- Provider trace 的单条 call 现在同时保留 sanitized `metadata` 与单条 `usage` 小结，为后续更细粒度调用详情面板预留数据基础。
-
-## V2.3.1
-### Provider Trace
-- 新增 `observability/provider_trace.py`，使用轻量上下文变量记录当前 turn 内的 provider 调用摘要，不记录 API Key、完整 prompt 或图片内容。
-- `LLMClient` 接入 LLM 与 Vision 调用追踪，记录 provider、operation、model、耗时、状态、错误摘要和 fallback；流式输出失败后回退到非流式的路径现在也会进入 trace。
-- Embedding provider 接入调用追踪，覆盖 `NullEmbeddingClient`、Ollama `/api/embeddings -> /api/embed` fallback、OpenAI compatible embeddings 和本地 sentence-transformers。
-- TTS provider 接入调用追踪，记录讯飞 TTS 合成耗时、音频字节数和错误摘要。
-- `AgentRuntime` 在每轮开始时开启 provider trace，在结束时汇总到 `turn_trace.provider_trace` 与 `observability.provider_trace`，并把 LLM、Vision、Embedding、TTS 调用次数汇入 `observability.model_calls`。
-- `/api/memory` 与 `/api/context` 新增 `provider_trace_recent`，用于查看 TTS 等不绑定单轮对话的最近 provider 调用。
-- 前端 `OBSERVABILITY SUMMARY` 新增 provider 总调用、总耗时、fallback、错误和按 provider kind 聚合的调用统计。
-- `observability_trace` eval 用例新增 `provider_total` 断言，Markdown 报告的 Observability Trace 表格新增 provider calls 列。
-
-## V2.3.0
-### Agent Observability
-- 新增每轮对话的 `observability` 摘要层，基于 `turn_trace` 汇总阶段时间线、最慢阶段、模型调用概览、RAG 召回摘要、工具读写统计、记忆写回状态、监督事件更新和错误列表。
-- `AgentRuntime` 在上下文规划阶段同步记录 `retrieval_plan`，让 RAG 决策不只出现在 `MODEL CONTEXT` 文本里，也能进入结构化 trace。
-- FastAPI 响应模型新增 `ObservabilitySummary`，`/api/memory`、`/api/context`、`/api/chat` 流式 done 事件均会返回顶层 `observability`，同时保留 `turn_trace.observability` 供调试。
-- 前端 `MODEL CONTEXT` 顶部新增 `OBSERVABILITY SUMMARY`，展示 turn 状态、耗时、慢阶段、模型调用、RAG 命中、工具读写、副作用数量、记忆写回和阶段时间线。
-- 侧栏 `runtime` 摘要补充最慢阶段信息，方便演示时快速说明 Agent Loop 的运行瓶颈。
-- Evaluation Suite 新增 `observability_trace` 类别和 2 条固定用例，检查 trace 摘要是否暴露阶段时间线、最慢阶段、RAG 命中、工具错误、记忆写回和监督事件更新。
-- Evaluation 报告新增 Coverage Map、Category Notes、Observability Trace Cases 和 Report Use 区块，把意图路由、Memory RAG、工具调用、主动监督和运行轨迹映射为更适合简历展示的评估证据。
-
-## V2.2.1
-### 功能升级
-- **FastAPI 嵌套响应模型重构与 Schema 强类型校验**：定义了 `Task`, `SubTask`, `TaskView`, `TaskState`, `Commitment`, `SupervisionEvent`, `SupervisionEventsState`, `MemoryItem`, `MemoryCategory`, `BehaviorPatterns`, `FocusSession`, `ToolCallTrace`, `TurnTrace` 等核心嵌套 Pydantic 响应模型，替换了原有的宽松 Dict 声明，实现了端点的全量数据校验，并在 `/docs` 提供完备、高精度的 OpenAPI 接口定义。
-
-## V2.2.0
-### 功能升级
-- **集成正统向量数据库 ChromaDB**：废弃了原有的 JSON 文件索引（`retrieval_index.json`），改为采用嵌入式向量数据库 ChromaDB 进行向量和文档的持久化存储，支持工业级余弦相似度检索。
-- **端云协同轻量设计**：向量计算在云端（或本地 Ollama）完成，ChromaDB 仅负责保存与近线向量索引，**避免在 Agent 内部加载和运行本地 PyTorch 模型**，彻底消除显存与内存载荷。
-- **双路降级容灾设计**：实现运行时依赖嗅探。如果用户系统未安装 `chromadb` 库，Agent 会自动安全降级至 JSON 文件索引与纯文本 Keyword 模糊打分匹配，确保 100% 稳定运行。
-- **基于哈希的增量向量化**：支持索引刷新时进行文档哈希比对，仅对有变动的条目生成向量，使索引刷新耗时降至 5ms 以内。
-
-## V2.1.10
-### 修复
-- 修复 Vision 屏幕提醒被 `copy_policy.concise` 二次截断的问题，避免长提醒末尾出现 `/v`、`/代` 等被硬切出来的残片
-- 屏幕提醒现在视为 Vision 的最终自然文案，不再套用普通监督事件的 90 字压缩策略；普通任务、承诺、专注提醒仍保留简短策略
-- 新增回归测试，确保包含 `Console/代码` 等斜杠片段的 Vision 提醒不会被截断成异常尾巴
-
-## V2.1.9
-### 视觉陪伴重构
-- 将视觉监督从“分类器式偏航判断”重构为轻量 Screen Companion：Vision 只输出屏幕观察、目标关系说明、是否说话、消息类型和自然提醒文案
-- 移除屏幕 Vision Prompt 中的 `confidence`、`deviation_level`、`intervention_hint` 等冗余控制字段，把提醒表达放心交给视觉大模型
-- 屏幕观察缓存改为保存 `observation`、`goal_note`、`message_type`、`should_message` 和 `message`，减少对长期记忆和监督事件的污染
-- 新增 `screen_force_message` 偏好与前端 `force vision message` 开关，方便调试期强制展示 Vision 生成的提醒文案
-- 默认仍尊重 Vision 的 `should_message=false` 静默选择；开启强制输出后，只要 Vision 返回 message 就会生成屏幕提醒事件
-
-## V2.1.8
-### 视觉监督调整
-- 正式采用 Vision `direct_message` 作为屏幕监督的用户可见提醒，不再调用第二段语言模型进行二次改写
-- 放开 Vision 直接提醒的长度限制，让模型根据当前屏幕、目标和连续偏航趋势充分发挥表达能力
-- 移除聊天框中的“Vision 直接提醒 / Agent 处理后提醒”双版本对照展示，屏幕事件只展示最终采用的 Vision 直接提醒
-- 屏幕截图采集从最多 4 张多屏图片改为单张整屏截图，减少一次检测中的视觉输入数量
-- 屏幕监测冷却时间恢复使用 `screen_monitor_interval_minutes` 偏好配置，避免测试期 1 分钟硬编码造成过于频繁的视觉请求
-
-## V2.1.7
-### 视觉监督实验
-- 新增 Vision 直接提醒对照：视觉模型在结构化观察中同时给出 `direct_message`，作为它不经过表达层处理时会直接对用户说的话
-- 屏幕监督事件会保存 `vision_direct_message` 到 metadata，便于比较 Vision 原始表达和 Agent 处理后提醒
-- 聊天框中的 Vision 触发屏幕事件现在会同时展示“Vision 直接提醒”和“Agent 处理后提醒”，帮助真实使用中判断哪种方案更适合工位搭子
-- 事件卡片、浏览器通知和语音播报暂时仍使用处理后的 `display_message`，避免实验影响正式提醒体验
-
-## V2.1.6
-### 视觉监督优化
-- 新增屏幕观察状态缓存 `screen_observations.json`，将每次 Vision 观察作为行为时间线保存，事件提醒不再只依赖单次截图
-- 将 Vision Prompt 从规则式偏航判定扩展为强观察模型：输出活动类型、目标关系、用户意图推测、视觉证据、不确定性和置信度
-- 新增连续偏航策略：首次中等/不确定偏航只记录观察，高置信严重偏航或连续偏航才升级为监督事件
-- `/api/supervision/events` 返回的监督状态中新增最近屏幕观察，便于调试为什么某次检测选择静默记录或触发提醒
-- 保留本地黑白名单作为无模型或调用失败时的兜底；配置 Vision 模型时优先发挥视觉模型对截图内容和任务语义的理解能力
-
-## V2.1.5
-### 架构调整
-- 将屏幕监督从单次 Vision JSON 输出改为“两段式”链路：Vision 只负责结构化观察与偏航判断，语言模型单独负责生成自然提醒
-- 移除 Vision 结构化输出中的 `tone_suggestion` 字段，避免把用户可见文案塞进 JSON 模板里
-- 新增屏幕提醒表达层：基于 `activity_summary`、`deviation_reason`、`deviation_level` 和 `intervention_hint` 生成最终 `display_message`
-- 保留 JSON 作为内部状态管理边界，同时让最终提醒回到自然语言输出，提升工位搭子的真实陪伴感
-
-## V2.1.4
-### 调整
-- 放宽屏幕提醒的 Vision 提示词，不再要求提醒必须是固定长度、固定语气或“一句话短提醒”
-- 保留 JSON 结构化输出用于程序解析，但将提醒文案风格交给模型根据屏幕、目标和偏航程度临场判断
-- 明确工位搭子的提醒可以短也可以稍长、可以温柔也可以在明显偏航时更坚定，避免把人格写成固定模板
-
-## V2.1.3
-### 调整
-- 移除屏幕提醒文案中的硬编码替换表、模板标记列表和本地多样化变体，避免用代码规则制造新的死板感
-- 将提醒文案多样化交还给 Vision 模型，通过更明确的 `tone_suggestion` 提示词约束生成自然、短、低压力、非模板化的一句话提醒
-- 屏幕提醒事件现在优先尊重模型生成的 `tone_suggestion`；代码仅负责缺失文案时的极短 fallback 与长度控制
-
-## V2.1.2
-### 优化
-- 优化屏幕监督消息提醒文案，减少“加油 / 方向很对 / 继续顺着 / 围绕某任务推进”等固定模板感
-- Vision Prompt 示例改为更短、更像同桌轻声提醒的表达，避免模型继续学习播报腔与固定鼓励句式
-- 新增屏幕提醒文案后处理：清理旧称呼、识别模板化句子，并根据偏航/陪伴事件生成多组短提醒变体
-- 屏幕事件的具体窗口与活动信息继续保留在结构化 `message` / `metadata` 中，用户可见 `display_message` 更偏轻提醒
-
-## V2.1.1
-### 修复
-- 修复讯飞 TTS 在 `conda agent` 环境中可能误导入旧版 `websocket` 包导致 `/api/tts/speech` 返回 500 的部署问题
-- 为讯飞 TTS 增加依赖冲突诊断提示，要求使用 `websocket-client` 提供的 `create_connection`
-
-## V2.1
-### 目标
-- 接入讯飞开放平台在线语音合成，让监督事件语音从浏览器系统朗读升级为可选云端 TTS，改善声音自然度
-
-### 已实现
-#### 讯飞 TTS Provider
-- 新增 `tts/` 模块，提供 `synthesize_speech()` 统一入口和 `XFYunTTSClient` WebSocket 客户端
-- 支持讯飞在线语音合成流式 WebAPI：通过 HMAC-SHA256 生成鉴权 URL，发送 base64 文本，拼接返回的 base64 mp3 音频片段
-- 新增 `/api/tts/speech` FastAPI 接口，前端可传入短提醒文案并接收 `audio/mpeg`
-- `.env.example` 新增 `TTS_PROVIDER`、`XFYUN_TTS_APP_ID`、`XFYUN_TTS_API_KEY`、`XFYUN_TTS_API_SECRET`、`XFYUN_TTS_VOICE` 等配置项
-- `requirements.txt` 新增 `websocket-client`
-
-#### 前端语音 Provider
-- `SUPERVISION EVENTS` 偏好面板新增 `provider` 选项，支持 `browser` 和 `xfyun`
-- 选择 `xfyun` 时，前端调用 `/api/tts/speech` 获取 mp3，并通过 `Audio` 播放
-- 讯飞请求失败时自动 fallback 到浏览器 Web Speech，保证提醒链路不中断
-- `voice_provider` 纳入监督偏好并自动保存；如果 `.env` 中 `TTS_PROVIDER=xfyun`，默认 provider 会跟随环境配置
-
-#### 测试与验证
-- 新增 TTS provider 单元测试，覆盖讯飞 payload 文本编码和 FastAPI TTS 音频响应
-- 已使用本地讯飞开放平台认证信息完成真实合成验证，成功生成 mp3 测试音频
-
-## V2.0.2
-### 修复
-- 修复用户只勾选 `voice` 后刷新页面又恢复关闭的问题：语音相关控件现在会自动保存到 `/api/supervision/preferences`
-- 调整语音偏好提示文案，明确语音设置自动保存，其他提醒配置仍通过 `SAVE` 保存
-
-## V2.0.1
-### 修复
-- 修复语音提醒容易被浏览器通知状态流转错过的问题：监督事件从 `detected` 被标记为 `notified` 后，仍允许在未播报过时补播语音
-- 优化 `TEST VOICE` 行为：点击测试语音会自动勾选并保存 `voice` 设置，避免用户只试播或只勾选但没有保存导致后续监督事件无语音
-- 在 Preferences 面板补充语音保存提示，说明 `TEST VOICE` 会自动打开并保存语音提醒，其他修改仍使用 `SAVE`
-
-## V2.0
-### 目标
-- 新增浏览器端语音提醒能力，让监督事件可以通过轻量语音播报触达用户，降低只看页面文字的感知摩擦
-
-### 已实现
-#### Web Speech API 语音提醒
-- 前端 `SUPERVISION EVENTS` 偏好面板新增语音提醒开关、语音最低播报等级、音量、语速、陪伴事件播报开关和 `TEST VOICE` 测试按钮
-- 语音提醒基于浏览器原生 `SpeechSynthesis`，不引入服务端音频依赖、不增加 API 成本，也不影响 `run.sh` 一键启动
-- 语音只播报监督事件短文案，优先使用 `display_message`，不会朗读普通聊天回复或整段 Markdown 回复
-- 默认关闭语音提醒，避免用户打开页面时突然出声；用户需要主动打开并可用测试按钮确认浏览器支持
-- 与现有提醒偏好联动：尊重总开关、静默时段、事件类型开关、事件严重度和 `event_type_min_severity` 覆盖
-- 使用 `spoken_supervision_<event_id>` 写入 `localStorage`，同一监督事件在浏览器中只播报一次，避免重复打扰
-- 默认不播报 `screen_accompaniment` 低压力陪伴事件，除非用户显式开启陪伴播报
-
-#### 后端偏好持久化
-- `SupervisionEventManager` 新增 `voice_enabled`、`voice_min_severity`、`voice_volume`、`voice_rate` 和 `voice_include_accompaniment` 偏好字段
-- FastAPI `SupervisionPreferencesRequest` 补齐语音偏好 schema，`/docs` 和 `/openapi.json` 可直接看到语音配置字段
-- `event_type_min_severity` 支持新增 `voice` 渠道，方便未来对不同监督事件单独控制语音播报门槛
-
-#### 测试
-- 新增语音偏好归一化与持久化测试，覆盖音量、语速边界和 voice 渠道事件类型覆盖
-
-## V1.10
-### 目标
-- 将 Web 后端从手写 `http.server` 路由升级为 FastAPI，提升 API 工程化、可展示性和后续扩展能力
-
-### 已实现
-#### FastAPI + OpenAPI
-- `src/web.py` 改为 FastAPI ASGI 应用，保留 `WorkmateWebApp` 作为业务编排层，避免影响 Agent Runtime、记忆系统和监督事件核心逻辑
-- 保留现有前端依赖的 `/api/chat`、`/api/memory`、`/api/context`、`/api/dashboard`、`/api/focus`、`/api/task/update-status`、`/api/supervision/events`、`/api/supervision/preferences`、`/api/notify/status` 和 `/api/notify/test` 接口契约
-- `/api/chat` 继续使用 `text/event-stream` 流式输出，前端无需改变现有 SSE 解析逻辑
-- 新增 Pydantic 请求模型，用于聊天、专注会话、任务状态、监督事件和监督偏好配置接口的参数声明
-- 自动提供 `/docs`、`/redoc` 和 `/openapi.json`，方便在简历展示、接口调试和后续客户端接入时说明系统边界
-- 保留 `python -m src.web` 一键启动方式，并在 `run_web()` 中直接传入 FastAPI app，避免字符串导入导致后台 scheduler 被重复初始化
-
-#### 文档与测试
-- `requirements.txt` 新增 `fastapi` 和 `uvicorn`
-- `README.md` 补充 FastAPI API 文档入口和可选 `uvicorn` 启动方式
-- `tests/test_web_api.py` 改为使用 FastAPI `TestClient`，并新增 `/openapi.json` smoke test
-- `pytest` 全量 26 项测试通过
-
-## V1.9
-### 目标
-- 升级智能屏幕监督系统，支持温和陪伴跟进、状态转换自动解决、免控制权限弹窗以及可视化参数配置
-
-### 已实现
-#### 智能屏幕监督系统
-- **陪伴鼓励提醒 (`screen_accompaniment`)**：新增类型为 `screen_accompaniment`、严重度为 `low` 的陪伴提醒事件。当用户正在白名单应用正常工作时，Agent 在对话历史中默默插入鼓励消息（如提醒喝水、温和鼓励等），在不打扰用户的前提下提升陪伴感。对于灰色地带应用，结合多模态截图及当前任务，由 Vision 大模型根据当前情绪设定比例动态生成极低压力的温暖陪伴语。
-- **状态机自动双向解决 (Auto-resolution)**：优化监督事件的自动流转。当用户从“专注于正常工作”转为“娱乐偏航”时，之前的 `screen_accompaniment` 事件自动标记为 `resolved`（已解决），并检测出新的 `screen_deviation`；反之，当用户从“偏航”回归到“专心工作”时，原有的 `screen_deviation` 自动解决，并产生新的陪伴事件。
-- **多模态分离 API 支持**：在 `.env` 与 `src/LLMClient.py` 中新增 `VISION_MODEL_ID`、`VISION_API_KEY`、`VISION_BASE_URL` 配置。若主语言模型不支持多模态，可单独配置第三方 Vision API 实施屏幕截图分析，节省主 API 成本。
-- **免 App 控制权限弹窗优化**：重构 AppleScript 系统交互，使用 `System Events` 的 `frontmostProcess` 探测活跃窗口，在 macOS 下仅需一次性授予“辅助功能”权限，后续切换到任何新软件都绝对不会触发频繁控制弹窗，保证极佳体验。
-- **自定义黑/白名单过滤**：前端新增自定义黑名单/白名单关键词输入，逗号分隔，比对活跃窗口具有最高优先级，命中时直接拦截/放行，**绕过 Vision 多模态模型**，实现零延时和零 API 扣费。
-- **前端偏好设置面板**：在 Web 页面的 "SUPERVISION EVENTS" 标题右侧增加 `⚙️ 配置` 折叠/展开按钮。支持可视化配置屏幕监测开关、冷却时间（测试阶段硬编码强制 1 分钟）、工作时间自动激活及时间起止范围、自定义黑白名单关键词。
-- **中转 API 防火墙伪装与绕过**：针对官方 OpenAI SDK 流量易被部分中转 API 站（如 `ccapi.us`）的 Cloudflare / WAF 防火墙误杀拦截（报错 `Your request was blocked`）的问题，在 [src/LLMClient.py](file:///Users/joey/01 Projects/实习/workmate-agent/src/LLMClient.py) 中重构了客户端初始化逻辑，强制注入标准的 macOS 浏览器 `User-Agent` 请求头成功实施伪装绕过，实现充值账户高可用。
-- **检测逻辑优先级优化**：配置大模型时，检测始终**优先调用 Vision 多模态模型**分析屏幕内容，生成高度定制化、情境相关的陪伴跟进或偏航警报文案，而将本地白名单/黑名单仅作为免配大模型/网络异常时的无缝降级（Fallback）防线；同时扩展默认白名单以屏蔽 Agent 看板自身的误识别。
-- **单元测试与防抖时间 Mock 优化**：同步调整 [tests/test_screen_monitor.py](file:///Users/joey/01 Projects/实习/workmate-agent/tests/test_screen_monitor.py) 以支持优先级变更和无 API 降级拦截覆盖；解决了测试由于系统当前真实时间与 patch 时间冲突导致的负差时间防抖拦截漏洞。运行 `pytest` 所有 26 项单元测试全部通过。
-
-## V1.8
-### 目标
-- 将项目从个人原型进一步提升为可验证工程项目
-- 引入 pytest 与 GitHub Actions，让核心 Agent 模块可以自动化验证
-
-### 已实现
-#### Pytest 测试体系
-- 新增 `pytest.ini`
-- `requirements.txt` 新增 `pytest`
-- 新增 `tests/conftest.py`，提供使用临时目录的 `tmp_memory_manager` fixture，避免测试写入真实 `memory/data`
-- 现有 unittest 风格测试继续可被 pytest 收集运行
-
-#### 核心模块测试覆盖
-- 新增 `tests/test_memory_pipeline.py`，覆盖记忆流水线阶段契约和端到端写入流程
-- 新增 `tests/test_context_planner.py`，覆盖任务、周报和低能量支持性知识上下文规划
-- 新增 `tests/test_task_lifecycle.py`，覆盖任务创建、子任务和状态流转
-- 新增 `tests/test_supervision_events.py`，覆盖监督事件检测、确认、稍后、关闭和提醒策略建议
-- 新增 `tests/test_web_api.py`，覆盖 Web `/api/context` 与 `/api/memory` smoke test
-- V1.5/V1.6 的 memory retriever 与 tool executor 测试继续保留
-
-#### CI
-- 新增 `.github/workflows/ci.yml`
-- CI 运行 Python 3.12
-- CI 步骤包括依赖安装、Python syntax check、`pytest`、`evals/run_eval.py` smoke test
-- eval 报告输出到 `/tmp/workmate-eval-reports`，不污染仓库
-
-## V1.7
-### 目标
-- 为 Agent 项目补齐可复现评估体系
-- 支持无真实 API Key 的 rule / fake LLM 模式，方便本地和后续 CI 运行
-
-### 已实现
-#### Evaluation Suite
-- 新增 `evals/`
-- 新增 `evals/cases.json`，内置 24 条固定评估用例
-- 新增 `evals/run_eval.py`，支持直接运行评估并输出报告
-- 评估报告会输出到 `evals/reports/`，同时生成 JSON 和 Markdown 两种格式
-- `evals/reports/*.json` 和 `*.md` 默认不提交，避免时间戳报告污染版本库
-
-#### 评估覆盖
-- `intent_accuracy`：意图识别准确率
-- `memory_recall`：长期记忆召回命中率
-- `task_tracking`：任务状态更新正确性
-- `commitment_extraction`：承诺新增、关闭和 deadline 识别
-- `reminder_control`：自然语言提醒控制
-- `tool_calling`：工具调用正确性、只读/写状态和最大调用次数
-- `context_planning`：上下文规划是否注入必要模块
-- `supervision_lifecycle`：监督事件检测、确认、稍后和关闭状态流转
-
-#### 运行方式
-- `conda run -n agent python evals/run_eval.py`
-- 支持 `--cases`、`--report-dir` 和 `--min-score`
-- 默认 `--min-score 1.0`，适合作为后续 CI smoke test 的基础
-
-## V1.6
-### 目标
-- 将内部状态工具调用升级为可观察、可测试、可审计的 Agent tool-use 模块
-- 明确每个工具的输入输出 schema、只读/写状态边界和副作用
-
-### 已实现
-#### Schema-driven Tools
-- `ToolSpec` 新增 `output_schema`、`side_effects`、`read_only`
-- `ToolRegistry.register()` 保持兼容原有参数，同时支持补充工具输出和副作用信息
-- 新增 `ToolRegistry.export_schemas()`，可独立导出所有工具 schema
-- Workmate 内部工具补齐输出 schema 和读写边界，包括任务、承诺、记忆检索、记忆备注和专注会话工具
-
-#### Tool Trace
-- `ToolExecutor.execute()` 统一记录 `call_id`、`reason`、`duration_ms`、`read_only`、`side_effects`、`input_schema`、`output_schema`
-- 工具规划失败会返回 `__tool_planning__` error trace，而不是静默吞掉错误
-- 工具 handler 异常继续被隔离在单条工具结果中，不中断整轮对话
-- 每轮最大工具调用次数继续由 `max_calls` 控制
-
-#### Web/API 可观察性
-- `WorkmateAgent.get_tool_schemas()` 暴露工具 schema
-- `/api/chat`、流式 done 事件、`/api/memory` 和 `/api/context` 返回 `tool_schemas`
-- Web 左侧工具摘要展示读写模式、耗时和副作用
-- `MODEL CONTEXT` 顶部新增 `TOOL TRACE` 区块，展示工具调用状态、耗时、原因、错误和副作用
-
-#### 测试
-- 新增 `tests/test_tool_executor.py`
-- 覆盖工具 schema 导出、任务状态写工具、承诺只读工具、记忆检索工具、专注会话工具、规划失败隔离和最大调用次数限制
-
-## V1.5
-### 目标
-- 将长期记忆检索升级为可解释的 Hybrid Memory RAG
-- 让记忆召回覆盖更多内部状态，并在 Web 调试台展示召回原因
-
-### 已实现
-#### MemoryRetriever
-- 新增 `memory/retriever.py`
-- 引入 `MemoryRetriever`，统一计算 keyword、recency、salience、type weight 和可选 vector score
-- 每条检索结果返回 `source_type`、`source_id`、`score`、`reason` 和 `score_breakdown`
-- 向量检索通过 `WORKMATE_VECTOR_RETRIEVAL` 可选启用；未配置 embedding client 时自动降级为非向量 hybrid scoring
-
-#### 检索来源扩展
-- `SearchManager` 保持原有调用方式，但内部委托 `MemoryRetriever` 评分
-- 检索索引新增覆盖 `tasks` 和 `behavior_patterns`
-- 原有 conversation records、memory_items、memory_categories、commitments、high_level_insights、semantic_dialogues 等来源继续保留
-- `MemoryManager.refresh_search_index()` 会把任务生命周期和行为模式同步纳入索引
-
-#### Retrieval Plan 可观察性
-- `retrieval_plan` 新增 `mode`、`vector_status`、`top_results` 和每条结果的评分拆解
-- `MODEL CONTEXT` 顶部展示 RAG 检索计划、召回结果、分数与原因，方便判断本轮上下文为什么注入某些记忆
-- `/api/chat` 流式完成后的 `context` 会携带本轮 prompt 对应的 `retrieval_plan`
-
-#### 测试
-- 新增 `tests/test_memory_retriever.py`
-- 覆盖相关任务记忆排序、向量未启用时的降级状态、任务和行为模式索引构建
-- 测试使用临时目录，不写入真实 `memory/data`
-
-## V1.4
-### 目标
-- 将现有“上下文规划、内部工具调用、模型回复、记忆写回”流程显性化为可观察的 Agent Runtime
-- 让项目从 API 聊天窗口进一步升级为具备清晰 Agent Loop 和运行轨迹的工程项目
-
-### 已实现
-#### Agent Runtime
-- 新增 `agent/runtime.py`，封装单轮 Agent 执行流程
-- 每轮统一生成 `turn_id`，并记录 `started_at`、`completed_at`、`duration_ms`、`status` 和 `streaming`
-- 执行阶段拆分为 `apply_reminder_control`、`plan_context`、`execute_tools`、`generate_response`、`write_memory`、`update_supervision_state`
-- 每个阶段记录状态、耗时、摘要 metadata 和错误信息，用于观察 Agent Loop 是否正常执行
-- `src/core.py` 改为委托 `AgentRuntime` 执行，保留原有 `WorkmateAgent.invoke()`、`invoke_stream()`、CLI 行为
-
-#### Turn Trace
-- 将原有 `last_context_messages`、`last_tool_calls`、`last_pipeline_result` 整合为统一的 `turn_trace`
-- `turn_trace` 记录上下文消息数、上下文估算、工具调用结果、工具观察、记忆写回结果和回复摘要
-- 新增 `WorkmateAgent.get_last_turn_trace()`，方便 Web/API 读取最近一轮运行轨迹
-- trace 只暴露执行过程，不记录或展示模型隐藏推理链
-
-#### Web/API 可观察性
-- `/api/chat`、流式 done 事件、`/api/memory` 和 `/api/context` 均返回最近一轮 `turn_trace`
-- Web 左侧 `MEMORY` 面板新增 `runtime` 字段，展示 turn id、执行状态、耗时、消息数量和主要阶段
-- 保持原有 `tool_calls`、`MODEL CONTEXT` 和记忆调试信息不变
-
-## V1.3
-### 目标
-- 让主动提醒策略开始参考用户反馈，而不是所有提醒长期使用同一套强度
-- 保持用户可控：系统只给策略建议，不在后台悄悄改变提醒边界
-
-### 已实现
-#### 提醒策略建议层
-- `SupervisionEventManager.build_state()` 新增 `strategy`
-- 策略层会基于 `feedback_stats` 分析用户更常确认/关闭提醒，还是更常稍后/静音提醒
-- 当用户多次选择 `snoozed` 或 `muted` 时，会建议提高 `push_min_severity` 或延长默认稍后提醒间隔
-- 当用户近期更常确认或关闭提醒，且当前推送门槛过高时，会建议把 `push_min_severity` 从 `high` 调回 `medium`
-- 策略层会输出 `recommendations`、`preference_updates` 和按事件类型统计的 `type_friction`
-
-#### 压力感知语气策略
-- `strategy` 新增 `tone_policy`
-- 复用支持性知识层识别到的 `anxious / tired / avoidant / stuck / scattered / overplanning` 等状态，自动建议降低监督语气
-- 深夜或清晨等休息时段会进入 `soften` 策略，提示模型只做状态确认和一个很小的提示，不追问、不催促、不展开长建议
-- 前端 `APPLY STRATEGY` 会同时合并普通策略建议和语气策略建议，例如把 `reminder_strength` 调整为 `soft`、把 `push_min_severity` 调整为 `high`
-- 语气策略进入模型上下文，用于减少用户低能量状态下的压力感
-
-#### 个性化提醒文案
-- `strategy` 新增 `copy_policy`
-- 监督事件刷新时会读取长期用户画像中的 `communication_preference` 和 `effective_interventions`
-- 根据“先帮用户记住和整理”“低压力回应”“只给一个小建议”“不要要求证明”等偏好，为事件生成用户可见的 `display_message`
-- 原始 `message` 继续保留用于结构化调试，Web 事件卡片、浏览器通知和后台推送优先使用 `display_message`
-- 模型上下文会标注当前提醒文案策略，避免监督事件在低压力偏好下显得生硬
-
-#### 分渠道提醒门槛
-- 提醒偏好新增 `page_min_severity`、`browser_min_severity` 和 `background_min_severity`
-- 保留 `push_min_severity` 作为兼容字段，并映射到浏览器通知门槛
-- 页面内监督事件列表按 `page_min_severity` 过滤，默认仍显示低优先级事件
-- 浏览器 Notification API 使用 `browser_min_severity`，默认从中等级事件开始弹出
-- 后台常驻推送使用 `background_min_severity`，默认只推送高优先级事件，减少 macOS/Bark/飞书等渠道的打扰
-- 自适应策略和自然语言控制会同步更新浏览器/后台门槛，例如“今天安静一点”会把两个主动推送渠道都调到 `high`
-
-#### 事件类型反馈策略
-- 提醒偏好新增 `event_type_min_severity`
-- 策略层会根据 `feedback_stats.by_type` 观察不同监督事件类型的反馈，例如 `focus_expired`、`task_stale`、`commitment_due_today`
-- 如果某类提醒更常被 `snoozed` 或 `muted`，策略会只提高这一类事件的浏览器/后台门槛，而不粗暴降低所有提醒
-- 如果某类提醒更常被确认或关闭，策略会允许这一类事件保持中等级浏览器提醒
-- 前端策略卡片新增 `type_preference_signals` 展示，让用户点击 `APPLY STRATEGY` 前能看到是哪类提醒触发了调整
-
-#### 自然语言提醒控制
-- 新增 `SupervisionEventManager.apply_natural_language_control()`
-- `WorkmateAgent` 在构建上下文前会先识别用户输入中的显式提醒控制短语
-- 支持“今天安静一点”“今天别提醒”“暂停提醒”“恢复提醒”“只提醒承诺”“只提醒专注”“只提醒任务”“提醒全部”“少提醒”“多提醒”等轻量控制
-- V1.3 后续增强为 LLM 优先分类、规则兜底：当输入看起来像提醒/通知/推送控制时，会先调用 `LLMClient.invoke_raw()` 识别意图和安全偏好更新
-- LLM 输出只允许白名单字段生效，包括启停提醒、三类渠道门槛、默认稍后分钟数和事件类型开关；置信度不足或 JSON 不合法时自动回退到规则短语
-- 新增偏好字段 `quiet_until`，用于支持“今天安静一点”这类临时静音，不需要关闭整个监督系统
-- `/api/memory` 和 `/api/context` 暴露 `last_reminder_control`，方便调试最近一次自然语言控制是否生效
-
-#### Web 交互
-- `SUPERVISION EVENTS / PREFERENCES` 区域新增 adaptive reminder strategy 卡片
-- 前端展示当前策略模式、推荐改动和事件类型摩擦说明
-- 前端会展示自然语言临时静音状态，例如安静到当天几点
-- 新增 `APPLY STRATEGY` 按钮，用户点击后才会把推荐值写入提醒偏好
-- 保持原有手动偏好设置不变，策略建议只是辅助用户调整提醒强度
-
-## V1.2
-### 目标
-- 让用户打开页面后，不需要翻聊天记录就能看到当前主线、今日进展和本周节奏
-- 把任务、专注、承诺、监督事件和行为模式聚合成一个低压力行动仪表盘
-
-### 已实现
-#### 个人自律仪表盘
-- 新增 `DashboardManager`
-- 新增 GET `/api/dashboard`
-- `/api/memory` 和 `/api/context` 暴露 `dashboard`
-- 仪表盘聚合今日专注次数/分钟数、今日完成任务、今日关闭承诺、未关闭承诺、到期承诺、活跃监督事件、当前主线、任务分散度、本周专注分钟、本周完成任务、本周活跃天数和承诺履行率
-- 仪表盘生成一条轻量 `gentle cue`，只用于帮助用户回到主线，不做评分或压力提示
-
-#### Web 交互
-- `EXECUTION` 面板顶部新增 `TODAY DASHBOARD`
-- 展示 `today focus`、`today done`、`open loops`、`mainline`、`week rhythm`、`load` 和 `gentle cue`
-- 新增快速操作按钮：`FOCUS` 使用当前主线开启专注，`DONE` 完成当前主线，`REMINDERS` 滚动到监督事件区域
-- `ContextPlanner` 在任务、监督、复盘和周报场景注入 dashboard 摘要，让模型回复更贴近用户当前行动状态
-
-## V1.1
-### 目标
-- 从“发生了什么提醒”推进到“用户经常怎样行动”
-- 让 Agent 能根据任务、专注、承诺和监督事件识别长期行为模式，但不做心理诊断或人格标签
-
-### 已实现
-#### 行为模式分析
-- 新增 `BehaviorPatternManager`
-- 新增运行时文件 `memory/data/behavior_patterns.json`
-- 基于本地 JSON 数据分析专注完成率、专注超时、承诺积压、承诺履行率、任务分散、任务停滞和提醒反馈摩擦
-- 每个行为模式包含 `title`、`summary`、`tone`、`severity`、`frequency`、`evidence` 和 `suggested_intervention`
-- 行为模式只作为观察线索进入上下文，提示 Agent 在相关时给一句轻量建议，不把单次行为当成长期结论
-
-#### 上下文与 Web
-- `MemoryManager` 每轮派生记忆后刷新行为模式
-- `ContextPlanner` 在任务、监督、复盘和周报场景注入 `behavior_patterns`
-- `/api/memory` 和 `/api/context` 暴露 `behavior_patterns`
-- Web 的 `MEMORY` 面板新增 `patterns` 字段，展示当前最相关的行为模式
-
-## V1.0
-### 目标
-- 启动主动监督闭环建设
-- 将专注超时、承诺到期、任务停滞等提醒从临时判断升级为可追踪的监督事件
-- 为后续“确认、静音、关闭、稍后提醒”等用户可控监督策略打基础
-
-### 已实现
-#### 统一监督事件模型
-- 新增 `SupervisionEventManager`
-- 新增运行时文件 `memory/data/supervision_events.json`
-- 支持事件状态：`detected / notified / acknowledged / snoozed / resolved / muted`
-- 支持 `snoozed` 稍后提醒状态，到期后自动重新变为 `detected`
-- 支持监督事件类型：专注会话超时、承诺今日到期、承诺逾期、当前任务久未更新
-- 同一事件使用 `dedupe_key` 去重，避免短时间重复生成和重复推送
-- 当对应问题不再存在时，活跃事件会自动转为 `resolved`
-- 监督事件记录 `feedback_history` 和 `linked_updates`，用于追踪用户如何处理提醒，以及 DONE 是否同步影响了关联对象
-
-#### 状态联动
-- 用户对专注超时事件执行 `DONE` 时，会尝试同步完成当前专注会话
-- 用户对承诺今日到期或逾期事件执行 `DONE` 时，会尝试同步关闭对应承诺
-- 用户对当前任务久未更新事件执行 `DONE` 时，会尝试同步将对应任务标记为完成
-- 关联对象已经不存在或不再是当前对象时，不会报错中断，而是把跳过原因写入事件的 `linked_updates`
-
-#### 提醒偏好
-- 新增运行时文件 `memory/data/supervision_preferences.json`
-- 支持总开关、默认稍后提醒分钟数、默认静音小时数、静默时段、最低提醒严重程度
-- 支持 `push_min_severity`，低严重度事件可以只进入页面，不触发桌面或后台推送
-- 支持按事件类型启停提醒：专注、承诺、任务停滞
-- 后台 scheduler 和浏览器桌面通知都会尊重提醒偏好；事件仍会记录，但不一定主动推送
-
-#### 后台调度与 API
-- `WorkmateWebApp` 的后台 scheduler 改为先刷新监督事件，再只对 `detected` 状态事件发送推送，并将其标记为 `notified`
-- `/api/memory`、`/api/context` 暴露 `supervision_events`
-- 新增 GET `/api/supervision/events` 刷新并读取监督事件
-- 新增 POST `/api/supervision/events`，支持 `acknowledge`、`snooze`、`mute`、`resolve`、`mark_notified`
-- 新增 GET/POST `/api/supervision/preferences`，用于读取和保存监督偏好
-- 修正推送自检读取的环境变量名：Bark 使用 `BARK_KEY`，飞书使用 `LARK_WEBHOOK_URL`
-
-#### Web 交互
-- `EXECUTION` 面板新增 `SUPERVISION EVENTS`
-- 用户可以在前端对监督事件执行 `SNOOZE`、`ACK`、`MUTE`、`DONE`
-- `SUPERVISION EVENTS` 面板新增提醒偏好设置：启用状态、默认稍后分钟数、推送最低等级、静默时间段、专注/承诺/任务提醒开关
-- `SUPERVISION EVENTS` 面板展示反馈统计，方便观察用户是更常确认、稍后提醒、静音还是关闭事件
-- 浏览器桌面通知改为基于统一监督事件触发，而不是分别读取 focus session 和 commitments 裸数据
-
-## V0.9.2
-### 目标
-- 优化任务提取阶段的匹配算法，解决因语序颠倒、多余助词或修饰语引起的 TODO LIST 重复任务提取问题。
-
-### 已实现
-#### 任务匹配去重升级
-- **Jaccard 相似度算法匹配**：在 `TaskManager` (`memory/task_manager.py`) 中升级了 `_same_task`。除了精确匹配和子串匹配外，新增了基于 Jaccard 相似度匹配逻辑，以大于等于 `0.5` 相似度判定为同一任务并执行更新去重。
-- **语义 Token 切词器**：新增 `_get_semantic_tokens` 辅助方法，使用正则提取所有英文单词/数字，并将中文拆分为汉字级别 Token，同时剔除常用的中文虚词、助词及代词（如：`的, 了, 和, 与, 在, 于, 是`），生成特征集合。
-- **广泛的去重测试覆盖**：成功解决 `"LLM wiki的实现"` 与 `"实现LLM wiki"` 等倒装中英文混排情况，以及 `"学习了解现有Agent框架"` 与 `"了解现有Agent框架"` 等同义修饰情况下的任务重复合并。
-
-## V0.9.0
-### 目标
-- 在左侧栏的 `🎯 EXECUTION` 面板中新增可视化待办列表（Todo List），实现“用户说出计划安排 -> 模型自动提炼任务并同步展示在列表中 -> 用户点击复选框标记完成/重新激活 -> 数据实时双向同步”的完整任务闭环。
-
-### 已实现
-#### 任务管理器与状态一致性同步
-- **核心逻辑改造**：在 `TaskManager` (`memory/task_manager.py`) 中新增 `update_task_status(task_id, status)` 方法，实现对单项任务状态的持久化更新，自动设置 `completed_at`/`abandoned_at` 时间戳，并在父任务标记为 `done`/`abandoned` 时，自动将其下所有未完成的子任务标记为对应的状态。
-- **状态一致性保证**：在 `TaskState` (`memory/task_state.py`) 中联动 `TaskStateManager`，当被修改的任务是当前的活跃任务（Active Task）时，自动同步将 `task_state.json` 中的状态、当前进度和更新时间戳置为一致，同时向 `task_events.json` 写入 `status_changed` 状态流转事件（标注 `via: "web_ui"`）。
-
-#### Web API 支持
-- **同步更新接口**：在 `src/web.py` 中新增 POST `/api/task/update-status` 接口，接收任务 ID 和新状态，调用底层同步修改后，返回最新的 `task_view`、`memory` 和 `context` 状态字典。
-
-#### 前端 GUI 待办列表可视化
-- **任务待办面板 HTML/CSS**：在左侧栏 `🎯 EXECUTION` 选项卡中新增 `TODO LIST` 卡片面板。为其编写了完美融入“复古手账/记账本”风格的 Vanilla CSS（包含复古卡片阴影、圆角、苔绿色打勾复选框、已完成任务的朱砂红删除线样式）。
-- **动态渲染与交互逻辑**：
-  - 合并展示 `taskView.active` 与 `taskView.recent_completed` 的所有待办事项，按状态（`active`, `blocked`, `planned`, `inbox`）渲染对应的半透明高对比度色彩徽章，同时友好格式化展示其最近更新时间（`MM-DD HH:MM`）以及其子任务完成进度（如 `子任务: 2/3`）。
-  - 实现点击复选框或条目的 toggle 动作：自动请求后端 `/api/task/update-status` 修改状态并驱动整个 Web 页面数据流的重新加载，达成瞬间同步。
-
-## V0.8.6
-### 目标
-- 专注于系统交互与体验层面优化，全面美化 Web 调试界面（支持 Markdown 表格、代码高亮、一键复制），并新增推送通道连接状态自检与测试面板，提升可用性与调试效率。
-
-### 已实现
-#### 后台 API 增强
-- **配置与测试接口**：在 `src/web.py` 中新增 GET `/api/notify/status` 获取已启用的通知通道（macOS 原生弹窗、Bark 推送、飞书 Bot）及其参数配置状态，新增 POST `/api/notify/test` 触发测试推送并返回响应结果，方便随时验证推送连通性。
-
-#### 前端 Web 调试界面重构与美化
-- **渲染器升级**：引入 `marked.js` 和 `Prism.js` (Okaidia 主题) CDN，替换了原有的手写 Markdown 解析器，实现 100% 完美的 GFM Markdown 渲染，全面支持多级嵌套列表和语法高亮。
-- **表格与代码块美化**：
-  - 设计并适配了优雅的表格样式（浅色边框与斑马纹底色），使周报数据概览表格清晰精美。
-  - 为所有代码块增加了悬浮显示的 `COPY`（一键复制）按钮，并提供防重与成功 Toast 状态。
-- **系统配置与推送自检折叠面板**：
-  - 在侧边栏底部新增了「SYSTEM CONFIG & PUSH TEST」折叠面板。
-  - 支持动态展示本地弹窗、Bark 推送、飞书机器人的启用与配置状态（通过绿色/红色指示灯标识）。
-  - 集成了「发送测试通知 🔔」交互按钮，一键发送测试通知并获取即时反馈。
-- **平滑滚动优化**：对聊天内容区域 `.transcript` 开启 CSS `scroll-behavior: smooth`，使流式 Delta 响应追加时的滚动效果极其丝滑自然。
-
-## V0.8.5
-### 目标
-- 实现周度自律诊断与“偏航/拖延”模式报告（Weekly Review），当用户提出“生成周报”、“周度复盘”等诉求时，系统会深度汇总过去 7 天的专注会话状态、承诺履约表现以及长期画像，为用户生成一份具有“成长性思维”且极具诊断价值的 Markdown 总结。
-
-### 已实现
-#### 意图分类与上下文规划更新
-- **意图分类器支持 `"weekly_report"`**：在 `IntentManager`（`memory/interpreter.py`）中新增合法意图 `"weekly_report"`，在规则分类器中增加“周报、周复盘、每周总结、每周回顾、本周总结、本周复盘”等关键字检测，并更新了大模型意图分类的 Prompt 提示词与 JSON schema，确保能准确识别用户的周报/周复盘请求。
-- **上下文规划器更新**：`ContextPlanner` (`memory/context_planner.py`) 在 `required_context_keys` 中加入 `"weekly_report"` 处理分支，智能规划并延伸引入 `"weekly_report_data"`, `"high_level_insights"`, `"behavior_stats"`, `"commitments"`, `"reflections"` 等必要上下文数据块。
-
-#### 周度数据汇总与回复策略指引
-- **新增周报数据提取与回复指引**：`BehaviorStatsManager` (`memory/stats.py`) 中新增 `format_weekly_review_context(memory_manager)` 方法，动态计算过去 7 天专注会话（次数、完成、超时、放弃、总时长、平均时长、完成率）、承诺履行（新增、关闭、履行率、逾期遗留）及活跃打卡情况，并附加 【Agent 回复策略指引】。
-- **无交互摩擦的回复策略**：在回复指引中，指导 Agent 撰写温暖、亲和、具有成长性思维的【周度自律诊断报告】（包含数据概览表格、注意力诊断、长期拖延预警和下周自律指南等模块），且要求以纯自然语言/Markdown 流畅收尾，默认不以问句结尾，避免给用户造成打扰。
-
-#### 上下文加载与加载流集成
-- **上下文引擎对接**：`ContextEngine` (`memory/context_engine.py`) 在 `load_context_blocks` 中补全了对 `"weekly_report_data"` 键的解析，并在加载上下文时通过调用 `stats_manager.format_weekly_review_context` 组装对应的数据块并注入到大模型的上下文提示中。
-
-## V0.8.4
-### 目标
-- 脱离网页一直打开的限制，实现后台守护线程常驻调度和多通道通知（Mac系统弹窗 / iOS手机推送 / 飞书机器人），降低交互摩擦并强化主动陪伴能力
-
-### 已实现
-#### 后台推送模块
-- 新增 `Notifier` 推送模块（`memory/notifier.py`），封装了三类推送渠道：
-  - **Local macOS Native Alert**：使用 `subprocess` 调用 macOS AppleScript 原生通知弹窗，免三方库安装。
-  - **Bark Push**：发送 HTTP GET 请求，直接推送通知到用户 iOS 手机上，点击可跳转。
-  - **Lark/Feishu Webhook**：通过飞书自定义群机器人 Webhook 以 JSON POST 请求形式推送卡片信息。
-- 提供配置化设计，用户可通过修改 `.env` 决定启用哪些通知通道（如 `PUSH_CHANNELS=local,bark`）并配置对应的 Key/Webhook。
-
-#### 后台守护线程与状态监控 (Scheduler)
-- 在 Web 服务类 `WorkmateWebApp` 载入时自动开启一个 `daemon` 守护线程作为后台调度器，每 60 秒执行一次全自动状态检查。
-- **专注超时监测**：自动检测进行中或超时的 focus session。一旦超时，立即触发推送。
-- **承诺到期监测**：自动检测所有 open 状态的承诺，如果在今天到期或已经逾期，触发推送。
-- 后台自主维护已通知 focus session ID 和 commitment 每日通知 Key（`id_date`），防范重复弹窗打扰。
-
-## V0.8.3
-### 目标
-- 实现浏览器桌面主动弹窗通知，强化自律监督并降低用户交互负担
-
-### 已实现
-#### 桌面主动通知
-- 前端自动检测并请求浏览器 `Notification` API 权限
-- 实现 `checkAndNotify` 桌面提醒逻辑，集成于 1 分钟的前端数据轮询流水线中
-- 支持专注会话超时提醒：当专注状态为 `expired` 时触发弹窗
-- 支持承诺到期/逾期提醒：当存在今天到期或已逾期的 open 承诺时触发弹窗
-- 引入本地防重复打扰机制，利用 `localStorage` 记录已通知的会话 ID 以及承诺当天已通知状态，避免重复触发弹窗
-
-## V0.8.2
-### 目标
-- 感知时间间隔、今日对话状态和下班收工行为，为用户回归、早晨开启和晚间收工提供更柔和、具有情境感的自适应反馈策略
-
-### 已实现
-#### 首次对话早间简报 (C)
-- `BehaviorStatsManager` 新增 `is_first_message_today()`，判断当前对话是否为今天首次交流
-- 新增 `format_morning_briefing()` 格式化组件：汇总昨日遗留承诺、今天到期/逾期承诺、今日主线任务、本周专注及承诺统计指标，并提供温和问候与轻量启动建议的 Agent 回应指引
-- 在 Context 规划中动态引入 `morning_briefing` 数据块
-
-#### 纯自然语言晚间总结复盘 (C)
-- `BehaviorStatsManager` 新增 `format_evening_review()`：在傍晚/夜间时间段，当检测到用户输入包含“下班/收工/走啦/明天见”等收工意向时，自动开启晚间总结复盘
-- 动态汇总今日累计完成专注次数、累计时长、今日关闭承诺、当前卡点阻塞项目，并注入上下文引导指令
-- 约束 Agent 以纯自然语言（不带表格、列表或分隔符）流畅温暖地对今天的工作进行总结复盘并告别，严禁提问，实现无交互摩擦的轻量自然收尾
-
-#### 间隔与专注超时感知 (B)
-- `BehaviorStatsManager` 新增 `get_conversation_gap_minutes()` 计算对话静默时长
-- 新增 `format_gap_context()` 格式化组件：当两次对话间隔超过 30 分钟或当前专注会话超时，向上下文注入具体的静默间隔与超时时间，指引 Agent 更加人性化地询问进展或引导继续话题
-- 在 Context 规划中动态引入 `gap_context` 数据块
-
-## V0.8.1
-### 目标
-- 基于 V0.8 的专注会话和时间感知数据，补全"有量化数据"和"有时间情境"两层能力
-- 让承诺追踪真正具备时效性，不再只是文字记录
-- 把工具层与专注会话打通，降低会话操作摩擦
-
-### 已实现
-#### 承诺 Deadline 感知
-- `CommitmentManager` 新增 `_extract_deadline()`，从承诺文本中用关键词规则提取 deadline
-- 支持识别：今天/今晚/今日、明天/明日、后天、这周/本周/周末、下周
-- 每条新承诺自动写入 `deadline` 字段（ISO 8601 格式）
-- `format_for_context()` 展示时标注 `[⚠ 已逾期]`、`[今天到期]`、`[截止 MM/DD]`
-- `SupervisionManager` 新增 `overdue_commitment`（medium）和 `due_today`（low）两类监督信号，优先于泛化承诺提醒触发
-
-#### 行为统计层
-- 新增 `BehaviorStatsManager`（`memory/stats.py`）
-- 实时从已有 JSON 文件计算，不新增存储文件
-- 统计维度：专注会话完成率和累计时长、承诺本周履行率、连续活跃天数
-- 上午和傍晚对话、用户触发 `review` 意图时，行为统计自动注入上下文
-
-#### 时间情境感知
-- `ContextPlanner` 新增 `time_period()` 方法，按时段返回 `morning / afternoon / evening / night`
-- `time_context` 成为基础上下文块（每次对话都注入），包含当前时段、今日专注情况和 Agent 应对策略提示
-- 深夜（23:00–06:00）自动屏蔽 `supervision` 信号，避免在休息时段加压
-- 上午和傍晚额外注入 `behavior_stats`，支持更具体的启动和收束建议
-
-#### 工具层接入专注会话
-- `tools/workmate_tools.py` 新增三个工具：`start_focus_session`、`complete_focus_session`、`abandon_focus_session`
-- AI 在对话中判断用户明确说"去做某事"时可直接启动专注会话，无需用户手动操作 UI
-- 工具描述内置触发约束，避免在普通聊天或计划讨论中误触发
-- `complete` / `abandon` 在无进行中会话时返回 `{completed: false}` 而非报错
-
-## V0.8
-### 目标
-- 从“被动等待用户汇报”迈向轻量主动陪伴的第一步
-- 增加专注会话状态，让 Agent 理解用户离开对话后的执行片段
-- 建立基础时间间隔感知，为后续主动监督和提醒能力铺底
-
-### 已实现
-#### 专注会话
-- 新增 `FocusSessionManager`
-- 新增 `memory/data/focus_sessions.json`
-- 支持开始、完成、停止当前专注会话
-- 记录专注目标、计划分钟数、开始时间、预计结束时间、结束时间、实际经过分钟数和结果状态
-- 进行中的会话超过预计结束时间后会自动标记为 `expired`
-- 开始新的专注会话时，会自动收束上一段仍在进行中的会话
-
-#### 上下文注入
-- `ContextPlanner` 默认将 `focus_session` 纳入基础上下文
-- `ContextEngine` 按需格式化专注会话状态
-- 专注会话上下文强调“理解用户执行片段”，不作为强制证明、考核或压力来源
-
-#### Web 调试
-- `/api/memory` 和 `/api/context` 暴露 `focus_session`
-- 新增 `/api/focus`，支持 `start`、`complete`、`abandon` 三类动作
-- 前端左侧新增 `FOCUS SESSION` 面板
-- 用户可以在页面中直接填写接下来这一段要做的事、设置计划时长，并标记完成或停止
-- 页面会显示当前专注目标、状态、已进行时间和最近会话间隔
-
-## V0.7
-### 目标
-- 为 Workmate Agent 增加受控的内部状态工具层
-- 工具调用只用于读取和更新任务、承诺、记忆等内部状态，不做外部自动化
-- 不采用完整 ReAct 文本框架，改用结构化 JSON tool call loop，降低工具误用风险
-
-### 已实现
-#### 内部状态工具层
-- 新增 `tools/registry.py`
-- 新增 `tools/executor.py`
-- 新增 `tools/workmate_tools.py`
-- 支持工具：`get_current_task`、`list_open_tasks`、`update_task_status`、`list_open_commitments`、`search_memory`、`add_memory_note`
-- 工具层禁止访问外部网页、任意文件、shell、GitHub 或其他外部自动化能力
-- 工具选择失败时自动降级为空工具调用，不影响普通对话
-
-#### Agent 调用链
-- `WorkmateAgent` 在生成最终回复前先执行最多 3 次内部状态工具调用
-- 工具 observation 作为 system context 注入最终回复
-- 流式输出同样先完成工具调用，再流式生成自然语言回复
-- 保留现有记忆流水线；工具层作为内部状态辅助，不替代记忆提取和任务生命周期管理
-
-#### Web 调试
-- `/api/chat`、`/api/memory`、`/api/context` 暴露本轮 `tool_calls`
-- 前端侧栏新增 `tools` 区域，显示最近工具调用状态
-
-## V0.6.1
-### 目标
-- 降低 GitHub clone 后的本地启动门槛
-- 让用户按“复制配置、填写 API Key、运行脚本、自动打开页面”的路径使用 Workmate Agent
-
-### 已实现
-#### 一键启动
-- 新增 `.env.example`，提供 OpenRouter/Kimi 的 OpenAI-compatible 配置示例
-- 新增 `run.sh`
-- `run.sh` 会检查 `.env` 和 `LLM_API_KEY`
-- 优先使用本机 conda `agent` 环境；没有该环境时自动创建本地 `.venv`
-- 自动安装/检查依赖，启动 `src.web`，并打开 `http://127.0.0.1:7860`
-- `.gitignore` 新增 `.venv/`，避免提交本地虚拟环境
-
-#### 文档
-- README 新增快速启动路径：`cp .env.example .env` -> 填 API Key -> `./run.sh`
-- README 保留手动 conda 启动和命令行模式作为备用方式
-
-## V0.6
-### 目标
-- 引入轻量支持性知识层，在用户焦虑、分散、拖延、疲惫或卡住时提供温和支撑
-- 用注意力、时间管理、学习方法和情绪调节类短卡片辅助回应
-- 保持 Workmate Agent 的边界：不做心理诊断，不做治疗，不讲大道理，不把方法论变成新压力
-
-### 已实现
-#### 支持性知识层
-- 新增 `knowledge/support_notes.json`
-- 首批支持卡片覆盖专注、启动阻力、分心、开放循环、自我攻击、灾难化念头、读书、刷题、写作整理和调试卡点
-- 卡片使用短原则和温和应用说明，不直接注入长篇书籍内容
-
-#### 轻量检索与注入
-- 新增 `SupportKnowledgeManager`
-- 支持基于用户输入识别 `anxious`、`scattered`、`tired`、`avoidant`、`overplanning`、`stuck` 等状态
-- 仅在相关状态出现时检索支持性卡片，并通过 `ContextPlanner` / `ContextEngine` 注入模型上下文
-- 支持性知识只作为辅助，不要求用户证明、汇报或完成额外标准
-
-#### Web 调试
-- `/api/memory` 暴露本轮支持性知识状态
-- 前端侧栏新增 `support` 区域，用于查看当前是否触发支持性知识层及对应轻柔提示
-
-## V0.5.5
-### 目标
-- 优化 Workmate Agent 的回复收束方式，让用户同步计划后可以直接去执行
-- 减少默认追问带来的对话负担，避免用户被问句拖回聊天
-- 在用户准备开始任务时，偶尔给出轻柔的执行焦点，帮助用户带着注意力线索进入任务
-
-### 已实现
-#### 回复收尾体验
-- `systemPrompt` 新增“收尾策略”：默认不以问句结尾
-- 当用户同步计划、汇报进展、让我记住某事或准备开始执行时，优先用“已记录 / 计划整理 / 下一步提醒”收束
-- 只有缺少关键信息、无法建立任务状态或无法判断用户真实意图时，才提出最多一个必要问题
-- 将启发性内容改写为陈述式小建议，减少为了延续对话而产生的追问
-
-#### 执行焦点提示
-- `systemPrompt` 新增“执行焦点提示”
-- 当用户明确表示接下来要做一件事时，Agent 可以偶尔给一个轻柔的注意力线索
-- 执行焦点用于帮助用户进入任务，不作为验收标准、完成指标、证明要求或回来汇报要求
-- 提示要求自然融入对话，避免“成果锚点”“完成标准”等模板化、命令式表达
-- 按读书、刷题、写作整理、开发调试等场景给出柔和示例
-
-#### 记忆上下文清洗
-- 监督信号不再建议“询问是否需要更新进展”，改为“温和提醒用户回来同步进展”
-- 记忆检索和记忆项清洗中，将“质疑”柔化为“必要时澄清一个关键信息”，避免长期上下文诱导追问式回复
-
-## V0.5.4
-### 目标
-- 将 V0.5.3 后续的架构整理工作独立成版本
-- 降低 `memory/` 目录的文件噪音，明确代码模块、运行时数据和聚合边界
-- 保持外部调用兼容，避免架构整理影响 `from memory import MemoryManager` 等现有入口
-
-### 已实现
-#### 架构轻量化
-- 新增 `TaskState` 聚合 `TaskManager`、`TaskStateManager` 和 `CommitmentManager`
-- 新增 `ContextEngine` 聚合 `SearchManager`、`ContextPlanner` 和 `ContextCompressor`
-- `MemoryManager` 改为通过 `TaskState` 更新任务、承诺和当前状态，降低任务相关职责分散
-- `MemoryManager` 改为通过 `ContextEngine` 构建模型上下文，检索、规划、压缩和消息拼装集中在一个模块
-- 新增 `MemoryStore`，物理合并 `MemoryResourceManager`、`MemoryItemManager` 和 `MemoryCategoryManager`
-- 新增 `MemoryInterpreter`，物理合并 `MemoryExtractor`、`SemanticDialogueManager`、`SummaryManager`、`InsightManager` 和 `IntentManager`
-- 删除已合并的旧 Manager 单文件，只保留聚合后的代码文件；公共类名和缓存 JSON 格式保持兼容
-- 新增 `memory/paths.py` 统一管理运行时记忆路径，默认数据目录迁移为 `memory/data/`
-- 运行时 JSON、检索索引和每日摘要从 `memory/` 根目录移入 `memory/data/`，避免代码文件和记忆缓存混放
-- 将 `memory/` 下保留的 Python 模块统一改为 snake_case 命名，例如 `manager.py`、`pipeline.py`、`store.py`、`interpreter.py`
-- `memory/__init__.py` 继续导出原有类名，保持 `from memory import MemoryManager` 等外部调用方式不变
-
-## V0.5.3
-### 目标
-- 继续优化记忆系统
-- 目前的几个问题：
-- 搜索引擎太"笨"——纯关键词匹配（优化方向： 引入向量搜索（Embedding Search）。把文本转成数字向量，用语义相似度而不是字面匹配来排序。这是目前工业界 RAG（检索增强生成）系统的标准做法。）
-- 搜索索引每次都重新构建，每次调用 search_related_memories，都会在内部调用 build_index，把所有记忆重新处理一遍，然后再搜索，然后再把结果写入文件。（优化方向： 索引应该增量更新——只在 process_turn 写入新记忆后更新索引，而不是每次读取时重建。或者把索引缓存在内存里，只有数据变化时才刷新。）
-- 意图识别太脆弱——关键词命中即判断（优化方向： 用一次小的 LLM 调用（比如便宜的小模型）来做意图分类，而不是关键词匹配。）
-- build_context中的available_context{} 无论如何都格式化全部 16 个数据块（优化方向： 先做意图判断，再按需加载。比如判断是 chat 意图，就只加载 3 个必要块，不加载 reflections、memory_summary 等昂贵的数据。）
-- 压缩是"一刀切截断"，可能切断关键信息(优化方向： 截断前先提取摘要（用 LLM 压缩），或者按句子边界截断，保证信息的完整性。)
-
-### 已实现
-#### 第一批优化
-- `SearchManager.search()` 改为优先读取 `memory/data/retrieval_index.json`，不再每次检索都重建索引
-- `refresh_search_index()` 继续作为记忆写入后的索引刷新入口，保持写入和检索分离
-- 检索索引保存 `salience`、`confidence`、`status` 和 `updated_at` 等排序元数据，避免检索时依赖原始 payload
-- `ContextPlanner` 新增 `required_context_keys()`，先判断输入意图，再返回需要加载的上下文块
-- `MemoryManager.build_context_messages()` 改为按需加载和格式化上下文，普通聊天不再预先格式化全部记忆块
-- `ContextCompressor` 改为按换行和句子边界压缩，降低截断关键信息的概率
-
-#### 第二批优化
-- 新增 `IntentManager`，用于本轮输入意图识别
-- 意图识别优先调用 LLM 输出结构化 JSON，支持 `chat`、`task`、`review`、`supervision`、`search` 五类
-- 当 LLM 不可用、输出非法或分类异常时，自动回退到规则分类
-- `ContextPlanner` 支持接收外部意图分类结果，避免同一轮重复判断
-- `MemoryManager.build_context_messages()` 会先执行意图分类，再根据分类结果按需加载上下文
-- `build_context_debug()` 暴露本轮 `intent`，方便调试分类来源和置信度
-- `CommitmentManager` 改为 LLM 优先判断承诺新增和关闭，规则逻辑作为兜底
-- `TaskManager` 改为 LLM 优先解释任务生命周期和子任务状态变化，规则状态推断作为兜底
-- `UserProfileManager` 改为 LLM 优先提取稳定用户画像增量，默认低压力沟通偏好继续作为产品约束保留
-- `MemoryGovernanceManager` 改为 LLM 优先识别陈旧事实、冲突事实、低价值记忆和显著性提升，规则治理作为兜底
-
-## V0.5.2
-### 目标
-- 继续优化记忆系统，不跳到 V0.6
-- 引入自我反省机制：让 Agent 在若干轮对话后或空闲时回看历史记忆，提炼高阶 Insights
-- 引入记忆治理机制：识别陈旧事实、冲突事实和低价值记忆，并优先降权或归档，而不是直接删除
-
-### 已实现
-#### 自我反省
-- 新增 `ReflectionManager`
-- 新增 `memory/reflections.json`
-- 支持按轮次触发：默认每 5 轮对话分析一次
-- 支持手动触发：用户要求“复盘一下最近状态”“自我反省”等时触发
-- 反省结果记录触发原因、活跃 Insight 数量、治理变更数量和最近洞察
-
-#### 高阶洞察
-- 新增 `InsightManager`
-- 新增 `memory/high_level_insights.json`
-- 从 `Resource / MemoryItem / MemoryCategory` 中提炼长期行为模式和任务推进模式
-- Insight 不等同于摘要，重点关注：反复偏航、过度规划、伪努力、有效推进方式、任务结构变化
-- 支持 LLM 提炼；模型不可用时使用规则兜底
-
-#### 原始对话语义压缩
-- 新增 `SemanticDialogueManager`
-- 新增 `memory/semantic_dialogues.json`
-- 每轮对话都会把原始对话压缩成更短的核心语义
-- 压缩结果保留：用户真实意图、任务/进展/阻塞、关键承诺、重要上下文和必要时间信息
-- 压缩结果不保留：寒暄、重复表达、低价值解释、与长期监督无关的细节
-- 原始对话仍保留在 `records.json`，压缩版本作为上下文注入优先使用，目标是节省上下文窗口
-- 支持 LLM 压缩；模型不可用时根据结构化提取结果规则生成
-
-#### 冲突与陈旧记忆治理
-- 新增 `MemoryGovernanceManager`
-- 新增 `memory/memory_conflicts.json`
-- 识别类似“当前版本是 V0.4”和“当前版本是 V0.5.1 / V0.5.2”的冲突事实
-- 采用 `active -> stale -> archived` 的生命周期，先降权和隐藏，再考虑归档
-- 不默认物理删除历史记忆，保留来源以便追溯
-- `MemoryItemManager` 和 `SearchManager` 会避开 archived 记忆，并对 stale 记忆降权
-
-#### 上下文注入策略
-- `ContextPlanner` 优先注入高阶 Insight、语义压缩对话和记忆治理状态，再注入低层记忆项
-- `SearchManager` 索引 `high_level_insight` 和 `semantic_dialogue`
-- Web API 和前端侧栏暴露高阶洞察、语义压缩、反省记录和记忆冲突
-
-## V0.5.1
-### 目标
-- 对照ReMe 和 MemU 等市面成熟记忆系统架构，补强 V0.5 记忆系统的细节严谨性和架构可靠性
-- 在不引入重型数据库/向量库依赖的前提下，吸收 ReMe 的上下文治理和 MemU 的三层记忆模型、流水线契约思想
-
-### 已实现
-#### 三层记忆模型
-- 新增 `MemoryResourceManager` 和 `memory/memory_resources.json`
-- 新增 `MemoryCategoryManager` 和 `memory/memory_categories.json`
-- 当前记忆分层为：`Resource` 原始对话来源、`MemoryItem` 原子记忆、`MemoryCategory` 分类摘要
-- 每轮对话会同时更新资源层、记忆项层和分类层，方便后续追溯来源和按类别召回
-
-#### 流水线契约
-- `MemoryPipeline` 升级为带 `requires / produces` 的阶段契约
-- 每轮处理包括 `record_turn -> extract_items -> update_task_state -> persist_record -> update_derived_memory -> build_response`
-- 流水线结果暴露每个阶段的状态、产物和错误信息，便于排查记忆写入故障
-
-#### 检索计划和充分性诊断
-- `SearchManager` 支持索引 `memory_category` 和 `memory_resource`
-- 新增 `build_retrieval_plan()`，输出是否需要检索、偏好召回类型、命中数量、命中类型、最高分和简要原因
-- `ContextPlanner` 会在任务、复盘、监督、历史查询场景注入检索计划和分类摘要
-
-#### 稳定标识和去重
-- `MemoryItemManager` 的内容标识改为稳定 SHA 摘要，不再依赖进程随机化的 Python `hash()`
-- `MemoryManager` 的 record id 也改为稳定摘要后缀
-
-#### Web 调试
-- `/api/memory` 和 `/api/context` 暴露 `memory_categories`、`memory_resources`、`retrieval_plan` 和 `last_pipeline_result`
-- 前端侧栏新增记忆分类摘要展示
-
-## V0.5
-### 目标
-- 优化记忆系统，使其从多个分散 JSON 缓存升级为更成熟的分层记忆架构
-- 借鉴 ReMe 的上下文压缩治理、文件式记忆和推理前上下文控制
-- 借鉴 MemU 的 Resource / Item / Category 思路和 memorize / retrieve 流水线
-
-### 已实现
-#### 统一记忆项
-- 新增 `MemoryItemManager`
-- 新增 `memory/memory_items.json`
-- 将任务、子任务、进展、阻塞、下一步、承诺、用户偏好、行为模式和监督建议统一沉淀为 `memory_item`
-- 记忆项包含 `type`、`category`、`content`、`task_id`、`source_record_ids`、`confidence`、`salience`、`usage_count` 等治理字段
-
-#### 写入流水线
-- 新增 `MemoryPipeline`
-- 每轮对话保存统一经过 `extract_items -> update_task_state -> persist_record -> update_memory_items -> refresh_index`
-- `src/core.py` 改为调用 `memory_manager.process_turn()`，避免主流程散落调用多个 Manager
-
-#### 检索与上下文注入
-- `SearchManager` 支持把统一记忆项加入检索索引
-- 检索结果加入类型偏好和显著性加权，任务/承诺/画像类查询会优先召回对应内容
-- `ContextPlanner` 在任务、复盘、监督场景优先注入统一记忆项和主动监督信号
-
-#### 上下文压缩治理
-- 新增 `ContextCompressor`
-- 系统记忆和最近对话分别有独立字符预算，避免长历史撑爆上下文
-- `build_context_debug()` 暴露 `context_stats`，方便观察实际注入规模
-
-#### 主动监督
-- 新增 `SupervisionManager`
-- 根据当前任务停滞、未关闭承诺、反复阻塞和未关闭任务数量生成监督信号
-- 监督信号只用于自然提醒，不强制证据，不设置时间限制，不扩展技术路线
-
-#### Web 调试
-- `/api/memory` 和 `/api/context` 暴露 `memory_items`、`supervision`、`memory_pipeline` 和 `context_stats`
-- 前端侧栏新增统一记忆项和主动监督信号展示
-
-## V0.4.2
-### 目标
-- 收窄 Workmate Agent 的角色边界：只做任务结构整理和监督判断，不做技术帮助、不主动设时间限制
-- 防止 Agent 自己制造子任务或承诺，任务结构应主要来自用户自己提出的内容
-
-### 已实现
-#### 监督边界
-- system prompt 明确：不解释技术细节、不提供专业路线、不主动设置时间盒或 deadline
-- 多任务列表只整理用户自己提出的任务/子任务，不主动扩展技术路线
-
-#### 子任务来源收紧
-- `MemoryExtractor` 提示明确：`subtasks` 只能来自 `user_input` 中用户明确提出的子任务
-- `TaskManager` 不再把 `next_actions` 自动补成 `subtasks`
-- `TaskManager.format_for_context()` 不再注入 `next_check_at`，避免模型主动输出时间限制
-
-#### 承诺来源收紧
-- `CommitmentManager` 不再把 Agent 的 `next_actions` 写成 open commitments
-- 当前只记录用户明确承诺的事项
-
-## V0.4.1
-### 目标
-- 支持任务/子任务结构，避免把一个大任务下的多个动作拆成多个平级任务
-- 优化 Agent 输出格式：只在多任务或多子任务场景使用无序列表整理思路，避免回复变成固定模板
-
-### 已实现
-#### 子任务提取
-- `MemoryExtractor` 新增 `subtasks`
-- LLM 提取提示明确区分主任务和子任务
-- 规则兜底会从多事项输入中提取子任务候选
-
-#### 任务生命周期
-- `TaskManager` 的任务实体新增 `subtasks`
-- 子任务支持 `inbox`、`planned`、`active`、`blocked`、`done`、`abandoned`
-- 每轮对话后会合并新增子任务，并根据阻塞、完成、放弃等信号更新子任务状态
-- `TaskStateManager` 和 Web API 当前任务视图同步暴露子任务
-
-#### 输出策略
-- 主 Agent system prompt 新增多任务输出规则
-- 仅当用户一次性提出多个任务、多个优化方向或一个主任务下多个子任务时，优先用无序列表整理
-- 单任务汇报、普通聊天和情绪表达仍保持自然短回复
-
-## V0.4
-### 目标
-- 任务管理：把 `task_state.json` 从当前状态快照升级为任务生命周期视图
-- 优化上下文注入策略：不再每轮全量注入所有上下文，根据当前输入选择任务、摘要、承诺或检索结果
-- 为后续主动监督打基础：先生成 `next_check_at` 等检查信号，后续再接主动消息通道
-- 调整监督语气：不再默认要求用户每次汇报都强制证明
-
-### 已实现
-#### 任务生命周期
-- 新增 `TaskManager`
-- 维护 `memory/tasks.json` 和 `memory/task_events.json`
-- 支持 `inbox`、`planned`、`active`、`blocked`、`done`、`abandoned` 状态
-- 每轮对话后根据结构化记忆更新任务实体、进展、阻塞、下一步和任务事件
-- `TaskStateManager` 降级为当前任务视图缓存，并兼容旧的 `task_state.json`
-
-#### 上下文规划
-- 新增 `ContextPlanner`
-- `MemoryManager.build_context_messages()` 改为按输入意图选择上下文
-- 普通闲聊减少摘要注入；任务汇报优先注入任务生命周期、当前状态、承诺、近期摘要和相关历史；复盘请求再注入完整历史摘要
-
-#### 去除强制证据语义
-- `MemoryExtractor` 不再输出 `evidence_required`
-- `SummaryManager` 不再汇总待验证证据，也不再生成“继续要求证据”的监督模式
-- `CommitmentManager` 不再把截图、证据、验证要求自动变成未关闭承诺
-- `UserProfileManager` 不再把“要求用户提供可验证证据”写入有效干预
-- 加载旧画像、旧承诺、旧任务状态和旧日摘要时，会过滤强制证据相关内容
-
-## V0.3
-### 目标
-- 从 `records.json` 中提取结构化事实，并形成可复用记忆
-- 让 Agent 能够基于最近若干天记录进行监督
-- 自动生成长期摘要和每日摘要
-- 识别重复拖延、分心等模式
-- 能够引用历史记录、未关闭承诺和长期用户画像
-
-### 已实现
-#### 记忆提取
-- 新增 `MemoryExtractor`
-- 每轮对话后调用模型提取结构化记忆，输出 `categories`、`task`、`progress`、`blockers`、`next_actions`、`user_commitments`、`signals`
-- 模型输出异常或 JSON 不合法时，自动回退到规则提取
-- 提取结果写入每条 `records.json` 记录的 `extracted` 字段
-
-#### 当前任务状态
-- 新增 `TaskStateManager`
-- 维护 `memory/task_state.json`
-- 跟踪 `active_task`、`status`、`current_progress`、`next_action`、`blockers`
-- 每轮对话后根据结构化记忆更新当前主线任务状态
-
-#### 摘要系统
-- 新增模型优先的 `SummaryManager`
-- 每日调用模型生成 JSON 摘要，写入 `memory/daily_summaries/`
-- 摘要内容包括主要任务、已完成事项、进行中事项、进展、阻塞、下一步、行为模式、监督建议
-- 模型摘要失败时自动使用规则摘要兜底
-- 聚合最近 7 天摘要，用于识别主线任务、反复阻塞、行为模式和下一步监督策略
-
-#### 承诺与画像
-- 新增 `CommitmentManager`
-- 维护 `memory/commitments.json`
-- 追踪用户承诺、未关闭待办和已关闭承诺
-- 新增 `UserProfileManager`
-- 维护 `memory/user_profile.json`
-- 记录长期目标、工作风格、常见风险、有效干预方式和沟通偏好
-
-#### 历史检索
-- 新增 `SearchManager`
-- 维护 `memory/retrieval_index.json`
-- 对 `records.json`、每日摘要、用户画像、承诺记录建立轻量关键词索引
-- 每轮对话根据当前输入检索相关历史，并注入模型上下文
-
-#### 上下文注入
-- `MemoryManager` 统一组装模型上下文
-- 当前上下文包含：长期用户画像、原始历史摘要、当前任务状态、结构化记忆摘要、最近 7 天摘要、未关闭承诺、相关历史检索、最近几轮对话、当前输入
-- `LLMClient` 新增 `invoke_raw(messages)`，用于摘要和结构化提取，避免混入主 Agent 的长 system prompt
-
-#### 前端调试
-- Web 前端新增当前任务面板、最近 7 天摘要、未关闭承诺、用户画像摘要
-- 新增 `MODEL CONTEXT` 调试区，可查看实际发送给模型的 messages
-- Agent 回复支持 Markdown 渲染
-
-## V0.2
-### 改动
-加入了前端页面
-
-
-## V0.1
-### 架构
-输入今天做了什么
-↓
-保存到 records.json
-↓
-读取最近5条记录
-↓
-拼Prompt
-↓
-调用模型
-↓
-输出评价
-### 需要解决的问题
-- 能够记忆我的提问、记忆自己的回答
-- 能够连续对话
-
-### 已实现
-- 新增 `MemoryManager`，负责读写 `memory/records.json`
-- 每轮对话后自动保存用户输入和模型回复
-- 每次调用前自动注入长期记忆摘要和最近几轮对话
-- `LLMClient.invoke` 支持传入完整 `messages`，保留原有 `prompt` 调用方式
+# Changelog
+
+本文档记录 Workmate Agent 的重要能力演进与架构决策。当前版本保留较详细说明；早期版本按工程阶段归档，细粒度修复可通过 Git history 查询。
+
+## V2.9.0 - State-centric Hierarchical Memory
+
+### 核心变化
+
+- 新增 `LongTermKnowledgeManager`，将稳定用户认知投影为 `USER.md`、`GOALS.md`、`PREFERENCES.md`、`PATTERNS.md` 和 `INSIGHTS.md`。
+- 明确四层记忆边界：最近对话属于工作记忆，任务等属于权威状态，稳定认知使用 Markdown，历史经历使用 Episodic RAG。
+- `ContextPlanner` 直接注入当前任务、承诺、专注状态和相关长期认知，减少画像、洞察和原子记忆的重复上下文。
+- `SearchManager` 改为 `episodic_only`：RAG 只索引历史对话、摘要、语义片段、资源和历史记忆项。
+- 当前任务、承诺、画像、洞察和行为模式不再进入向量索引；旧索引中的相关条目会在读取时过滤，并在增量同步时删除。
+- Retrieval plan 新增 `source_policy`，明确历史召回不能覆盖当前执行状态。
+- 本地数据 inventory、ZIP export 和 OpenAPI schema 纳入 Markdown 长期认知文件。
+
+### 工程证据
+
+- 新增分层知识、上下文边界、旧索引兼容和数据可移植性测试。
+- API 的 memory/context 快照暴露长期认知文件状态。
+- README 与架构 walkthrough 更新为分层记忆设计。
+
+## V2.8 - Privacy & Local Data Control
+
+- 新增本地数据 inventory，按 conversation、execution state、derived profile、memory index、supervision 和 screen observation 分类。
+- 新增 `/api/privacy/inventory`、`/api/privacy/export` 和受控 ZIP 下载端点。
+- 导出包包含 manifest，并通过路径边界检查防止目录穿越。
+- 默认排除 `.env`、API Key、截图、屏幕观察内容、ChromaDB 索引和缓存元数据。
+- Web `SYSTEM CONFIG` 增加本地数据统计和导出入口。
+
+## V2.7 - Demo & Interview Readiness
+
+- 加固 `run.sh`：检查项目目录、API Key、依赖和端口，支持 conda `agent` 与本地 `.venv`。
+- 新增 `scripts/reset_demo_data.py`，备份私人数据后生成可复现演示状态。
+- 新增 `docs/ARCHITECTURE_WALKTHROUGH.md`，覆盖系统架构、Agent Loop、RAG、工具调用、监督状态机和讲解脚本。
+- README 增加 reviewer quick view、能力证据表、5 分钟 Demo 路线和简历表述。
+
+## V2.6 - Proactive Supervision Closed Loop
+
+- 将监督事件整理为显式状态机：`detected / notified / acknowledged / snoozed / muted / resolved / dismissed`。
+- 新增 `transition_history`、迁移原因、状态统计和最近迁移摘要。
+- 分离只读快照与主动推进：GET API 不产生副作用，scheduler 和 `/api/scheduler/tick` 负责推进事件。
+- 自适应提醒策略增加 evidence、affected fields、confidence 和 explanation。
+- Vision 提醒改为 transient supervision messages，不再进入长期对话、画像或 RAG。
+
+## V2.5 - RAG Maturity
+
+- Hybrid scoring 综合关键词、时间衰减、显著度、向量相似度和任务相关性。
+- 增加 metadata filter、source attribution、score breakdown 和检索充分性诊断。
+- ChromaDB 从全量重建升级为增量 delete/upsert，并复用未变化 embedding。
+- 增加可替换 reranker hook 和 Memory Retrieval eval cases。
+
+## V2.4 - Tool Action Layer Hardening
+
+- Tool planner trace 记录候选工具、选择数量、执行数量、max calls 和截断状态。
+- 写状态工具生成 audit record，记录决策来源、参数、输出、耗时和副作用。
+- 工具失败增加 recoverable 语义与 recovery hint，避免普通对话被内部工具故障中断。
+- 监督偏好进入 Tool Registry，工具覆盖任务、记忆、专注会话和监督配置。
+
+## V2.3 - Agent Observability & Evaluation
+
+- 在 `turn_trace` 上增加 observability summary，聚合阶段时间线、慢阶段、RAG、工具、记忆写回和错误。
+- Provider trace 覆盖 LLM、Vision、Embedding 和 TTS 的调用次数、耗时、usage、fallback 和错误摘要。
+- 增加 RAG explainability、tool trace detail 与 provider detail snapshot。
+- Evaluation Suite 增加 observability trace 和 OpenAPI schema smoke cases。
+- Web `MODEL CONTEXT` 与 FastAPI response schema 暴露完整可观察信息。
+
+## V2.0-V2.2 - API, Voice & Multimodal Platform
+
+### FastAPI 与接口工程化
+
+- Web 后端迁移至 FastAPI，保留 SSE 流式对话并提供 `/docs`、`/redoc` 和 `/openapi.json`。
+- 核心响应升级为嵌套 Pydantic schema，覆盖任务、承诺、监督事件、工具调用和运行轨迹。
+- 增加 API contract tests 与 TestClient smoke tests。
+
+### Voice 与 Vision
+
+- 增加浏览器 Web Speech API 和讯飞 TTS provider，语音偏好持久化到后端。
+- Vision 使用独立模型配置，支持 OpenAI-compatible 多模态 API。
+- 屏幕监督逐步从硬编码分类器演进为 Vision Screen Companion，模型直接生成自然提醒。
+- 修复提醒二次截断、重复模型调用、异常尾字符和浏览器偏好不同步等问题。
+
+### Vector Store
+
+- 引入嵌入式 ChromaDB，并保留无 embedding 或无向量依赖时的 JSON/关键词降级路径。
+
+## V1.4-V1.9 - Agent Engineering Foundation
+
+### Agent Runtime
+
+- 将上下文规划、工具执行、模型回复、记忆写回和监督更新显式组织为 `AgentRuntime`。
+- 每轮生成 `turn_trace`，记录阶段状态、耗时、上下文规模和执行结果。
+
+### Memory RAG
+
+- 引入 `MemoryRetriever`、检索计划、类型权重、关键词/近期性/显著度评分和可选向量相似度。
+- 扩展召回来源并在 Web 中展示 top results、分数和原因。
+
+### Tool Calling
+
+- 建立 Tool Registry、schema-driven executor、读写边界、副作用声明和 Tool Trace。
+- 工具主要用于读取和更新 Workmate 内部状态，不执行任意外部操作。
+
+### Evaluation & CI
+
+- 增加固定 Evaluation Suite，覆盖意图、记忆、任务、承诺、提醒、工具和监督生命周期。
+- 引入 pytest 与 GitHub Actions，自动运行语法检查、测试和 eval smoke test。
+
+### Screen Supervision
+
+- 增加多模态屏幕观察、应用黑白名单、Vision fallback 和陪伴/偏航状态转换。
+
+## V1.0-V1.3 - Supervision Product Loop
+
+- 建立统一监督事件模型，连接专注超时、承诺到期和任务停滞。
+- 增加事件确认、稍后提醒、静音、完成、关闭和关联状态联动。
+- 增加提醒偏好、静默时段、分渠道门槛和事件类型门槛。
+- 根据用户反馈生成自适应提醒策略，应用前需要用户确认。
+- 增加个人自律仪表盘、行为统计和行为模式分析。
+- 调整 Agent 人格为低压力监督：优先记住和整理，必要时只给一个轻量建议。
+
+## V0.4-V0.9 - Task & Memory Foundation
+
+### Task Lifecycle
+
+- 从单一 `task_state.json` 扩展为任务、子任务和事件流水。
+- 任务状态支持 `inbox / planned / active / blocked / done / abandoned`。
+- 增加 Todo UI、任务相似度去重、承诺 deadline 和专注会话。
+
+### Memory Pipeline
+
+- 从最近对话缓存演进为 Resource / MemoryItem / MemoryCategory 三层模型。
+- 每轮完成 LLM 记忆提取、摘要、画像更新、语义压缩、索引刷新和上下文规划。
+- 增加高阶洞察、自我反省、冲突/陈旧记忆治理和上下文预算。
+- 参考 ReMe 与 MemU 的文件式记忆、上下文治理和流水线契约思想。
+
+### Product Experience
+
+- 增加 Web 连续对话、Markdown 渲染、页面会话恢复和流式输出。
+- 增加后台 scheduler、桌面通知、Bark/飞书推送和周度复盘。
+- 提醒策略逐步移除强制证明、技术指导和时间施压，聚焦总体规划与温和监督。
+
+## V0.1-V0.3 - Prototype
+
+- 建立 OpenAI-compatible LLM client 与连续对话入口。
+- 增加本地对话记录、近期上下文、每日摘要、任务快照、承诺和用户画像。
+- 从终端交互扩展为本地 Web 调试页面，并支持 Markdown 回复和 SSE 流式输出。
+
+## Release Policy
+
+- 新版本只记录影响架构、行为、接口或验证证据的变化。
+- 文案微调、实验性提示词和单点修复合并到对应里程碑，不再单独占用版本章节。
+- 运行数据、API Key、截图、向量索引和本地 eval reports 不进入版本库。

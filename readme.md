@@ -1,226 +1,86 @@
 # Workmate Agent
 
-Workmate Agent 是一个 local-first productivity agent：它围绕用户的任务、承诺、专注会话和屏幕观察构建长期记忆，并用 Hybrid Memory RAG、受控工具调用、主动监督状态机和可观察运行轨迹，把普通聊天窗口升级为可审计的 Agent 工程项目。
+Workmate Agent 是一个 **local-first productivity agent**。它围绕任务、承诺、专注会话和屏幕活动维护长期状态，通过分层记忆、受控工具调用和主动监督，帮助用户持续推进目标，而不只是完成一轮问答。
 
-> 简历定位：一个本地优先的生产力 Agent，覆盖 Agent Runtime、Memory RAG、Tool Calling、Vision Supervision、Observability、FastAPI/OpenAPI 和 Evaluation Suite。
+> 当前版本：V2.9.0 · Python 3.12 · FastAPI · ChromaDB · OpenAI-compatible API
 
-## Reviewer Quick View
+项目愿景是让 Agent 能在较长周期内理解用户的目标与执行节奏，在合适的时候温和提醒偏航、帮助收束注意力，并推动任务形成闭环。它强调陪伴与监督，而不是替用户完成具体工作。
 
-### 技术亮点
+## 项目亮点
 
-- **Explicit Agent Runtime**：每轮对话被拆成提醒偏好识别、上下文规划、工具执行、模型调用、记忆写回和监督状态更新，并生成 `turn_trace`。
-- **Hierarchical Memory + Episodic RAG**：当前任务等权威状态直接读取，稳定用户认知写入分层 Markdown，历史经历再通过 Hybrid RAG 召回。
-- **Schema-driven Tool Calling**：内部状态工具有 schema、读写边界、副作用声明、audit record、recoverable error 和 tool planner trace。
-- **Proactive Supervision Loop**：任务、承诺、专注会话和屏幕观察进入可解释状态机，支持 acknowledged、snoozed、muted、resolved、dismissed 等迁移。
-- **Multimodal Screen Companion**：Vision 模型用于屏幕陪伴和偏航提醒，提醒以 transient message 展示，不污染长期记忆。
-- **Observable + Reproducible**：FastAPI `/docs`、前端 `MODEL CONTEXT`、provider trace、RAG explainability、tool trace 和 eval report 共同提供工程证据。
-- **Local-first Data Control**：本地数据可审计并导出为带 manifest 的 ZIP，默认排除 API Key、屏幕截图、屏幕观察内容和可重建向量索引。
+### 1. 显式 Agent Runtime
 
-### 5 分钟 Demo 路线
-
-```bash
-cp .env.example .env
-# 填写 .env 中的 LLM_API_KEY
-python scripts/reset_demo_data.py
-./run.sh
-```
-
-打开：
-
-- Web Demo: `http://127.0.0.1:7860`
-- OpenAPI Docs: `http://127.0.0.1:7860/docs`
-- 架构讲解: [docs/ARCHITECTURE_WALKTHROUGH.md](docs/ARCHITECTURE_WALKTHROUGH.md)
-
-### 可展示证据
-
-| 能力 | 代码入口 | 展示位置 |
-| --- | --- | --- |
-| Agent Runtime | `agent/runtime.py` | 前端 `OBSERVABILITY SUMMARY` / `/api/context` |
-| Memory RAG | `memory/search.py`, `memory/retriever.py` | `MODEL CONTEXT` 的 retrieval plan 和 score breakdown |
-| Tool Calling | `tools/registry.py`, `tools/executor.py` | `TOOL TRACE`、audit record、eval report |
-| Supervision Loop | `memory/supervision_events.py` | `SUPERVISION EVENTS`、状态迁移、scheduler tick |
-| Vision Companion | `memory/supervision_events.py` | transient supervision messages、screen observations |
-| API Contract | `src/web.py` | `/docs`, `/openapi.json`, `api_schema_smoke` eval |
-| Evaluation | `evals/run_eval.py`, `evals/cases.json` | eval Markdown/JSON report |
-| Data Portability | `memory/data_portability.py` | `SYSTEM CONFIG` / `/api/privacy/*` |
-
-### Resume Bullets
-
-- Built a local-first productivity agent with FastAPI, streaming chat, hybrid memory RAG, schema-driven tool calling, proactive supervision, and multimodal screen observation.
-- Implemented an observable agent runtime exposing provider traces, retrieval decisions, tool execution, side-effect auditing, memory writeback, and reproducible eval reports.
-- Designed a supervision state machine connecting task lifecycle, focus sessions, commitments, screen observations, reminder preferences, and user feedback.
-- Packaged the project with one-command startup, reproducible demo data reset, OpenAPI docs, and an interview-ready architecture walkthrough.
-
-## 项目愿景
-
-Workmate Agent 的长期愿景，是成为一个能陪用户持续行动的个人自律 Agent。它不只是回答问题，而是长期记住用户的目标、任务、承诺和执行节奏，在合适的时候温和提醒偏航、帮助用户收束注意力、推动任务闭环。
-
-理想状态下，它应该像一个长期坐在旁边的工位搭子：既能帮助用户集中注意力完成当下任务，也能在更长周期里观察行为模式，减少拖延、分心和过度规划，让用户更稳定地提高生产力、专注度和生活自律性。
-
-后续功能迭代路线见 [ROADMAP.md](ROADMAP.md)。如果目标是把项目作为简历中的 Agent 工程项目展示，后续开发顺序见 [docs/DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_PLAN.md)。
-
-## 项目背景
-
-目标用户是容易拖延、注意力分散，或者刚开始推进一个项目但缺少外部监督的人。用户可以把当天目标、当前进展、卡住的问题告诉 Agent；Agent 会结合历史记录判断用户是否真的在推进，而不是只根据单次消息给出泛泛建议。
-
-典型场景：
-
-- 求职准备：收集 JD、提炼高频技能词、推进作品集或项目
-- 学习监督：汇报学习进度，识别过度输入和伪努力
-- 任务执行：把模糊目标拆成下一步可执行动作
-- 长期复盘：基于历史记录观察任务推进和时间投入是否匹配
-
-## 功能
-
-- 连续对话：命令行启动后可以多轮输入，直到用户主动退出
-- 本地记忆：每轮用户输入和 Agent 回复都会保存到 `memory/data/records.json`
-- 上下文注入：下一轮调用模型前，会读取最近几轮对话并生成长期记忆摘要
-- 统一记忆项：V0.5 起会把任务、进展、阻塞、承诺、用户偏好和监督模式沉淀到 `memory/data/memory_items.json`
-- 三层记忆模型：V0.5.1 起增加 `Resource / MemoryItem / MemoryCategory`，分别追踪原始来源、原子记忆和分类摘要
-- 语义压缩：V0.5.2 起把原始对话提炼为 `semantic_dialogues`，上下文注入优先使用核心语义以节省窗口
-- 自我反省：V0.5.2 起每若干轮对话或用户手动要求复盘时，提炼高阶洞察并记录反省结果
-- 记忆治理：识别陈旧/冲突事实，对旧记忆降权或归档，而不是直接删除
-- 记忆流水线：每轮对话统一经过提取、任务更新、记录保存、记忆项写入和索引刷新
-- 流水线契约：每个记忆阶段都有 `requires / produces` 诊断信息，方便定位提取、保存、索引等故障
-- 任务生命周期：把任务从当前快照升级为 `inbox / planned / active / blocked / done / abandoned` 的完整状态流，并支持主任务下的子任务
-- 上下文规划：根据用户输入选择注入任务、摘要、承诺、统一记忆项或相关历史，减少每轮全量上下文
-- 分层长期认知：V2.9 起将用户画像、长期目标、沟通偏好、行为模式和高阶洞察投影为 `memory/data/knowledge/*.md`，作为可审阅、按意图加载的稳定认知层
-- 上下文压缩：系统记忆和最近对话分别控制预算，避免长对话让模型上下文膨胀
-- Hybrid Memory RAG：V1.5 起用 `MemoryRetriever` 对历史记忆进行可解释召回，综合关键词、近期性、重要性、记忆类型权重和可选向量相似度，并输出召回来源和评分原因。**V2.2 起正式集成嵌入式向量数据库 ChromaDB**。V2.5 起支持 metadata filter、source attribution、增量 delete/upsert、任务相关性评分与可替换 rerank hook；V2.9 起收紧为 `episodic_only`，只索引对话、摘要、历史记忆片段、分类、资源和语义对话，不再通过 RAG 判断当前任务、承诺或用户画像。
-- Evaluation Suite：V1.7 起提供不依赖真实 API Key 的固定评估集，覆盖记忆召回、任务状态、承诺、提醒控制、工具调用、上下文规划和监督事件生命周期；V2.3 起补充 `observability_trace`，检查运行轨迹摘要是否暴露阶段、RAG、工具错误、记忆写回和监督更新；V2.3.3 起补充 `api_schema_smoke`，检查 FastAPI OpenAPI 路径、响应模型和 observability/provider 字段；V2.3.4 起补充 RAG explainability 断言，检查检索注入决策和 score breakdown 是否进入观测摘要；V2.3.5 起补充 tool trace detail 断言，检查工具调用序列和输入输出摘要；V2.3.6 起补充 provider detail 断言，检查 provider 单条调用序列和 metadata keys；V2.5 起补充 Memory Retrieval Cases 报告，展示 hit rate、citation 和 filter 覆盖；V2.6 起补充监督状态机迁移断言，检查主动监督事件是否能进入 acknowledged、snoozed、resolved、dismissed 等闭环状态；V2.6.1 起补充 `/api/scheduler/tick` schema 与 Web smoke 断言，区分只读快照和主动监督推进；V2.6.2 起补充监督策略解释断言，让自适应提醒策略能展示反馈证据和调整原因；V2.6.3 起屏幕监督提醒改为 transient messages，避免 Vision 观察污染长期记忆
-- 自动化测试与 CI：V1.8 起引入 pytest 与 GitHub Actions，自动运行语法检查、单元测试和 eval smoke test
-- 智能陪伴与屏幕双向状态流转监测：V1.9 起引入 `screen_accompaniment` 陪伴鼓励事件与配套本地规则和 Vision 鼓励文案生成，支持专注工作与娱乐偏航状态转换时自动解决（resolve）旧事件并注入陪伴提醒/警报，支持多模态分离 API 配置、免控制权限频繁弹窗、自定义黑白名单预过滤绕过 Vision、中转 API 防火墙 (Cloudflare WAF) 浏览器 User-Agent 伪装绕过，大模型配置下优先调用 Vision 分析并以本地黑白名单规则作为无缝降级兜底方案，以及前端 Preferences 面板配置折叠交互可视化。
-- FastAPI + OpenAPI：V1.10 起 Web 后端切换为 FastAPI，保留原有前端 `/api/...` 契约和 SSE 流式响应，同时自动提供 `/docs`、`/redoc` 和 `/openapi.json`，方便展示、调试和后续接入客户端
-- 语音提醒：V2.0 起支持浏览器 Web Speech API 语音播报监督事件短提醒；V2.1 起支持讯飞开放平台在线语音合成 provider，可在 `SUPERVISION EVENTS` 的 Preferences 中选择 `browser / xfyun`、设置最低播报等级、音量、语速和测试播报；默认不朗读普通聊天回复
-- 主动监督信号：根据任务停滞、未关闭承诺、反复阻塞和任务过散生成监督提醒
-- 支持性知识层：V0.6 起在用户焦虑、分散、拖延、疲惫、卡住或准备执行学习任务时，按需注入轻量方法论卡片
-- 内部状态工具层：V0.7 起支持受控工具调用，用于读取和更新任务、承诺、记忆等 Workmate 内部状态
-- Agent Runtime 与运行轨迹：V1.4 起把每轮对话显式拆成提醒控制、上下文规划、工具执行、模型回复和记忆写回，并生成 `turn_trace` 用于 Web/API 调试
-- 工具调用工程化：V1.6 起为内部工具补齐输入输出 schema、读写边界、副作用标注和执行耗时，`MODEL CONTEXT` 可展示本轮 `TOOL TRACE`；V2.4 起补充 `tool_plan`，记录工具规划来源、解析数量、选择数量、执行数量、max calls 和截断状态；V2.4.1 起为写状态工具生成结构化 `audit_record`；V2.4.2 起为工具失败补充 recoverable 与 recovery hint；V2.4.3 起将监督提醒偏好纳入受控工具层
-- Agent Observability：V2.3 起在 `turn_trace` 之上生成 `observability` 摘要，集中展示阶段时间线、最慢阶段、模型调用概览、RAG 命中、工具读写统计、记忆写回状态和错误列表，方便在 Web 面板与 FastAPI schema 中审计一轮 Agent 执行链路；V2.3.1 起补充 provider trace，记录 LLM、Vision、Embedding、TTS 的调用次数、耗时、错误摘要和 fallback 路径，并通过 `provider_trace_recent` 查看独立 TTS 等最近调用；V2.3.2 起补充 provider usage snapshot，展示真实 usage tokens 或基于字符/图片/音频规模的估算 token；V2.3.4 起补充 RAG explainability snapshot，展示检索注入决策、命中类型、score coverage、top sources、score breakdown 和文本预览；V2.3.5 起补充 tool trace detail snapshot，展示工具调用序列、读写模式、参数键、输出键、schema 键、错误和副作用；V2.3.6 起补充 provider detail snapshot，展示 provider 调用序列、metadata keys、usage、慢调用、fallback 时间线和错误摘要
-- 本地数据可携带：V2.8 起可在 Web `SYSTEM CONFIG` 或 FastAPI `/api/privacy/*` 查看本地数据清单并导出带 manifest 的 ZIP。默认只导出 `memory/data` 中可移植的 JSON，不读取 `.env`，并排除 API Key、截图、屏幕观察内容、ChromaDB 与缓存文件
-- 专注会话：V0.8 起支持记录用户“离开对话后要执行的一段任务”，追踪当前专注、计划时长、实际经过时间和最近会话间隔
-- 承诺 deadline：V0.8.1 起自动识别承诺中的时间词（今天/明天/这周等），标注逾期和今日到期的承诺，监督信号优先提醒时效性最高的未关闭事项
-- 行为统计：V0.8.1 起聚合专注会话完成率、累计专注时长、承诺履行率、连续活跃天数等量化指标，注入 AI 上下文以支持更具体的进度感知
-- 行为模式分析：V1.1 起从任务、专注、承诺和监督事件中提炼长期行为模式，帮助 Agent 识别任务分散、承诺积压、专注超时和提醒摩擦等趋势
-- 个人自律仪表盘：V1.2 起在 Web 顶部聚合今日专注、完成任务、未关闭承诺、当前主线、本周节奏和轻量行动建议
-- 时间情境感知：V0.8.1 起根据当前时段（上午/下午/傍晚/深夜）调整上下文注入策略；深夜自动屏蔽监督信号，避免加压
-- 早间简报与时境复盘：V0.8.2 起在每日首次交流时自动注入“早间简报”，引导温和启动；在傍晚收工时自动触发“纯自然语言晚间复盘”，以极具同理心的对话暖心告别，不带问题、列表或表格，极轻交互；若离开对话超 30 分钟或专注超时，注入静默间隔与超时时间指引 Agent 柔和问询
-- 桌面弹窗提醒：V0.8.3 起支持在专注会话超时或有今天到期/逾期承诺时，通过浏览器桌面通知主动弹窗提醒，并利用 localStorage 自动进行防重复过滤
-- 后台常驻推送与离线通知：V0.8.4 起在 Web 后台挂载常驻守护线程（Scheduler），当专注会话超时或有今天到期/逾期承诺时，即使浏览器关闭，也能通过 macOS 系统通知、Bark（iOS 手机弹窗）或飞书群机器人推送将提醒即时送达用户
-- 周度自律诊断报告 (Weekly Review)：V0.8.5 起支持根据过去 7 天的专注会话数据、承诺履约表现以及长期行为模式洞察，为用户自动生成一份极具诊断价值的 Markdown 周报。支持自然语言（如：“周报”、“周复盘”等）触发，提供数据概览表格、注意力诊断、长期拖延预警以及轻量自律指南，以极其亲和温暖、平等的语气与用户对话，无交互摩擦，自然收尾。
-- Web 界面视觉美化与推送自检：V0.8.6 起支持加载 marked.js 与 Prism.js，实现 100% 完美的 Markdown 格式化排版（含周报表格美化）、代码块语法高亮及悬浮一键复制代码。在侧边栏底部新增“系统配置与推送自检”折叠面板，动态展示多通道通知的启用与配置状态，并支持一键发送测试推送以自检连通性。
-- 可视化待办列表：V0.9.0 起在 Web 左侧 `EXECUTION` 面板中展示从对话提取出的任务，支持点击任务直接标记完成或重新激活，并同步更新任务生命周期与当前任务状态
-- 任务去重优化：V0.9.2 起使用 Jaccard 相似度匹配任务标题，减少因语序颠倒、中文助词或修饰语不同造成的重复 Todo
-- 监督事件闭环：V1.0 起将专注超时、承诺到期、任务停滞等提醒统一记录为监督事件，支持确认、稍后提醒、静音和关闭，减少重复打扰
-- 状态联动：V1.0 起监督事件执行 `DONE` 时可同步收束关联的专注会话、关闭到期承诺或完成久未更新任务
-- 提醒偏好：V1.0 起支持设置默认稍后提醒时间、推送最低等级、静默时段，以及按专注/承诺/任务停滞分别启停提醒
-- 自适应提醒策略：V1.3 起根据用户对提醒的确认、关闭、稍后和静音反馈生成策略建议，用户点击后才应用；当用户处于焦虑、疲惫、分散、卡住或休息时段时，会自动建议降低监督语气；监督事件文案也会参考长期用户画像中的沟通偏好，优先保持低压力、短句和不要求证明；页面、浏览器通知、后台/手机推送可以分别设置提醒门槛；不同监督事件类型也会根据长期反馈单独调整主动推送门槛；也支持“今天安静一点”“只提醒承诺”“恢复提醒”等自然语言控制，并对提醒/通知/推送相关表达进行 LLM 优先分类、规则兜底
-- 时间感：当前输入会附带当前时间，历史输入会附带历史记录时间
-- 进度监督：Agent 关注任务进展、偏航和伪努力；多任务场景会用无序列表帮用户理顺主任务和子任务，但不会主动提供技术路线或设置时间限制
-- 角色边界：Agent 负责总体规划和监督，不负责替用户解释技术细节、设计专业方案或完成任务
-
-## Agent Loop
-
-V1.4 起，Workmate Agent 的每轮对话会经过统一的 `AgentRuntime`，并生成 `turn_trace` 供 Web/API 调试。
+每轮交互都经过可观察的执行链路，而不是直接把用户输入转发给模型：
 
 ```mermaid
 flowchart LR
-    A["User input"] --> B["Reminder control"]
-    B --> C["Context planning and memory retrieval"]
-    C --> D["Internal tool decision and execution"]
-    D --> E["LLM response"]
-    E --> F["Memory writeback"]
-    F --> G["Supervision state update"]
-    G --> H["Turn trace"]
+    U["User Input"] --> C["Context Planning"]
+    C --> T["Tool Planning"]
+    T --> E["Tool Execution"]
+    E --> L["LLM Response"]
+    L --> M["Memory Writeback"]
+    M --> S["Supervision Update"]
+    S --> O["Turn Trace"]
 ```
 
-`turn_trace` 只记录工程执行过程，例如阶段耗时、上下文规模、工具调用结果和记忆写回状态，不展示模型隐藏推理链。
+`turn_trace` 记录阶段耗时、模型调用、RAG 决策、工具副作用和记忆写回结果，不暴露模型隐藏推理链。
 
-## 项目结构
+### 2. 分层记忆与 Episodic RAG
+
+记忆系统按用途划分，避免让模糊检索结果覆盖当前状态：
+
+| 层级 | 内容 | 机制 |
+| --- | --- | --- |
+| 工作记忆 | 最近对话与当前输入 | 上下文窗口 |
+| 权威状态 | 任务、承诺、专注会话、监督事件 | JSON 直接读取 |
+| 长期认知 | 用户、目标、偏好、模式、洞察 | 分层 Markdown |
+| 情景记忆 | 历史对话、摘要、语义片段 | ChromaDB / JSON Hybrid RAG |
+
+RAG 支持关键词、时间衰减、显著度、向量相似度、任务相关性、metadata filter、source attribution、增量索引和可替换 reranker。检索计划会明确展示召回原因与评分拆解。
+
+### 3. Schema-driven Tool Calling
+
+工具只操作 Workmate 内部状态，覆盖任务、承诺、专注会话、记忆和监督偏好。每个工具声明：
+
+- 输入与输出 schema
+- 只读或写入权限
+- 可预期副作用
+- planner 决策来源
+- 写操作 audit record
+- 可恢复错误与降级建议
+
+### 4. 主动监督闭环
+
+后台 scheduler 将任务停滞、承诺到期、专注超时和屏幕偏航转为监督事件，并通过状态机管理：
 
 ```text
-workmate-agent/
-├── agent/
-│   ├── runtime.py         # v1.4 Agent Runtime 和 turn_trace 生成
-│   └── __init__.py
-├── memory/
-│   ├── manager.py         # 记忆读写、摘要和上下文组装入口
-│   ├── store.py           # 资源层、统一记忆项、分类摘要
-│   ├── interpreter.py     # 提取、语义压缩、摘要、洞察、意图识别
-│   ├── knowledge.py       # v2.9 分层 Markdown 长期认知
-│   ├── task_state.py      # 任务、当前状态、承诺聚合入口
-│   ├── context_engine.py  # 检索、上下文规划、上下文压缩聚合入口
-│   ├── retriever.py       # v1.5 Hybrid Memory RAG 评分与召回解释
-│   ├── reflection.py      # v0.5.2 自我反省触发和记录
-│   ├── governance.py      # v0.5.2 陈旧/冲突记忆治理
-│   ├── pipeline.py        # v0.5 每轮对话记忆写入流水线
-│   ├── context_compressor.py # v0.5 上下文预算和压缩
-│   ├── context_planner.py # 根据当前输入选择需要注入的上下文
-│   ├── commitment.py      # 承诺和未关闭待办追踪
-│   ├── profile.py         # 长期用户画像
-│   ├── search.py          # 轻量关键词历史检索
-│   ├── supervision.py     # v0.5 主动监督信号（含逾期承诺感知）
-│   ├── support_knowledge.py # v0.6 支持性知识层检索
-│   ├── focus_session.py   # v0.8 专注会话和时间间隔感知
-│   ├── stats.py           # v0.8.1 行为统计聚合（专注/承诺/活跃度）
-│   ├── behavior_patterns.py # v1.1 行为模式分析
-│   ├── dashboard.py       # v1.2 个人自律仪表盘聚合
-│   ├── supervision_events.py # v1.0 可追踪监督事件
-│   ├── task_manager.py    # v0.4.2 任务/子任务生命周期和事件流水
-│   ├── task_state_manager.py # 当前任务状态维护
-│   ├── paths.py           # 运行时记忆数据目录配置
-│   ├── __init__.py
-│   └── data/              # 运行时记忆文件，默认不提交
-│       ├── records.json
-│       ├── memory_resources.json
-│       ├── memory_items.json
-│       ├── memory_categories.json
-│       ├── semantic_dialogues.json
-│       ├── high_level_insights.json
-│       ├── memory_conflicts.json
-│       ├── reflections.json
-│       ├── tasks.json
-│       ├── task_events.json
-│       ├── task_state.json
-│       ├── commitments.json
-│       ├── user_profile.json
-│       ├── knowledge/            # USER/GOALS/PREFERENCES/PATTERNS/INSIGHTS.md
-│       ├── chroma/               # ChromaDB 向量数据库目录
-│       ├── focus_sessions.json
-│       ├── behavior_patterns.json
-│       ├── supervision_events.json
-│       ├── supervision_preferences.json
-│       └── daily_summaries/
-├── knowledge/
-│   └── support_notes.json # 注意力、学习、时间管理和情绪调节短卡片
-├── tools/
-│   ├── registry.py        # 内部工具注册表
-│   ├── executor.py        # 结构化工具调用执行器和 tool trace
-│   └── workmate_tools.py  # 任务、承诺、记忆等内部状态工具
-├── evals/
-│   ├── cases.json         # v1.7 固定评估用例
-│   ├── run_eval.py        # v1.7 可复现评估 runner
-│   └── reports/           # 本地评估报告输出目录，报告文件默认不提交
-├── tests/                 # v1.8 pytest 测试
-├── .github/workflows/
-│   └── ci.yml             # v1.8 GitHub Actions
-├── src/
-│   ├── LLMClient.py       # 大模型 API 客户端
-│   ├── core.py            # WorkmateAgent 和命令行连续对话入口
-│   └── web.py             # 本地 Web 调试服务
-├── web/
-│   ├── assets/
-│   └── index.html         # 前端调试界面
-├── demo.md                # 示例交互
-├── ROADMAP.md             # 面向长期愿景的功能迭代路线
-├── requirements.txt
-└── README.md
+detected → notified → acknowledged / snoozed / muted → resolved / dismissed
 ```
 
-## 环境准备
+事件保留迁移历史和用户反馈。Vision 屏幕提醒使用 transient messages，不写入长期对话记忆，避免观察数据污染画像和 RAG。
 
-### 快速启动
+### 5. 可观察与可评估
+
+- FastAPI `/docs` 暴露强类型 OpenAPI 合同
+- Web `MODEL CONTEXT` 展示上下文、RAG、工具和 provider trace
+- Evaluation Suite 覆盖意图、记忆召回、任务、承诺、工具与监督状态机
+- pytest 与 GitHub Actions 自动执行语法检查、测试和 eval smoke test
+- 本地数据支持 inventory 与带 manifest 的 ZIP 导出
+
+## 能力证据
+
+| 能力 | 核心代码 | 可见证据 |
+| --- | --- | --- |
+| Agent Runtime | `agent/runtime.py` | `turn_trace`、`OBSERVABILITY SUMMARY` |
+| Hierarchical Memory | `memory/knowledge.py`, `memory/context_engine.py` | `memory/data/knowledge/*.md`、Model Context |
+| Episodic RAG | `memory/search.py`, `memory/retriever.py` | retrieval plan、score breakdown、citation |
+| Tool Calling | `tools/registry.py`, `tools/executor.py` | tool schema、tool trace、audit record |
+| Supervision Loop | `memory/supervision_events.py` | event state、transition history、scheduler tick |
+| Vision Companion | `src/LLMClient.py`, `memory/supervision_events.py` | transient screen reminders、provider trace |
+| API Contract | `src/web.py` | `/docs`、`/openapi.json` |
+| Evaluation | `evals/run_eval.py`, `evals/cases.json` | Markdown / JSON eval report |
+
+## 快速开始
 
 ```bash
 git clone https://github.com/fcsfang/workmate-agent.git
@@ -228,7 +88,7 @@ cd workmate-agent
 cp .env.example .env
 ```
 
-打开 `.env`，填写你的模型 API 配置。OpenRouter 示例：
+在 `.env` 中填写 OpenAI-compatible 模型配置：
 
 ```env
 LLM_MODEL_ID=moonshotai/kimi-k2.6:free
@@ -236,176 +96,87 @@ LLM_API_KEY=your-api-key-here
 LLM_BASE_URL=https://openrouter.ai/api/v1
 ```
 
-然后运行：
+一键启动：
 
 ```bash
 ./run.sh
 ```
 
-脚本会自动：
+脚本会优先使用 conda `agent` 环境，否则创建本地 `.venv`，安装依赖、启动 FastAPI 并自动打开浏览器。
 
-- 检查 `.env` 是否存在
-- 检查 `LLM_API_KEY` 是否已填写
-- 检查 `requirements.txt` 是否存在，避免在错误目录启动
-- 检查默认端口 `7860` 是否已被占用
-- 优先使用本机已有的 conda `agent` 环境
-- 如果没有 conda `agent` 环境，则创建本地 `.venv`
-- 安装/检查依赖
-- 启动 Web 服务
-- 自动打开浏览器访问 `http://127.0.0.1:7860`
-- 在终端打印 FastAPI OpenAPI 文档地址 `http://127.0.0.1:7860/docs`
+- Web：`http://127.0.0.1:7860`
+- OpenAPI：`http://127.0.0.1:7860/docs`
+- 自定义端口：`WORKMATE_PORT=7861 ./run.sh`
+- 停止服务：在运行终端按 `Ctrl+C`
 
-保持运行 `./run.sh` 的终端窗口即可持续使用页面和 API。需要停止时，在该终端按 `Ctrl+C`。
+Vision、系统推送和讯飞 TTS 均为可选能力，配置项见 [.env.example](.env.example)。API Key、运行记忆、截图和本地向量索引默认不会提交到 Git。
 
-`.env` 不应提交到 Git。
+## 可复现 Demo
 
-如果默认端口被占用，可以指定其它端口：
-
-```bash
-WORKMATE_PORT=7861 ./run.sh
-```
-
-如果脚本停在依赖安装、Python 环境或端口检查阶段，请按终端中的“启动失败”提示处理；这些检查不会写入任何私人记忆数据。
-
-### 可复现 Demo 数据
-
-如果你想在面试或录屏前进入一套干净、可展示的状态，可以先重置本地 demo 数据：
+面试或录屏前可以生成一套不包含私人数据的演示状态：
 
 ```bash
 python scripts/reset_demo_data.py
 ./run.sh
 ```
 
-脚本会先把当前 `memory/data` 备份到 `memory/archive/demo-backup-*`，再写入一组演示用任务、记忆、RAG 索引、专注会话、监督事件和 transient Vision 提醒。`memory/data/*.json`、`memory/archive/` 和截图缓存默认都在 `.gitignore` 中，不会提交私人数据。
+脚本会先备份现有 `memory/data`，再生成任务生命周期、承诺、专注会话、RAG、监督事件、长期认知和 transient Vision 提醒等演示数据。
 
-## 运行方式
+建议按以下顺序展示：
 
-### 推荐方式
+1. 在聊天区汇报一个任务计划。
+2. 查看任务、承诺和专注状态更新。
+3. 打开 `MODEL CONTEXT` 查看 RAG 与 tool trace。
+4. 在监督事件中演示 snooze、resolve 或 dismiss。
+5. 打开 `/docs` 展示 API schema。
 
-当前推荐入口是 `src.web`。启动它以后，整个项目就跑起来了：本地前端页面、`/api/chat` 对话接口、`/api/memory` 记忆接口和 FastAPI OpenAPI 文档会一起启动。
-
-推荐使用前端界面调试连续对话：
-
-```bash
-./run.sh
-```
-
-启动后打开：
-
-```text
-http://127.0.0.1:7860
-```
-
-API 文档：
-
-```text
-http://127.0.0.1:7860/docs
-```
-
-OpenAPI schema：
-
-```text
-http://127.0.0.1:7860/openapi.json
-```
-
-页面会显示对话区、最近记忆、记忆摘要和本地记录数量。每次发送消息都会调用同一个 `WorkmateAgent` 流程，并写入 `memory/data/records.json`。
-
-如果要启用 V2.1 语音提醒，在页面左侧 `SUPERVISION EVENTS` 区域点击 `配置`，打开 `voice` 开关，在 `provider` 中选择 `browser` 或 `xfyun`，按需要调整 `voice min`、`volume` 和 `rate`，再点击 `TEST VOICE` 试播。语音提醒只会播报监督事件短文案，默认不读普通聊天回复，也不会播报低等级陪伴事件，除非手动打开 `companions`。使用讯飞时需要在 `.env` 中配置 `TTS_PROVIDER=xfyun` 以及 `XFYUN_TTS_APP_ID`、`XFYUN_TTS_API_KEY`、`XFYUN_TTS_API_SECRET`。
-
-0.5.2+ 版本还会在页面左侧显示当前任务生命周期、子任务、最近 7 天摘要、未关闭承诺、长期用户画像、统一记忆项、记忆分类、高阶洞察、语义压缩和主动监督信号，并提供 `MODEL CONTEXT` 调试区。V0.8 起，左侧还可以直接开始、完成或停止一段专注会话，用来记录用户离开聊天后实际去做的那段任务；该状态会进入上下文，但不会作为强制考核。V0.9.0 起，左侧新增了可视化待办列表（TODO LIST），将模型在对话中提炼的任务进行集中可视化展示，并支持点击直接同步状态（如打勾完成）。V1.0 起，`SUPERVISION EVENTS` 会把专注超时、承诺到期和任务停滞变成可确认、可稍后提醒、可静音、可关闭的事件；当用户点击 `DONE` 时，会尝试同步收束关联的专注会话、承诺或任务，并保留反馈统计。V1.1 起，`MEMORY` 面板会展示行为模式摘要，例如任务分散、承诺积压、专注超时或提醒摩擦，帮助 Agent 逐步从单次提醒走向长期节奏观察。V1.2 起，`EXECUTION` 顶部新增 `TODAY DASHBOARD`，集中展示今日专注、今日完成、未关闭承诺、当前主线、本周节奏和一条轻量建议，并提供快速开启专注、完成当前任务和查看提醒的入口。V1.3 起，提醒偏好区会根据用户对提醒的反馈生成自适应策略建议，例如更安静地推送或延长默认稍后提醒间隔；如果当前输入透露出焦虑、疲惫、分散、卡住，或系统处在深夜/清晨休息时段，策略卡片会显示 `tone_policy`，建议模型和推送一起放轻；如果长期用户画像里记录了沟通偏好，策略卡片会显示 `copy_policy`，事件卡片和通知会优先使用更自然的 `display_message`；页面内列表、浏览器通知、后台/手机推送分别使用 `page_min_severity`、`browser_min_severity`、`background_min_severity`，避免所有渠道同频打扰；如果某类事件经常被稍后或静音，策略卡片会显示 `type_preference_signals`，并通过 `event_type_min_severity` 只调整这一类提醒。V1.4 起，`MEMORY` 面板会展示最近一轮 `runtime` 摘要，`/api/memory` 和 `/api/context` 也会返回完整 `turn_trace`，用于观察 Agent Loop 的阶段、耗时、上下文规模、工具调用和记忆写回状态。V1.5 起，`MODEL CONTEXT` 顶部会展示本轮 Hybrid Memory RAG 的召回计划、top results、分数拆解和原因，方便检查长期记忆为什么被带入模型上下文。V1.6 起，`MODEL CONTEXT` 也会展示本轮 `TOOL TRACE`，包括工具读写模式、调用原因、耗时、错误和副作用；`/api/context` 同时返回 `tool_schemas`，可用于审阅内部工具边界。V2.3 起，`MODEL CONTEXT` 顶部新增 `OBSERVABILITY SUMMARY`，把阶段时间线、最慢阶段、模型调用、RAG 命中、工具读写、记忆写回和错误列表聚合成一段可审计摘要；V2.3.4 起，该摘要进一步展示 RAG 注入决策、命中类型、score coverage、top source、score breakdown 和文本预览；V2.3.5 起，该摘要也会展示内部工具调用序列、读写模式、参数/输出键、schema 键、错误和副作用；V2.3.6 起，该摘要还会展示 provider 调用序列、metadata keys、usage、慢调用、fallback 时间线和错误摘要；V2.4 起，该摘要会展示 tool planner 来源、解析数量、选择数量、执行数量、max calls 和截断状态；V2.4.1 起，该摘要会展示写状态工具的 audit record 数量与单条 audit id；V2.4.2 起，工具失败会展示 recoverable 和 recovery hint；V2.5 起，RAG 区块会展示 metadata filters、hit rate 评估和每条召回的 citation/source attribution；V2.6 起，监督事件会记录 `transition_history`、最近迁移原因和 `dismissed` 终态，页面卡片可直接关闭不需要继续跟进的提醒；V2.6.1 起，`/api/memory`、`/api/dashboard` 和 `/api/supervision/events` 只返回快照，主动监督推进统一由后台 scheduler 或 `/api/scheduler/tick` 执行；V2.6.2 起，自适应提醒策略会输出 `explanations`，说明每条策略建议的反馈证据、影响字段和置信度；V2.6.3 起，屏幕监督提醒会以 transient supervision messages 展示在对话里，但不会写入长期 `records.json` 或进入后续记忆提炼；`/api/context` 和 `/api/chat` 完成事件也会返回同名结构化字段。所有建议需要用户点击 `APPLY STRATEGY` 后才会写入偏好。用户也可以直接说“今天安静一点”“只提醒承诺”“恢复提醒”等短句来调整提醒边界；当表达不完全匹配固定短语但明显在谈提醒/通知/推送时，系统会先用 LLM 分类，再用规则兜底。每日摘要会优先调用模型生成 JSON 记忆，失败时退回规则摘要；`MODEL CONTEXT` 会展示上一轮实际发送给模型的 messages、上下文规模、检索计划和流水线状态，方便检查 Agent 到底带入了哪些记忆。
-
-只要这个命令所在的终端窗口保持运行，页面和 API 就会保持可用。需要停止时，在该终端按 `Ctrl+C`。
-
-### 手动启动 Web
-
-如果你已经准备好 conda 中名为 `agent` 的环境，也可以手动运行：
-
-```bash
-conda run -n agent python -m src.web
-```
-
-如果你想直接使用 ASGI 服务器入口，也可以运行：
-
-```bash
-conda run -n agent python -m uvicorn src.web:app --host 127.0.0.1 --port 7860
-```
-
-或者先激活环境：
-
-```bash
-conda activate agent
-pip install -r requirements.txt
-python -m src.web
-```
-
-### 命令行模式
-
-也可以在项目根目录运行：
-
-```bash
-conda run -n agent python -m src.core
-```
-
-启动后可以连续输入消息。输入 `exit`、`quit`、`q`、`退出` 或 `结束` 可以结束对话。
+完整讲解脚本见 [Architecture Walkthrough](docs/ARCHITECTURE_WALKTHROUGH.md)，真实交互案例见 [demo.md](demo.md)。
 
 ## 测试与评估
 
-运行 pytest：
-
 ```bash
+# 单元与集成测试
 conda run -n agent pytest
-```
 
-基础语法检查：
+# 可复现评估
+conda run -n agent python evals/run_eval.py
 
-```bash
+# 基础语法检查
 conda run -n agent python -m py_compile agent/*.py memory/*.py src/*.py tools/*.py tests/*.py
 ```
 
-运行完整评估集：
+评估报告生成在 `evals/reports/`，包括分类指标、失败用例、RAG 召回证据、observability trace 和 OpenAPI schema smoke results。GitHub Actions 在 push 和 pull request 时运行相同的核心检查。
 
-```bash
-conda run -n agent python evals/run_eval.py
-```
-
-评估会在 `evals/reports/` 下生成 JSON 和 Markdown 报告。报告会包含 Metrics、Coverage Map、Category Notes、Observability Trace Cases、API Schema Smoke Cases 和 Failed Cases，可用于说明当前 Agent 在意图路由、Memory RAG、工具调用、主动监督、运行轨迹和 OpenAPI 合同上的可验证覆盖。报告文件默认被 `.gitignore` 忽略，避免每次运行都产生版本库噪音。
-
-GitHub Actions 会在 push 和 pull request 时自动运行：
-
-- Python syntax check
-- `pytest`
-- `python evals/run_eval.py --report-dir /tmp/workmate-eval-reports --min-score 1.0`
-
-## 示例对话
+## 核心结构
 
 ```text
-你：我现在已经找了1条JD，并且已经放到文档中了
-
-搭子：好，已经开始落地了。先确认两个事：高频词标出来了吗，还是只复制了原文？如果只复制了原文，下一步不要继续扩散，先把这1条里的 RAG、Agent、Python、评测这些关键词圈出来。
-
-你：我现在完成了10条JD拉取了，现在请你根据你的记忆，总结我的进展
-
-搭子：我会先看时间线和历史记录。你确实从“准备找JD”推进到了“完成拉取”。现在别急着扩展新目标，先把完成范围说清楚：是只有岗位信息，还是完整JD文本和高频词已经标注？下一步先整理前5个高频词及出现次数，这比继续找更多岗位更有价值。
+workmate-agent/
+├── agent/                  # Agent Runtime 与 turn trace
+├── memory/                 # 状态、分层认知、RAG、反省与监督
+│   └── data/               # 本地运行数据，不提交 Git
+├── tools/                  # Tool registry、executor 与内部状态工具
+├── src/                    # LLM client、CLI 与 FastAPI 应用
+├── web/                    # 本地调试界面
+├── evals/                  # 固定评估集、runner 与本地报告
+├── tests/                  # pytest 测试
+├── scripts/                # Demo 数据与工程脚本
+└── docs/                   # 架构讲解和开发路线
 ```
 
-更完整的真实交互案例见 [demo.md](demo.md)。
+## 项目边界
 
-面试展示用的架构图、Agent Loop、RAG 流程、工具调用流程、监督状态机和 3-5 分钟讲解脚本见 [docs/ARCHITECTURE_WALKTHROUGH.md](docs/ARCHITECTURE_WALKTHROUGH.md)。
+Workmate Agent 负责总体规划、状态记忆和温和监督，不替用户深入完成专业任务。工具层当前聚焦内部状态管理，不执行任意外部操作；系统为单用户、本地优先设计，尚未提供多租户账户、跨设备同步或生产级云部署。
 
-## 代码调用
+## 简历表述
 
-如果不使用命令行，也可以在代码中单轮调用：
+- Built a local-first productivity agent with an explicit runtime, hierarchical memory, episodic RAG, schema-driven tools, proactive supervision, and multimodal screen observation.
+- Implemented observable execution traces covering provider calls, retrieval decisions, tool side effects, memory writeback, latency, and recoverable failures.
+- Designed a supervision state machine connecting task lifecycle, focus sessions, commitments, screen observations, reminder preferences, and user feedback.
+- Added reproducible evaluation, typed FastAPI/OpenAPI contracts, GitHub Actions CI, one-command startup, and privacy-aware local data export.
 
-```python
-from src.core import WorkmateAgent
+## 文档
 
-agent = WorkmateAgent()
-response = agent.invoke("我现在开始找第一个大模型实习JD")
-print(response)
-```
-
-## 当前边界
-
-当前版本采用混合分层记忆：JSON 负责任务、承诺、专注会话和监督事件等权威执行状态；Markdown 负责稳定用户认知；ChromaDB/JSON retrieval index 只负责历史情景召回。这个边界避免模糊检索结果覆盖当前任务真相，同时保留跨时间语义检索能力。
-
-后续记录变多后，可以继续加入更稳定的向量检索、更细粒度的行为模式分析、跨设备数据同步，以及更成熟的长期自律报告与主动陪伴策略。
+- [Architecture Walkthrough](docs/ARCHITECTURE_WALKTHROUGH.md)：架构图、Agent Loop、RAG、工具、监督状态机和面试讲解稿
+- [CHANGELOG](CHANGELOG.md)：版本里程碑与重要设计变化
+- [Goal Mode Roadmap](docs/GOAL_MODE_ROADMAP.md)：后续工程化收尾顺序
+- [Development Plan](docs/DEVELOPMENT_PLAN.md)：Agent 工程能力的早期建设路线
