@@ -442,12 +442,13 @@ class MemoryManager:
             user_profile=self.get_user_profile(),
         )
 
-    def refresh_supervision_events(self) -> List[Dict[str, Any]]:
+    def refresh_supervision_events(self, force_screen: bool = False) -> List[Dict[str, Any]]:
         events = self.supervision_event_manager.detect_events(
             focus_state=self.get_focus_session_state(),
             commitments=self.task_state.all_commitments(),
             task_view=self.get_task_view(),
             user_profile=self.get_user_profile(),
+            force_screen=force_screen,
         )
         
         has_new_chat_messages = False

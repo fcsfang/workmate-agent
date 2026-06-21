@@ -31,6 +31,8 @@ memory/data/*.json
 memory/data/daily_summaries/*
 !memory/data/.gitkeep
 !memory/data/daily_summaries/.gitkeep
+memory/data/chroma/
+memory/data/knowledge/
 memory/archive/
 memory/*.local.json
 memory/data/screenshots

@@ -375,6 +375,31 @@
       padding-right: 4px;
     }
 
+    .screen-check-trigger {
+      width: 100%;
+      min-height: 34px;
+      margin-bottom: 8px;
+      border: 1px dashed var(--line-strong);
+      border-radius: 4px;
+      color: var(--ink);
+      background: rgba(167, 123, 50, 0.08);
+      cursor: pointer;
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0;
+      transition: border-color 150ms ease, background-color 150ms ease;
+    }
+
+    .screen-check-trigger:hover:not(:disabled) {
+      border-color: var(--brass);
+      background: rgba(167, 123, 50, 0.16);
+    }
+
+    .screen-check-trigger:disabled {
+      cursor: wait;
+      opacity: 0.72;
+    }
+
     .supervision-event {
       padding: 9px 10px;
       border: 1px solid var(--line);
@@ -1483,6 +1508,12 @@
             </div>
           </div>
           <div class="task-value developer-only" id="supervisionFeedbackStats">暂无反馈统计</div>
+          <button
+            class="screen-check-trigger"
+            id="triggerScreenCheck"
+            type="button"
+            title="倒计时 5 秒后执行一次屏幕监督检查"
+          >◎ 5 秒后观察屏幕</button>
           <div class="supervision-event-list" id="supervisionEventList">
             <div class="task-value">暂无监督事件</div>
           </div>
@@ -1826,6 +1857,7 @@
     const supervisionEventCount = document.querySelector("#supervisionEventCount");
     const supervisionFeedbackStats = document.querySelector("#supervisionFeedbackStats");
     const supervisionEventList = document.querySelector("#supervisionEventList");
+    const triggerScreenCheck = document.querySelector("#triggerScreenCheck");
     const saveSupervisionPrefs = document.querySelector("#saveSupervisionPrefs");
     const prefEnabled = document.querySelector("#prefEnabled");
     const prefSnooze = document.querySelector("#prefSnooze");
@@ -3233,6 +3265,39 @@
       lastEvent.textContent = `supervision ${action}`;
     }
 
+    async function runManualScreenCheck() {
+      if (!triggerScreenCheck || triggerScreenCheck.disabled) return;
+      triggerScreenCheck.disabled = true;
+
+      try {
+        for (let remaining = 5; remaining > 0; remaining -= 1) {
+          triggerScreenCheck.textContent = `◎ ${remaining} 秒后观察，请切换窗口`;
+          await new Promise((resolve) => window.setTimeout(resolve, 1000));
+        }
+
+        triggerScreenCheck.textContent = "◎ 正在观察屏幕...";
+        const response = await fetch("/api/supervision/screen-check", { method: "POST" });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "Screen supervision check failed");
+        }
+
+        renderSupervisionEvents(data.supervision_events || {});
+        await loadMemory();
+        await loadContext();
+        triggerScreenCheck.textContent = "✓ 反馈已写入对话";
+        lastEvent.textContent = "manual screen check completed";
+      } catch (error) {
+        triggerScreenCheck.textContent = "! 检查失败，点击重试";
+        lastEvent.textContent = error.message;
+      } finally {
+        window.setTimeout(() => {
+          triggerScreenCheck.disabled = false;
+          triggerScreenCheck.textContent = "◎ 5 秒后观察屏幕";
+        }, 5000);
+      }
+    }
+
     async function saveSupervisionPreferences() {
       const payload = {
         enabled: Boolean(prefEnabled?.checked),
@@ -3658,6 +3723,10 @@
           supervisionPrefs.classList.toggle("collapsed");
         }
       });
+    }
+
+    if (triggerScreenCheck) {
+      triggerScreenCheck.addEventListener("click", runManualScreenCheck);
     }
 
     saveSupervisionPrefs.addEventListener("click", async () => {

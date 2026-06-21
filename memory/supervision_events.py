@@ -180,6 +180,7 @@ class SupervisionEventManager:
         commitments: List[Dict[str, Any]],
         task_view: Dict[str, Any],
         user_profile: Optional[Dict[str, Any]] = None,
+        force_screen: bool = False,
     ) -> List[Dict[str, Any]]:
         events = self.load_events()
         now = datetime.now()
@@ -192,7 +193,12 @@ class SupervisionEventManager:
         stale_candidate = self._stale_task_candidate(task_view, now)
         if stale_candidate:
             candidates.append(stale_candidate)
-        screen_candidate = self._screen_deviation_candidate(focus_state, task_view, now)
+        screen_candidate = self._screen_deviation_candidate(
+            focus_state,
+            task_view,
+            now,
+            force=force_screen,
+        )
         if screen_candidate:
             candidates.append(screen_candidate)
 
@@ -375,9 +381,10 @@ class SupervisionEventManager:
         focus_state: Dict[str, Any],
         task_view: Dict[str, Any],
         now: datetime,
+        force: bool = False,
     ) -> Dict[str, Any]:
         prefs = self.load_preferences()
-        if not prefs.get("screen_monitor_enabled", True):
+        if not force and not prefs.get("screen_monitor_enabled", True):
             print("[DEBUG] screen_monitor_enabled is False")
             return {}
 
@@ -395,7 +402,7 @@ class SupervisionEventManager:
                 auto_hours_active = True
                 
         print(f"[DEBUG] focus_active={focus_active}, auto_hours_active={auto_hours_active}, prefs={prefs}")
-        if not focus_active and not auto_hours_active:
+        if not force and not focus_active and not auto_hours_active:
             return {}
 
         # 2. 监测目标同步 (Goal Sync): Determine active goal
@@ -441,7 +448,7 @@ class SupervisionEventManager:
                     adaptive_interval_min = interval_min * 1.5
                     print(f"[DEBUG] Adaptive frequency: last observation was {msg_type}. Scaling cooldown interval to {adaptive_interval_min}m (base={interval_min}m)")
         
-        if last_check_str:
+        if not force and last_check_str:
             last_check = self._parse_time(last_check_str)
             print(f"[DEBUG] last_check_str={last_check_str}, last_check={last_check}, now={now}")
             if last_check:
@@ -502,6 +509,16 @@ class SupervisionEventManager:
                             local_rule_context = ""
                             if app_name:
                                 local_rule_context = f"\n（本地检测到前台 App 为：{app_name}，窗口标题为：{window_title}）"
+
+                            manual_request_context = ""
+                            if force:
+                                manual_request_context = (
+                                    "\n# 本次是用户主动请求的屏幕检查\n"
+                                    "用户刚刚主动点击了‘观察屏幕’。这次必须给用户一条可见反馈："
+                                    "should_message 必须为 true，message 不能为空。"
+                                    "如果用户正在主线上，用 companion 自然说说你看到了什么；"
+                                    "如果已经偏航，用 pullback 轻轻拉回。不要选择 silent。\n"
+                                )
                                 
                             prompt = (
                                 "# 角色\n"
@@ -512,6 +529,7 @@ class SupervisionEventManager:
                                 "{local_context}\n\n"
                                 "# 最近屏幕观察历史 (用来判断连续趋势，避免把当前截图当成孤立瞬间)\n"
                                 "{recent_context}\n\n"
+                                "{manual_request_context}\n"
                                 "# 任务说明\n"
                                 "你使用的是强视觉模型，请发挥你的多模态分析能力，看懂用户屏幕截图：\n"
                                 "1. 分析用户在做什么，以及这和当前目标与主线的关系。不要只按 App 名机械判断；如果页面内容本身与目标相关（如查报错、看文档），要把这种关系识别出来。\n"
@@ -526,11 +544,17 @@ class SupervisionEventManager:
                                 "  \"should_message\": true 或 false,\n"
                                 "  \"message\": \"你对用户说的话，直接写在这里；如果不该打扰，留空\"\n"
                                 "}"
-                            ).replace("{goal}", goal).replace("{task_title}", task_title).replace("{local_context}", local_rule_context).replace("{recent_context}", recent_context)
+                            ).replace("{goal}", goal).replace("{task_title}", task_title).replace("{local_context}", local_rule_context).replace("{recent_context}", recent_context).replace("{manual_request_context}", manual_request_context)
                             
                             raw_response = self.llm_client.invoke_vision(prompt, image_base64, json_mode=True)
                             analysis = self._parse_json_response(raw_response)
                             if "observation" in analysis:
+                                if force:
+                                    analysis["should_message"] = True
+                                    if self._screen_message_type(analysis) == "silent":
+                                        analysis["message_type"] = "companion"
+                                    if not str(analysis.get("message", "") or "").strip():
+                                        analysis["message"] = str(analysis.get("observation", "") or "").strip()
                                 vision_success = True
                                 
                 if screenshot_path.exists():
@@ -583,7 +607,7 @@ class SupervisionEventManager:
                         "should_message": should_message,
                         "vision_direct_message": self._clean_screen_reminder(analysis.get("message", "")),
                         "focus_goal": goal,
-                        "triggered_by": "vision_llm",
+                        "triggered_by": "manual_screen_check" if force else "vision_llm",
                         "reminder_generated_by": "vision_direct" if analysis.get("message") else "fallback",
                         "screen_policy": policy,
                         "observation_id": observation.get("id", ""),
@@ -614,7 +638,7 @@ class SupervisionEventManager:
                         "should_message": should_message,
                         "vision_direct_message": self._clean_screen_reminder(analysis.get("message", "")),
                         "focus_goal": goal,
-                        "triggered_by": "vision_llm",
+                        "triggered_by": "manual_screen_check" if force else "vision_llm",
                         "reminder_generated_by": "vision_direct" if analysis.get("message") else "fallback",
                         "screen_policy": policy,
                         "observation_id": observation.get("id", ""),

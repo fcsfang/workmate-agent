@@ -724,8 +724,12 @@ class WorkmateWebApp:
     def run_background_checks(self):
         return self.scheduler_tick()
 
-    def scheduler_tick(self):
-        events = self.memory_manager.refresh_supervision_events()
+    def scheduler_tick(self, force_screen=False):
+        events = (
+            self.memory_manager.refresh_supervision_events(force_screen=True)
+            if force_screen
+            else self.memory_manager.refresh_supervision_events()
+        )
         notified_event_ids = []
         for event in events:
             if not self.memory_manager.supervision_event_manager.should_notify(event, channel="background"):
@@ -806,6 +810,15 @@ async def get_privacy_export(filename: str):
 @app.post("/api/scheduler/tick", summary="Run one supervision scheduler tick", response_model=SchedulerTickResponse)
 async def post_scheduler_tick():
     return APP.scheduler_tick()
+
+
+@app.post(
+    "/api/supervision/screen-check",
+    summary="Run one immediate screen supervision check",
+    response_model=SchedulerTickResponse,
+)
+async def post_supervision_screen_check():
+    return APP.scheduler_tick(force_screen=True)
 
 
 @app.get("/api/supervision/events", summary="Get active supervision events", response_model=SupervisionEventsState)

@@ -8,7 +8,7 @@ Stable observations about how the user works.
 
 ## Recurring Difficulties
 
-- 优先完成小任务，主线任务易拖延
+- None recorded
 
 ## Effective Support
 

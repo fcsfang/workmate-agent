@@ -167,6 +167,63 @@ def test_screen_deviation_detection_not_triggered_on_correct_behavior(tmp_path):
         assert len(deviation_events) == 0
 
 
+def test_manual_screen_check_always_returns_visible_companion_message(tmp_path):
+    manager = SupervisionEventManager(
+        events_path=str(tmp_path / "events.json"),
+        preferences_path=str(tmp_path / "preferences.json"),
+    )
+    mock_llm = MagicMock()
+    mock_llm.invoke_vision.return_value = (
+        '{"observation": "正在阅读《深度工作》", '
+        '"goal_note": "与读书分享主线一致", '
+        '"message_type": "silent", '
+        '"should_message": false, '
+        '"message": ""}'
+    )
+    manager.set_llm_client(mock_llm)
+
+    original_path_exists = Path.exists
+
+    def mock_path_exists(self_path):
+        path_text = str(self_path)
+        if "/usr/sbin/screencapture" in path_text or ".jpg" in path_text:
+            return True
+        return original_path_exists(self_path)
+
+    with patch("os.path.exists", return_value=True), \
+         patch("pathlib.Path.exists", mock_path_exists), \
+         patch("pathlib.Path.unlink"), \
+         patch("subprocess.run", return_value=MagicMock(returncode=0)), \
+         patch("builtins.open") as mock_open, \
+         patch.object(SupervisionEventManager, "_get_active_window_macos", return_value=("WeRead", "微信读书")):
+        mock_file = MagicMock()
+        mock_file.read.return_value = b"dummy_image_data"
+        mock_open.return_value.__enter__.return_value = mock_file
+
+        active_events = manager.detect_events(
+            focus_state={},
+            commitments=[],
+            task_view={
+                "current": {
+                    "id": "task-reading",
+                    "title": "准备《深度工作》读书分享",
+                    "status": "active",
+                }
+            },
+            force_screen=True,
+        )
+
+    accompaniment = [event for event in active_events if event["type"] == "screen_accompaniment"]
+    assert len(accompaniment) == 1
+    assert accompaniment[0]["display_message"] == "正在阅读《深度工作》"
+    assert accompaniment[0]["metadata"]["message_type"] == "companion"
+    assert accompaniment[0]["metadata"]["should_message"] is True
+    assert accompaniment[0]["metadata"]["triggered_by"] == "manual_screen_check"
+    vision_prompt = mock_llm.invoke_vision.call_args.args[0]
+    assert "用户刚刚主动点击了‘观察屏幕’" in vision_prompt
+    assert "不要选择 silent" in vision_prompt
+
+
 def test_rule_based_whitelist_bypass(tmp_path):
     """测试当前台 App 为 VS Code 时，本地规则命中白名单，直接判定未偏航，不调用视觉大模型"""
     manager = SupervisionEventManager(

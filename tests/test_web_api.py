@@ -37,6 +37,7 @@ def test_web_api_context_and_memory_smoke(monkeypatch, tmp_path):
 
         def __init__(self):
             self.refresh_calls = 0
+            self.last_force_screen = False
 
         class Compressor:
             def estimate_context(self, messages):
@@ -56,8 +57,9 @@ def test_web_api_context_and_memory_smoke(monkeypatch, tmp_path):
         def recent_records_with_transient_supervision(self, limit=30):
             return []
 
-        def refresh_supervision_events(self):
+        def refresh_supervision_events(self, force_screen=False):
             self.refresh_calls += 1
+            self.last_force_screen = force_screen
             return [{"id": "event-1", "title": "提醒", "message": "回来看看"}]
 
         def get_behavior_patterns(self):
@@ -226,11 +228,17 @@ def test_web_api_context_and_memory_smoke(monkeypatch, tmp_path):
         assert fake_memory.refresh_calls == 1
         assert fake_notifier.sent[0]["title"] == "提醒"
 
+        response = client.post("/api/supervision/screen-check")
+        assert response.status_code == 200
+        assert fake_memory.refresh_calls == 2
+        assert fake_memory.last_force_screen is True
+
         response = client.get("/openapi.json")
         assert response.status_code == 200
         openapi = response.json()
         assert "/api/chat" in openapi["paths"]
         assert "/api/scheduler/tick" in openapi["paths"]
+        assert "/api/supervision/screen-check" in openapi["paths"]
         assert "/api/privacy/inventory" in openapi["paths"]
         assert "/api/privacy/export" in openapi["paths"]
         assert "ChatStreamDeltaEvent" in openapi["components"]["schemas"]
