@@ -9,7 +9,7 @@ Workmate 是一个持续关注目标、行动与注意力的个人生产力 Agen
 ![ChromaDB](https://img.shields.io/badge/ChromaDB-FF6600?style=flat)
 [![CI](https://github.com/fcsfang/workmate-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/fcsfang/workmate-agent/actions/workflows/ci.yml)
 
-[English README](readme.md) · [快速开始](#快速开始) · [隐私说明](#数据与隐私) · [技术架构](docs/ARCHITECTURE_WALKTHROUGH.md)
+[English](readme.md) · [快速开始](#快速开始) · [隐私说明](#数据与隐私) · [技术架构](docs/ARCHITECTURE_WALKTHROUGH.md)
 
 ![Workmate Agent 产品演示](docs/assets/product-overview.gif)
 
