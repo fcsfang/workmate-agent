@@ -63,7 +63,7 @@ if command_exists conda && conda env list | awk '{print $1}' | grep -qx "agent";
   PYTHON_CMD=(conda run -n agent python)
 else
   if [ ! -d ".venv" ]; then
-    command_exists python3 || fail "未检测到 python3。请先安装 Python 3.10+，或创建 conda agent 环境。"
+    command_exists python3 || fail "未检测到 python3。请先安装 Python 3.12+，或创建 conda agent 环境。"
     say "未检测到 conda agent 环境，正在创建本地 .venv..."
     python3 -m venv .venv || fail "创建 .venv 失败，请检查 Python/venv 是否可用。"
   fi
