@@ -9,7 +9,7 @@ Workmate is a personal productivity agent that stays aware of your goals, action
 ![ChromaDB](https://img.shields.io/badge/ChromaDB-FF6600?style=flat)
 [![CI](https://github.com/fcsfang/workmate-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/fcsfang/workmate-agent/actions/workflows/ci.yml)
 
-[中文](README_zh.md) · [Quick Start](#quick-start) · [Privacy](#data-and-privacy) · [Architecture](docs/ARCHITECTURE_WALKTHROUGH.md)
+[中文](README-zh.md) · [Quick Start](#quick-start) · [Privacy](#data-and-privacy) · [Architecture](docs/ARCHITECTURE_WALKTHROUGH.md)
 
 ![Workmate Agent product demo](docs/assets/product-overview.gif)
 
