@@ -16,8 +16,7 @@ __pycache__/
 .ruff_cache/
 
 .DS_Store
-.vscode/*
-!.vscode/settings.json
+.vscode/
 
 *.log
 tmp/
@@ -25,7 +24,6 @@ temp/
 
 evals/reports/*.json
 evals/reports/*.md
-!evals/reports/.gitkeep
 
 memory/data/*.json
 memory/data/daily_summaries/*

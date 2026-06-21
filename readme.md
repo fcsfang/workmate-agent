@@ -10,8 +10,7 @@
 
 > 🇨🇳 [中文版说明书 (Chinese README)](README_zh.md)
 
-![Web UI Demo](docs/assets/demo.gif)
-*(Note: Please replace this placeholder with a screenshot or GIF of the Web UI and debug panel)*
+![Workmate Agent product demo](docs/assets/product-overview.gif)
 
 ## What It Is
 Workmate Agent is a local-first productivity companion. Unlike traditional chatbots that reset their context every session, Workmate maintains a persistent state across your tasks, commitments, and focus sessions. It is designed to gently remind you when you stray off-track, help you focus, and actively push long-term goals to closure.
@@ -24,7 +23,8 @@ Traditional chatbots cram all historical conversation into the context window, l
 ---
 
 ## Architecture
-![Architecture](workmate_agent_data_flow_architecture_clean.png)
+
+See the [Architecture Walkthrough](docs/ARCHITECTURE_WALKTHROUGH.md) for the agent loop, memory layers, internal tools, and proactive supervision flow.
 
 ---
 
@@ -100,13 +100,13 @@ The startup script automatically provisions the environment (prioritizing the `a
 
 ---
 
-## Reproducible Demo Mode
-For interviews or recordings, you can generate a clean state filled with demo data:
+## Reset Local Memory
+
+Stop the running service first, then clear conversations, tasks, profiles, observations, and local indices:
+
 ```bash
-python scripts/reset_demo_data.py
-./run.sh
+./scripts/clear_memory.sh
 ```
-This backs up your actual data and injects a complete lifecycle of tasks, commitments, RAG history, and supervision events to demonstrate the agent's full capabilities.
 
 ---
 
@@ -138,12 +138,10 @@ workmate-agent/
 ├── web/                    # Local debugging UI
 ├── evals/                  # Fixed evaluation sets and local reporting
 ├── tests/                  # Pytest suite
-├── scripts/                # Demo and engineering scripts
-└── docs/                   # Architecture details and roadmaps
+├── scripts/                # Local maintenance scripts
+└── docs/                   # Architecture documentation and product assets
 ```
 
 ## Documentation Links
 - [Architecture Walkthrough](docs/ARCHITECTURE_WALKTHROUGH.md): Detailed agent loops, RAG design, state machine flow.
 - [CHANGELOG](CHANGELOG.md): Version milestones and design changes.
-- [Goal Mode Roadmap](docs/GOAL_MODE_ROADMAP.md): Future engineering plans.
-- [Development Plan](docs/DEVELOPMENT_PLAN.md): Early architectural blueprints.

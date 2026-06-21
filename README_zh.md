@@ -215,8 +215,6 @@ conda run -n agent python evals/run_eval.py
 
 - [架构讲解](docs/ARCHITECTURE_WALKTHROUGH.md)：Agent Loop、记忆、工具和监督流程。
 - [版本记录](CHANGELOG.md)：主要版本能力与设计演进。
-- [开发路线](ROADMAP.md)：后续产品与工程计划。
-- [Goal Mode Roadmap](docs/GOAL_MODE_ROADMAP.md)：持续目标模式的阶段规划。
 
 ## 项目边界
 

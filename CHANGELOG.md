@@ -54,7 +54,7 @@
 ## V2.7 - Demo & Interview Readiness
 
 - 加固 `run.sh`：检查项目目录、API Key、依赖和端口，支持 conda `agent` 与本地 `.venv`。
-- 新增 `scripts/reset_demo_data.py`，备份私人数据后生成可复现演示状态。
+- 新增可复现演示数据重置流程，支持备份私人数据后生成演示状态。
 - 新增 `docs/ARCHITECTURE_WALKTHROUGH.md`，覆盖系统架构、Agent Loop、RAG、工具调用、监督状态机和讲解脚本。
 - README 增加 reviewer quick view、能力证据表、5 分钟 Demo 路线和简历表述。
 
